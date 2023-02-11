@@ -282,25 +282,6 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
 
     let expanded = match input.data {
         syn::Data::Struct(struct_) => {
-            let mut generics_where_transmissible: Vec<_> = match generics_where {
-                Some(ref where_) => where_
-                    .predicates
-                    .iter()
-                    .map(|x| x.clone().into_token_stream())
-                    .collect(),
-                None => Vec::new(),
-            };
-            for field in &struct_.fields {
-                let ty = &field.ty;
-                generics_where_transmissible
-                    .push(quote! { for<'__mp_trivial> ::multiprocessing::imp::Identity<'__mp_trivial, #ty>: ::multiprocessing::Object });
-            }
-            let generics_where_transmissible = if generics_where_transmissible.is_empty() {
-                quote! {}
-            } else {
-                quote! { where #(#generics_where_transmissible,)* }
-            };
-
             let serialize_fields = match struct_.fields {
                 syn::Fields::Named(ref fields) => fields
                     .named
@@ -433,26 +414,6 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                     }
                 }
             });
-            let mut generics_where_transmissible: Vec<_> = match generics_where {
-                Some(ref where_) => where_
-                    .predicates
-                    .iter()
-                    .map(|x| x.clone().into_token_stream())
-                    .collect(),
-                None => Vec::new(),
-            };
-            for variant in &enum_.variants {
-                for field in &variant.fields {
-                    let ty = &field.ty;
-                    generics_where_transmissible
-                        .push(quote! { for<'__mp_trivial> ::multiprocessing::imp::Identity<'__mp_trivial, #ty>: ::multiprocessing::Object });
-                }
-            }
-            let generics_where_transmissible = if generics_where_transmissible.is_empty() {
-                quote! {}
-            } else {
-                quote! { where #(#generics_where_transmissible,)* }
-            };
             quote! {
                 impl #generics_impl ::multiprocessing::Object for #ident #generics #generics_where {
                     fn serialize_self(&self, s: &mut ::multiprocessing::Serializer) {

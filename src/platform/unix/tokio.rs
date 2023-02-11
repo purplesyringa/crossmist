@@ -129,10 +129,7 @@ async fn recv_on_fd<T: Object>(fd: &mut UnixSeqpacket) -> Result<Option<T>> {
             if buffer_pos == 0 && received_fds.is_empty() {
                 return Ok(None);
             } else {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "Unterminated data on stream",
-                ));
+                return Err(Error::new(ErrorKind::Other, "Unterminated data on stream"));
             }
         }
 
@@ -225,6 +222,16 @@ impl<S: Object, R: Object> Duplex<S, R> {
 
     pub async fn recv(&mut self) -> Result<Option<R>> {
         recv_on_fd(&mut self.fd).await
+    }
+
+    pub async fn request(&mut self, value: &S) -> Result<R> {
+        self.send(value).await?;
+        self.recv().await?.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "The subprocess exitted before responding to the request",
+            )
+        })
     }
 
     pub fn into_receiver(self) -> Receiver<R> {

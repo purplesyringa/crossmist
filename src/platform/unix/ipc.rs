@@ -32,8 +32,7 @@ pub fn channel<T: Object>() -> Result<(Sender<T>, Receiver<T>)> {
     Ok((tx.into_sender(), rx.into_receiver()))
 }
 
-pub fn duplex<A: Object, B: Object>(
-) -> Result<(Duplex<A, B>, Duplex<B, A>)> {
+pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
     // UnixStream creates a SOCK_STREAM by default, while we need SOCK_SEQPACKET
     unsafe {
         let mut fds = [0, 0];
@@ -126,10 +125,7 @@ fn recv_on_fd<T: Object>(fd: &mut UnixStream) -> Result<Option<T>> {
             if buffer_pos == 0 && received_fds.is_empty() {
                 return Ok(None);
             } else {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "Unterminated data on stream",
-                ));
+                return Err(Error::new(ErrorKind::Other, "Unterminated data on stream"));
             }
         }
 
@@ -218,6 +214,16 @@ impl<S: Object, R: Object> Duplex<S, R> {
 
     pub fn recv(&mut self) -> Result<Option<R>> {
         recv_on_fd(&mut self.fd)
+    }
+
+    pub fn request(&mut self, value: &S) -> Result<R> {
+        self.send(value)?;
+        self.recv()?.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "The subprocess exitted before responding to the request",
+            )
+        })
     }
 
     pub fn into_sender(self) -> Sender<S> {

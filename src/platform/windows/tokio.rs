@@ -56,8 +56,7 @@ pub fn channel<T: Object>() -> Result<(Sender<T>, Receiver<T>)> {
     Ok((tx, rx))
 }
 
-pub fn duplex<A: Object, B: Object>(
-) -> Result<(Duplex<A, B>, Duplex<B, A>)> {
+pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
     let (tx_a, rx_a) = channel::<A>()?;
     let (tx_b, rx_b) = channel::<B>()?;
     let ours = Duplex {
@@ -180,6 +179,16 @@ impl<S: Object, R: Object> Duplex<S, R> {
 
     pub async fn recv(&mut self) -> Result<Option<R>> {
         recv_on_handle(&mut self.receiver_file).await
+    }
+
+    pub async fn request(&mut self, value: &S) -> Result<R> {
+        self.send(value).await?;
+        self.recv().await?.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "The subprocess exitted before responding to the request",
+            )
+        })
     }
 
     pub fn into_sender(self) -> Sender<S> {
