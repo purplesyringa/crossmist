@@ -28,6 +28,7 @@
 //!
 //! ```ignore
 //! #[func]
+//! #[tokio::main]
 //! async fn my_process() {
 //!     ...
 //! }

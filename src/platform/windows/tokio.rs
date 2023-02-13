@@ -28,6 +28,7 @@
 //!
 //! ```ignore
 //! #[func]
+//! #[tokio::main]
 //! async fn my_process() {
 //!     ...
 //! }
@@ -122,18 +123,20 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 }
 
 async fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
-    let mut s = Serializer::new();
-    s.serialize(value);
+    let serialized = {
+        let mut s = Serializer::new();
+        s.serialize(value);
 
-    let handles = s.drain_handles();
-    if !handles.is_empty() {
-        return Err(Error::new(
-            ErrorKind::Other,
-            "The message contains attached handles",
-        ));
-    }
+        let handles = s.drain_handles();
+        if !handles.is_empty() {
+            return Err(Error::new(
+                ErrorKind::Other,
+                "The message contains attached handles",
+            ));
+        }
 
-    let serialized = s.into_vec();
+        s.into_vec()
+    };
     file.write_all(&serialized.len().to_ne_bytes()).await?;
     file.write_all(&serialized).await
 }
@@ -169,6 +172,17 @@ impl<T: Object> Sender<T> {
     }
 }
 
+impl<T: Object> From<crate::Sender<T>> for Sender<T> {
+    fn from(value: crate::Sender<T>) -> Self {
+        unsafe { Self::from_raw_handle(value.into_raw_handle()) }
+    }
+}
+impl<T: Object> From<Sender<T>> for crate::Sender<T> {
+    fn from(value: Sender<T>) -> Self {
+        unsafe { Self::from_raw_handle(value.into_raw_handle()) }
+    }
+}
+
 impl<T: Object> io::AsRawHandle for Sender<T> {
     fn as_raw_handle(&self) -> RawHandle {
         self.file.as_raw_handle()
@@ -177,7 +191,7 @@ impl<T: Object> io::AsRawHandle for Sender<T> {
 
 impl<T: Object> IntoRawHandle for Sender<T> {
     fn into_raw_handle(self) -> RawHandle {
-        self.file.into_raw_handle()
+        self.file.try_into_std().expect("Unexpected in-flight operation").into_raw_handle()
     }
 }
 
@@ -222,7 +236,7 @@ impl<T: Object> io::AsRawHandle for Receiver<T> {
 
 impl<T: Object> IntoRawHandle for Receiver<T> {
     fn into_raw_handle(self) -> RawHandle {
-        self.file.into_raw_handle()
+        self.file.try_into_std().expect("Unexpected in-flight operation").into_raw_handle()
     }
 }
 
@@ -258,14 +272,17 @@ impl<S: Object, R: Object> Duplex<S, R> {
         })
     }
 
-    fn into_receiver(self) -> Receiver<R> {
-        Receiver {
-            file: self.receiver_file,
+    #[doc(hidden)]
+    pub fn join(sender: Sender<S>, receiver: Receiver<R>) -> Self {
+        Self {
+            sender_file: sender.file,
+            receiver_file: receiver.file,
             marker: PhantomData,
         }
     }
 
-    fn split(self) -> (Sender<S>, Receiver<R>) {
+    #[doc(hidden)]
+    pub fn split(self) -> (Sender<S>, Receiver<R>) {
         (
             Sender {
                 file: self.sender_file,
@@ -276,6 +293,19 @@ impl<S: Object, R: Object> Duplex<S, R> {
                 marker: PhantomData,
             },
         )
+    }
+}
+
+impl<S: Object, R: Object> From<crate::Duplex<S, R>> for Duplex<S, R> {
+    fn from(value: crate::Duplex<S, R>) -> Self {
+        let (sender, receiver) = value.split();
+        Self::join(sender.into(), receiver.into())
+    }
+}
+impl<S: Object, R: Object> From<Duplex<S, R>> for crate::Duplex<S, R> {
+    fn from(value: Duplex<S, R>) -> Self {
+        let (sender, receiver) = value.split();
+        Self::join(sender.into(), receiver.into())
     }
 }
 
@@ -369,5 +399,6 @@ pub async unsafe fn spawn<T: Object>(
     )?;
     local.send(&(s.into_vec(), handles)).await?;
 
-    Ok(Child::new(handle, local.into_receiver()))
+    let (_, receiver) = local.split();
+    Ok(Child::new(handle, receiver))
 }

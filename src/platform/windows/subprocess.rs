@@ -153,7 +153,7 @@ pub(crate) unsafe fn _spawn_child(
     let mut process_info = Threading::PROCESS_INFORMATION::default();
 
     let mut enabled_handles = Vec::new();
-    for handle in inherited_handles {
+    for &handle in &inherited_handles {
         if entry::is_cloexec(handle)? {
             enabled_handles.push(handle);
             entry::disable_cloexec(handle)?;
@@ -203,5 +203,6 @@ pub unsafe fn spawn<T: Object>(
     )?;
     local.send(&(s.into_vec(), handles))?;
 
-    Ok(Child::new(handle, local.into_receiver()))
+    let (_, receiver) = local.split();
+    Ok(Child::new(handle, receiver))
 }

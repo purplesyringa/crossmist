@@ -208,22 +208,6 @@ impl<T: Object> FromRawHandle for Receiver<T> {
 }
 
 impl<S: Object, R: Object> Duplex<S, R> {
-    pub(crate) fn from_files(sender_file: File, receiver_file: File) -> Self {
-        Duplex {
-            sender_file,
-            receiver_file,
-            marker: PhantomData,
-        }
-    }
-
-    pub(crate) fn join(sender: Sender<S>, receiver: Receiver<R>) -> Self {
-        Duplex {
-            sender_file: sender.file,
-            receiver_file: receiver.file,
-            marker: PhantomData,
-        }
-    }
-
     /// Send a value to the other side.
     pub fn send(&mut self, value: &S) -> Result<()> {
         send_on_handle(&mut self.sender_file, value)
@@ -249,21 +233,17 @@ impl<S: Object, R: Object> Duplex<S, R> {
         })
     }
 
-    pub(crate) fn into_sender(self) -> Sender<S> {
-        Sender {
-            file: self.sender_file,
+    #[doc(hidden)]
+    pub fn join(sender: Sender<S>, receiver: Receiver<R>) -> Self {
+        Self {
+            sender_file: sender.file,
+            receiver_file: receiver.file,
             marker: PhantomData,
         }
     }
 
-    pub(crate) fn into_receiver(self) -> Receiver<R> {
-        Receiver {
-            file: self.receiver_file,
-            marker: PhantomData,
-        }
-    }
-
-    pub(crate) fn split(self) -> (Sender<S>, Receiver<R>) {
+    #[doc(hidden)]
+    pub fn split(self) -> (Sender<S>, Receiver<R>) {
         (
             Sender {
                 file: self.sender_file,
