@@ -45,11 +45,11 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 }
 
 async fn send_on_fd<T: Object>(fd: &mut UnixSeqpacket, value: &T) -> Result<()> {
-    let mut s = Serializer::new();
-    s.serialize(value);
-
-    let fds = s.drain_handles();
-    let serialized = s.into_vec();
+    let (fds, serialized) = {
+        let mut s = Serializer::new();
+        s.serialize(value);
+        (s.drain_handles(), s.into_vec())
+    };
 
     let mut ancillary_buffer = [0; 253];
 

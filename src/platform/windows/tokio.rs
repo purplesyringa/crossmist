@@ -80,7 +80,7 @@ async fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
     if !handles.is_empty() {
         return Err(Error::new(
             ErrorKind::Other,
-            "The impossible happened: a transmissible message contains attached handles",
+            "The message contains attached handles",
         ));
     }
 

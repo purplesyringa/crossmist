@@ -146,7 +146,7 @@ fn parse_raw_handle(s: &str) -> RawHandle {
 }
 
 #[cfg(unix)]
-pub fn disable_cloexec(fd: RawHandle) -> std::io::Result<()> {
+pub(crate) fn disable_cloexec(fd: RawHandle) -> std::io::Result<()> {
     nix::fcntl::fcntl(
         fd,
         nix::fcntl::FcntlArg::F_SETFD(nix::fcntl::FdFlag::empty()),
@@ -154,7 +154,7 @@ pub fn disable_cloexec(fd: RawHandle) -> std::io::Result<()> {
     Ok(())
 }
 #[cfg(unix)]
-pub fn enable_cloexec(fd: RawHandle) -> std::io::Result<()> {
+pub(crate) fn enable_cloexec(fd: RawHandle) -> std::io::Result<()> {
     nix::fcntl::fcntl(
         fd,
         nix::fcntl::FcntlArg::F_SETFD(nix::fcntl::FdFlag::FD_CLOEXEC),
@@ -162,7 +162,7 @@ pub fn enable_cloexec(fd: RawHandle) -> std::io::Result<()> {
     Ok(())
 }
 #[cfg(unix)]
-pub fn disable_nonblock(fd: RawHandle) -> std::io::Result<()> {
+pub(crate) fn disable_nonblock(fd: RawHandle) -> std::io::Result<()> {
     nix::fcntl::fcntl(
         fd,
         nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::empty()),
@@ -170,7 +170,7 @@ pub fn disable_nonblock(fd: RawHandle) -> std::io::Result<()> {
     Ok(())
 }
 #[cfg(unix)]
-pub fn enable_nonblock(fd: RawHandle) -> std::io::Result<()> {
+pub(crate) fn enable_nonblock(fd: RawHandle) -> std::io::Result<()> {
     nix::fcntl::fcntl(
         fd,
         nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
@@ -179,7 +179,7 @@ pub fn enable_nonblock(fd: RawHandle) -> std::io::Result<()> {
 }
 
 #[cfg(windows)]
-pub fn disable_cloexec(handle: RawHandle) -> std::io::Result<()> {
+pub(crate) fn disable_cloexec(handle: RawHandle) -> std::io::Result<()> {
     use windows::Win32::Foundation;
     unsafe {
         Foundation::SetHandleInformation(
@@ -192,7 +192,7 @@ pub fn disable_cloexec(handle: RawHandle) -> std::io::Result<()> {
     Ok(())
 }
 #[cfg(windows)]
-pub fn enable_cloexec(handle: RawHandle) -> std::io::Result<()> {
+pub(crate) fn enable_cloexec(handle: RawHandle) -> std::io::Result<()> {
     use windows::Win32::Foundation;
     unsafe {
         Foundation::SetHandleInformation(
@@ -205,7 +205,7 @@ pub fn enable_cloexec(handle: RawHandle) -> std::io::Result<()> {
     Ok(())
 }
 #[cfg(windows)]
-pub fn is_cloexec(handle: RawHandle) -> std::io::Result<bool> {
+pub(crate) fn is_cloexec(handle: RawHandle) -> std::io::Result<bool> {
     use windows::Win32::Foundation;
     let mut flags = 0u32;
     unsafe { Foundation::GetHandleInformation(handle, &mut flags as *mut u32).ok()? };

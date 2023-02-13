@@ -1,3 +1,31 @@
+//! Uni- and bidirectional channels between processes.
+//!
+//! Create and use a unidirectional channel:
+//!
+//! ```rust
+//! # use multiprocessing::{channel, Receiver, Sender};
+//! let (mut sender, mut receiver): (Sender<i32>, Receiver<i32>) = channel::<i32>()?;
+//! sender.send(&57)?;
+//! drop(sender);
+//! assert_eq!(receiver.recv()?, Some(57));
+//! assert_eq!(receiver.recv()?, None);
+//! # std::io::Result::Ok(())
+//! ```
+//!
+//! Create and use a bidirectional channel:
+//!
+//! ```rust
+//! # use multiprocessing::{duplex, Duplex};
+//! let (mut side1, mut side2) = duplex::<i32, (i32, i32)>()?;
+//! side1.send(&57)?;
+//! assert_eq!(side2.recv()?, Some(57));
+//! side2.send(&(1, 2))?;
+//! assert_eq!(side1.recv()?, Some((1, 2)));
+//! drop(side1);
+//! assert_eq!(side2.recv()?, None);
+//! # std::io::Result::Ok(())
+//! ```
+
 use crate::{handles, Deserializer, Object, Serializer};
 use std::default::Default;
 use std::ffi::c_void;
@@ -7,18 +35,28 @@ use std::marker::PhantomData;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
 use windows::Win32::System::Pipes;
 
+/// The transmitting side of a unidirectional channel.
+///
+/// `T` is the type of the objects this side sends via the channel and the other side receives.
 #[derive(Object)]
 pub struct Sender<T: Object> {
     file: File,
     marker: PhantomData<fn(T) -> T>,
 }
 
+/// The receiving side of a unidirectional channel.
+///
+/// `T` is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
 pub struct Receiver<T: Object> {
     file: File,
     marker: PhantomData<fn(T) -> T>,
 }
 
+/// A side of a bidirectional channel.
+///
+/// `S` is the type of the objects this side sends via the channel and the other side receives, `R`
+/// is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
 pub struct Duplex<S: Object, R: Object> {
     sender_file: File,
@@ -26,6 +64,7 @@ pub struct Duplex<S: Object, R: Object> {
     marker: PhantomData<fn(S, R) -> (S, R)>,
 }
 
+/// Create a unidirectional channel.
 pub fn channel<T: Object>() -> Result<(Sender<T>, Receiver<T>)> {
     let mut tx: handles::RawHandle = Default::default();
     let mut rx: handles::RawHandle = Default::default();
@@ -49,6 +88,7 @@ pub fn channel<T: Object>() -> Result<(Sender<T>, Receiver<T>)> {
     Ok((tx, rx))
 }
 
+/// Create a bidirectional channel.
 pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
     let (tx_a, rx_a) = channel::<A>()?;
     let (tx_b, rx_b) = channel::<B>()?;
@@ -73,7 +113,7 @@ fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
     if !handles.is_empty() {
         return Err(Error::new(
             ErrorKind::Other,
-            "The impossible happened: a transmissible message contains attached handles",
+            "The message contains attached handles",
         ));
     }
 
@@ -102,13 +142,14 @@ fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
 }
 
 impl<T: Object> Sender<T> {
-    pub fn from_file(file: File) -> Self {
+    pub(crate) fn from_file(file: File) -> Self {
         Sender {
             file,
             marker: PhantomData,
         }
     }
 
+    /// Send a value to the other side.
     pub fn send(&mut self, value: &T) -> Result<()> {
         send_on_handle(&mut self.file, value)
     }
@@ -127,13 +168,16 @@ impl<T: Object> FromRawHandle for Sender<T> {
 }
 
 impl<T: Object> Receiver<T> {
-    pub fn from_file(file: File) -> Self {
+    pub(crate) fn from_file(file: File) -> Self {
         Receiver {
             file,
             marker: PhantomData,
         }
     }
 
+    /// Receive a value from the other side.
+    ///
+    /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<T>> {
         recv_on_handle(&mut self.file)
     }
@@ -152,7 +196,7 @@ impl<T: Object> FromRawHandle for Receiver<T> {
 }
 
 impl<S: Object, R: Object> Duplex<S, R> {
-    pub fn from_files(sender_file: File, receiver_file: File) -> Self {
+    pub(crate) fn from_files(sender_file: File, receiver_file: File) -> Self {
         Duplex {
             sender_file,
             receiver_file,
@@ -160,7 +204,7 @@ impl<S: Object, R: Object> Duplex<S, R> {
         }
     }
 
-    pub fn join(sender: Sender<S>, receiver: Receiver<R>) -> Self {
+    pub(crate) fn join(sender: Sender<S>, receiver: Receiver<R>) -> Self {
         Duplex {
             sender_file: sender.file,
             receiver_file: receiver.file,
@@ -168,14 +212,21 @@ impl<S: Object, R: Object> Duplex<S, R> {
         }
     }
 
+    /// Send a value to the other side.
     pub fn send(&mut self, value: &S) -> Result<()> {
         send_on_handle(&mut self.sender_file, value)
     }
 
+    /// Receive a value from the other side.
+    ///
+    /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<R>> {
         recv_on_handle(&mut self.receiver_file)
     }
 
+    /// Send a value from the other side and wait for a response immediately.
+    ///
+    /// If the other side closes the channel before responding, an error is returned.
     pub fn request(&mut self, value: &S) -> Result<R> {
         self.send(value)?;
         self.recv()?.ok_or_else(|| {
@@ -186,21 +237,21 @@ impl<S: Object, R: Object> Duplex<S, R> {
         })
     }
 
-    pub fn into_sender(self) -> Sender<S> {
+    pub(crate) fn into_sender(self) -> Sender<S> {
         Sender {
             file: self.sender_file,
             marker: PhantomData,
         }
     }
 
-    pub fn into_receiver(self) -> Receiver<R> {
+    pub(crate) fn into_receiver(self) -> Receiver<R> {
         Receiver {
             file: self.receiver_file,
             marker: PhantomData,
         }
     }
 
-    pub fn split(self) -> (Sender<S>, Receiver<R>) {
+    pub(crate) fn split(self) -> (Sender<S>, Receiver<R>) {
         (
             Sender {
                 file: self.sender_file,

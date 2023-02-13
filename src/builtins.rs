@@ -1,7 +1,9 @@
 #[cfg(windows)]
 use crate::handles::RawHandle;
+#[cfg(feature = "tokio")]
+use crate::handles::{FromRawHandle, IntoRawHandle};
 use crate::{
-    handles::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle},
+    handles::{AsRawHandle, OwnedHandle},
     Deserializer, Object, Serializer,
 };
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
@@ -567,6 +569,7 @@ impl Object for std::fs::File {
     }
 }
 
+#[doc(cfg(feature = "tokio"))]
 #[cfg(feature = "tokio")]
 impl Object for tokio::fs::File {
     fn serialize_self(&self, s: &mut Serializer) {
@@ -584,6 +587,7 @@ impl Object for tokio::fs::File {
     }
 }
 
+#[doc(cfg(unix))]
 #[cfg(unix)]
 impl Object for std::os::unix::net::UnixStream {
     fn serialize_self(&self, s: &mut Serializer) {
@@ -598,23 +602,7 @@ impl Object for std::os::unix::net::UnixStream {
     }
 }
 
-#[cfg(unix)]
-impl Object for openat::Dir {
-    fn serialize_self(&self, s: &mut Serializer) {
-        let handle = s.add_handle(self.as_raw_handle());
-        s.serialize(&handle)
-    }
-    fn deserialize_self(d: &mut Deserializer) -> Self {
-        let handle = d.deserialize();
-        unsafe {
-            <Self as FromRawHandle>::from_raw_handle(d.drain_handle(handle).into_raw_handle())
-        }
-    }
-    fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self(d))
-    }
-}
-
+#[doc(cfg(all(unix, feature = "tokio")))]
 #[cfg(all(unix, feature = "tokio"))]
 impl Object for tokio::net::UnixStream {
     fn serialize_self(&self, s: &mut Serializer) {
@@ -629,6 +617,7 @@ impl Object for tokio::net::UnixStream {
     }
 }
 
+#[doc(cfg(all(unix, feature = "tokio")))]
 #[cfg(all(unix, feature = "tokio"))]
 impl Object for tokio_seqpacket::UnixSeqpacket {
     fn serialize_self(&self, s: &mut Serializer) {
@@ -662,6 +651,7 @@ impl Object for std::time::Duration {
     }
 }
 
+#[doc(cfg(windows))]
 #[cfg(windows)]
 impl Object for RawHandle {
     fn serialize_self(&self, s: &mut Serializer) {

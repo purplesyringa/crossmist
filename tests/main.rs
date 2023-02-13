@@ -1,4 +1,4 @@
-use multiprocessing::{channel, duplex, Bind, Duplex, Object, Receiver, Sender};
+use multiprocessing::{channel, duplex, BindValue, Duplex, Object, Receiver, Sender};
 
 #[derive(Debug, PartialEq, Object)]
 struct SimplePair {
@@ -197,7 +197,7 @@ fn main() {
 
     assert_eq!(
         with_passed_bound_fn
-            .spawn(Box::new(add_with_arguments.bind(5)))
+            .spawn(Box::new(add_with_arguments.bind_value(5)))
             .unwrap()
             .join()
             .expect("with_passed_bound_fn failed"),
@@ -207,7 +207,7 @@ fn main() {
 
     assert_eq!(
         with_passed_double_bound_fn
-            .spawn(Box::new(add_with_arguments.bind(5).bind(7)))
+            .spawn(Box::new(add_with_arguments.bind_value(5).bind_value(7)))
             .unwrap()
             .join()
             .expect("with_passed_double_bound_fn failed"),

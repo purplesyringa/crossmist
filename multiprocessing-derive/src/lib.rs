@@ -1,3 +1,4 @@
+#![feature(box_patterns)]
 #[macro_use]
 extern crate quote;
 
@@ -6,6 +7,108 @@ use quote::ToTokens;
 use syn::parse_macro_input;
 use syn::DeriveInput;
 
+/// Enable a function to be used as an entrypoint of a child process, and turn it into an
+/// [`Object`].
+///
+/// This macro applies to `fn` functions, including generic ones. It turns the function into an
+/// object that can be called (providing the same behavior as if `#[func]` was not used), but also
+/// adds various methods for spawning a child process from this function.
+///
+/// For a function declared as
+///
+/// ```ignore
+/// #[func]
+/// fn example(arg1: Type1, ...) -> Output;
+/// ```
+///
+/// ...the methods are:
+///
+/// ```ignore
+/// pub fn spawn(&mut self, arg1: Type1, ...) -> std::io::Result<multiprocessing::Child<Output>>;
+/// pub fn run(arg1: Type1, ...) -> std::io::Result<Output>;
+/// ```
+///
+/// For example:
+///
+/// ```rust
+/// use multiprocessing::{func, main};
+///
+/// #[func]
+/// fn example(a: i32, b: i32) -> i32 {
+///     a + b
+/// }
+///
+/// #[main]
+/// fn main() {
+///     assert_eq!(example(5, 7), 12);
+///     assert_eq!(example.spawn(5, 7).unwrap().join(), Ok(12));
+///     assert_eq!(example.run(5, 7), Ok(12));
+/// }
+/// ```
+///
+///
+/// ## Asynchronous case
+///
+/// This section applies if the `tokio` feature is enabled.
+///
+/// The following methods are also made available:
+///
+/// ```ignore
+/// pub async fn spawn_tokio(&mut self, arg1: Type1, ...) ->
+///     std::io::Result<multiprocessing::tokio::Child<Output>>;
+/// pub async fn run_tokio(arg1: Type1, ...) -> std::io::Result<Output>;
+/// ```
+///
+/// Additionally, the function may be `async`. In this case, you have to add the `#[tokio::main]`
+/// attribute *after* `#[func]`. For instance:
+///
+/// ```ignore
+/// #[multiprocessing::func]
+/// #[tokio::main]
+/// async fn example() {}
+/// ```
+///
+/// You may pass operands to `tokio::main` just like usual:
+///
+/// ```rust
+/// #[multiprocessing::func]
+/// #[tokio::main(flavor = "current_thread")]
+/// async fn example() {}
+/// ```
+///
+/// Notice that the use of `spawn` vs `spawn_tokio` is orthogonal to whether the function is
+/// `async`: you can start a synchronous function in a child process asynchronously, or vice versa:
+///
+/// ```rust
+/// use multiprocessing::{func, main};
+///
+/// #[func]
+/// fn example(a: i32, b: i32) -> i32 {
+///     a + b
+/// }
+///
+/// #[main]
+/// #[tokio::main]
+/// async fn main() {
+///     assert_eq!(example(5, 7), 12);
+///     assert_eq!(example.run_tokio(5, 7).await, Ok(12));
+/// }
+/// ```
+///
+/// ```rust
+/// use multiprocessing::{func, main};
+///
+/// #[func]
+/// #[tokio::main]
+/// async fn example(a: i32, b: i32) -> i32 {
+///     a + b
+/// }
+///
+/// #[main]
+/// fn main() {
+///     assert_eq!(example.run(5, 7), Ok(12));
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as syn::ItemFn);
@@ -92,6 +195,7 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let mut arg_names = Vec::new();
     let mut args_from_tuple = Vec::new();
     let mut binding = Vec::new();
+    let mut has_references = false;
     for (i, arg) in args.iter().enumerate() {
         let i = syn::Index::from(i);
         if let syn::FnArg::Typed(pattype) = arg {
@@ -104,7 +208,16 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
                 extracted_args.push(quote! { multiprocessing_args.#ident });
                 arg_names.push(quote! { #ident });
                 args_from_tuple.push(quote! { args.#i });
-                binding.push(quote! { .bind(#ident) });
+                binding.push(quote! { .bind_value(#ident) });
+                has_references = has_references
+                    || matches!(
+                        **ty,
+                        syn::Type::Reference(_)
+                            | syn::Type::Group(syn::TypeGroup {
+                                elem: box syn::Type::Reference(_),
+                                ..
+                            })
+                    );
             } else {
                 unreachable!();
             }
@@ -121,7 +234,7 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
         let head_arg = &arg_names[0];
         let tail_binding = &binding[1..];
         quote! {
-            Bind::<#head_ty, (#(#tail_ty,)*)>::bind(Box::new(#ident), #head_arg) #(#tail_binding)*
+            BindValue::<#head_ty, (#(#tail_ty,)*)>::bind_value(::std::boxed::Box::new(#ident), #head_arg) #(#tail_binding)*
         }
     };
 
@@ -144,63 +257,19 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
         ns_tokio = quote! {};
     }
 
-    let expanded = quote! {
-        #[derive(::multiprocessing::Object)]
-        struct #entry_ident #generic_params {
-            func: ::multiprocessing::Delayed<::std::boxed::Box<dyn ::multiprocessing::FnOnceObject<(), Output = #return_type_wrapped>>>,
-            #(#generic_phantom,)*
-        }
-
-        impl #generic_params #entry_ident #generics {
-            fn new(func: ::std::boxed::Box<dyn ::multiprocessing::FnOnceObject<(), Output = #return_type_wrapped>>) -> Self {
-                Self {
-                    func: ::multiprocessing::Delayed::new(func),
-                    #(#generic_phantom_build,)*
-                }
-            }
-        }
-
-        impl #generic_params ::multiprocessing::Entrypoint<(::multiprocessing::handles::RawHandle,)> for #entry_ident #generics {
-            type Output = i32;
-            #tokio_attr
-            #[allow(unreachable_code)] // If func returns !
-            #async_ fn call(self, args: (::multiprocessing::handles::RawHandle,)) -> Self::Output {
-                let output_tx_handle = args.0;
-                use ::multiprocessing::handles::FromRawHandle;
-                let mut output_tx = unsafe {
-                    ::multiprocessing #ns_tokio ::Sender::<#return_type>::from_raw_handle(output_tx_handle)
-                };
-                output_tx.send(&self.func.deserialize()() #dot_await)
-                    #dot_await
-                    .expect("Failed to send subprocess output");
-                0
-            }
-        }
-
-        impl #generic_params ::multiprocessing::Entrypoint<(#(#fn_types,)*)> for #type_ident {
-            type Output = #return_type_wrapped;
-            fn call(self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::call(#(#args_from_tuple,)*))
-            }
-        }
-
-        #[allow(non_camel_case_types)]
-        #[derive(::multiprocessing::Object)]
-        #vis struct #type_ident;
-
-        impl #type_ident {
-            #[link_name = #link_name]
-            #input
-
+    let impl_code = if has_references {
+        quote! {}
+    } else {
+        quote! {
             pub unsafe fn spawn_with_flags #generic_params(&self, flags: ::multiprocessing::subprocess::Flags, #(#fn_args,)*) -> ::std::io::Result<::multiprocessing::Child<#return_type>> {
-                use ::multiprocessing::Bind;
-                ::multiprocessing::spawn(Box::new(::multiprocessing::EntrypointWrapper(#entry_ident::new(Box::new(#bound)))), flags)
+                use ::multiprocessing::BindValue;
+                ::multiprocessing::spawn(::std::boxed::Box::new(::multiprocessing::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound)))), flags)
             }
 
             #[cfg(feature = "tokio")]
             pub async unsafe fn spawn_with_flags_tokio #generic_params(&self, flags: ::multiprocessing::subprocess::Flags, #(#fn_args,)*) -> ::std::io::Result<::multiprocessing::tokio::Child<#return_type>> {
-                use ::multiprocessing::Bind;
-                ::multiprocessing::tokio::spawn(Box::new(::multiprocessing::EntrypointWrapper(#entry_ident::new(Box::new(#bound)))), flags).await
+                use ::multiprocessing::BindValue;
+                ::multiprocessing::tokio::spawn(::std::boxed::Box::new(::multiprocessing::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound)))), flags).await
             }
 
             pub fn spawn #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::multiprocessing::Child<#return_type>> {
@@ -221,14 +290,100 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
                 self.spawn_tokio(#(#arg_names,)*).await?.join().await
             }
         }
+    };
+
+    let expanded = quote! {
+        #[derive(::multiprocessing::Object)]
+        struct #entry_ident #generic_params {
+            func: ::multiprocessing::Delayed<::std::boxed::Box<dyn ::multiprocessing::FnOnceObject<(), Output = #return_type_wrapped>>>,
+            #(#generic_phantom,)*
+        }
+
+        impl #generic_params #entry_ident #generics {
+            fn new(func: ::std::boxed::Box<dyn ::multiprocessing::FnOnceObject<(), Output = #return_type_wrapped>>) -> Self {
+                Self {
+                    func: ::multiprocessing::Delayed::new(func),
+                    #(#generic_phantom_build,)*
+                }
+            }
+        }
+
+        impl #generic_params ::multiprocessing::InternalFnOnce<(::multiprocessing::handles::RawHandle,)> for #entry_ident #generics {
+            type Output = i32;
+            #tokio_attr
+            #[allow(unreachable_code)] // If func returns !
+            #async_ fn call_once(self, args: (::multiprocessing::handles::RawHandle,)) -> Self::Output {
+                let output_tx_handle = args.0;
+                use ::multiprocessing::handles::FromRawHandle;
+                let mut output_tx = unsafe {
+                    ::multiprocessing #ns_tokio ::Sender::<#return_type>::from_raw_handle(output_tx_handle)
+                };
+                output_tx.send(&self.func.deserialize()() #dot_await)
+                    #dot_await
+                    .expect("Failed to send subprocess output");
+                0
+            }
+        }
+
+        impl #generic_params ::multiprocessing::InternalFnOnce<(#(#fn_types,)*)> for #type_ident {
+            type Output = #return_type_wrapped;
+            fn call_once(self, args: (#(#fn_types,)*)) -> Self::Output {
+                #pin(#type_ident::call(#(#args_from_tuple,)*))
+            }
+        }
+        impl #generic_params ::multiprocessing::InternalFnMut<(#(#fn_types,)*)> for #type_ident {
+            fn call_mut(&mut self, args: (#(#fn_types,)*)) -> Self::Output {
+                #pin(#type_ident::call(#(#args_from_tuple,)*))
+            }
+        }
+        impl #generic_params ::multiprocessing::InternalFn<(#(#fn_types,)*)> for #type_ident {
+            fn call(&self, args: (#(#fn_types,)*)) -> Self::Output {
+                #pin(#type_ident::call(#(#args_from_tuple,)*))
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        #[derive(::multiprocessing::Object)]
+        #vis struct #type_ident;
+
+        impl #type_ident {
+            #[link_name = #link_name]
+            #input
+
+            #impl_code
+        }
 
         #[allow(non_upper_case_globals)]
-        #vis const #ident: ::multiprocessing::EntrypointWrapper<#type_ident> = ::multiprocessing::EntrypointWrapper(#type_ident);
+        #vis const #ident: ::multiprocessing::CallWrapper<#type_ident> = ::multiprocessing::CallWrapper(#type_ident);
     };
 
     TokenStream::from(expanded)
 }
 
+/// Setup an entrypoint.
+///
+/// This attribute must always be added to `fn main`:
+///
+/// ```rust
+/// #[multiprocessing::main]
+/// fn main() {
+///     // ...
+/// }
+/// ```
+///
+/// Without it, starting child processes will not work. This might mean the application crashes,
+/// starts infinitely many child processes or does something else you don't want.
+///
+/// This attribute may be mixed with other attributes, e.g. `#[tokio::main]`. In this case, this
+/// attribute should be the first in the list:
+///
+/// ```rust
+/// #[multiprocessing::main]
+/// #[tokio::main]
+/// async fn main() {
+///     // ...
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as syn::ItemFn);
@@ -255,6 +410,48 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+/// Make a structure or a enum serializable.
+///
+/// This derive macro enables the corresponding type to be passed via channels and to and from child
+/// processes. [`Object`] can be implemented for a struct/enum if all of its fields implement
+/// [`Object`]:
+///
+/// This is okay:
+///
+/// ```rust
+/// # use multiprocessing::Object;
+/// #[derive(Object)]
+/// struct Test(String, i32);
+/// ```
+///
+/// This is not okay:
+///
+/// ```compile_fail
+/// # use multiprocessing::Object;
+/// struct NotObject;
+///
+/// #[derive(Object)]
+/// struct Test(String, i32, NotObject);
+/// ```
+///
+/// Generics are supported. In this case, to ensure that all fields implement [`Object`],
+/// constraints might be necessary:
+///
+/// This is okay:
+///
+/// ```rust
+/// # use multiprocessing::Object;
+/// #[derive(Object)]
+/// struct MyPair<T: Object>(T, T);
+/// ```
+///
+/// This is not okay:
+///
+/// ```compile_fail
+/// # use multiprocessing::Object;
+/// #[derive(Object)]
+/// struct MyPair<T>(T, T);
+/// ```
 #[proc_macro_derive(Object)]
 pub fn derive_object(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

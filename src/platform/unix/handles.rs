@@ -1,3 +1,9 @@
+//! Cross-platform alternative to file descriptors.
+//!
+//! You most likely won't ever need to use this: `#[derive(Object)]` shall take care of serializing
+//! and deserializing [`std::fs::File`] and similar objects. If, however, you store raw file
+//! descriptors and implement serialization yourself, using this module might be a sane choice.
+
 use std::os::unix::io;
 
 pub trait FromRawHandle: io::FromRawFd {
