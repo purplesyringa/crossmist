@@ -14,7 +14,7 @@
 //! This module is about what happens *after* the child process is started: you can kill the child,
 //! get its PID, or join it (i.e. wait till it returns and obtain the returned value).
 
-use crate::{duplex, imp, FnOnceObject, Object, Receiver, Serializer};
+use crate::{duplex, entry, FnOnceObject, Object, Receiver, Serializer};
 use nix::{
     libc::{c_char, c_int, c_void, pid_t},
     sys::signal,
@@ -54,7 +54,8 @@ impl<T: Object> Child<T> {
     /// Wait for the process to finish and obtain the value it returns.
     ///
     /// An error is returned if the process panics, is terminated, or exits via
-    /// [`std::process::exit`] or alike instead of returning a value.
+    /// [`std::process::exit`] or alike instead of returning a
+    /// value.
     pub fn join(&mut self) -> Result<T> {
         let value = self.output_rx.recv()?;
         let status = nix::sys::wait::waitpid(self.proc_pid, None)?;
@@ -111,9 +112,9 @@ pub(crate) unsafe fn _spawn_child(
                     }
                 }
 
-                imp::disable_cloexec(child_fd)?;
+                entry::disable_cloexec(child_fd)?;
                 for fd in inherited_fds {
-                    imp::disable_cloexec(*fd)?;
+                    entry::disable_cloexec(*fd)?;
                 }
 
                 // nix::unistd::execv uses allocations

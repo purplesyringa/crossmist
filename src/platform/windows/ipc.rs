@@ -32,7 +32,7 @@ use std::ffi::c_void;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::marker::PhantomData;
-use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
+use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
 use windows::Win32::System::Pipes;
 
 /// The transmitting side of a unidirectional channel.
@@ -142,7 +142,7 @@ fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
 }
 
 impl<T: Object> Sender<T> {
-    pub(crate) fn from_file(file: File) -> Self {
+    fn from_file(file: File) -> Self {
         Sender {
             file,
             marker: PhantomData,
@@ -161,6 +161,12 @@ impl<T: Object> AsRawHandle for Sender<T> {
     }
 }
 
+impl<T: Object> IntoRawHandle for Sender<T> {
+    fn into_raw_handle(self) -> RawHandle {
+        self.file.into_raw_handle()
+    }
+}
+
 impl<T: Object> FromRawHandle for Sender<T> {
     unsafe fn from_raw_handle(handle: RawHandle) -> Self {
         Self::from_file(File::from_raw_handle(handle))
@@ -168,7 +174,7 @@ impl<T: Object> FromRawHandle for Sender<T> {
 }
 
 impl<T: Object> Receiver<T> {
-    pub(crate) fn from_file(file: File) -> Self {
+    fn from_file(file: File) -> Self {
         Receiver {
             file,
             marker: PhantomData,
@@ -186,6 +192,12 @@ impl<T: Object> Receiver<T> {
 impl<T: Object> AsRawHandle for Receiver<T> {
     fn as_raw_handle(&self) -> RawHandle {
         self.file.as_raw_handle()
+    }
+}
+
+impl<T: Object> IntoRawHandle for Receiver<T> {
+    fn into_raw_handle(self) -> RawHandle {
+        self.file.into_raw_handle()
     }
 }
 

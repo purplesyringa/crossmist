@@ -109,6 +109,7 @@ pub use crate::serde::*;
 mod platform {
     #[cfg(unix)]
     pub mod unix {
+        pub(crate) mod entry;
         pub mod handles;
         pub mod ipc;
         pub mod subprocess;
@@ -118,6 +119,7 @@ mod platform {
     }
     #[cfg(windows)]
     pub mod windows {
+        pub(crate) mod entry;
         pub mod handles;
         pub mod ipc;
         pub mod subprocess;

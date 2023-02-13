@@ -15,9 +15,9 @@
 //! get its PID, or join it (i.e. wait till it returns and obtain the returned value).
 
 use crate::{
-    duplex,
+    duplex, entry,
     handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
-    imp, FnOnceObject, Object, Receiver, Serializer,
+    FnOnceObject, Object, Receiver, Serializer,
 };
 use std::ffi::c_void;
 use std::io::Result;
@@ -154,9 +154,9 @@ pub(crate) unsafe fn _spawn_child(
 
     let mut enabled_handles = Vec::new();
     for handle in inherited_handles {
-        if imp::is_cloexec(handle)? {
+        if entry::is_cloexec(handle)? {
             enabled_handles.push(handle);
-            imp::disable_cloexec(handle)?;
+            entry::disable_cloexec(handle)?;
         }
     }
 
@@ -174,7 +174,7 @@ pub(crate) unsafe fn _spawn_child(
     );
 
     for handle in enabled_handles {
-        imp::enable_cloexec(handle)?;
+        entry::enable_cloexec(handle)?;
     }
 
     res.ok()?;
