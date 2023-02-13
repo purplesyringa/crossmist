@@ -91,16 +91,22 @@ fn with_passed_rx(mut rx: Receiver<i32>) -> i32 {
 }
 
 #[multiprocessing::func]
-fn with_passed_tx(mut tx: Sender<i32>) -> () {
+fn with_passed_tx(mut tx: Sender<i32>) {
     tx.send(&5).unwrap();
     tx.send(&7).unwrap();
 }
 
 #[multiprocessing::func]
-fn with_passed_duplex(mut chan: Duplex<i32, (i32, i32)>) -> () {
+fn with_passed_duplex(mut chan: Duplex<i32, (i32, i32)>) {
     while let Some((x, y)) = chan.recv().unwrap() {
         chan.send(&(x - y)).unwrap();
     }
+}
+
+#[multiprocessing::func]
+fn with_passed_nested_channel(mut chan: Receiver<Receiver<i32>>) -> i32 {
+    let mut chan1 = chan.recv().unwrap().unwrap();
+    chan1.recv().unwrap().unwrap()
 }
 
 #[multiprocessing::main]
@@ -245,5 +251,14 @@ fn main() {
         drop(local);
         child.join().unwrap();
         println!("with_passed_duplex OK");
+    }
+
+    {
+        let (mut tx, rx) = channel::<i32>().unwrap();
+        let (mut tx1, rx1) = channel::<Receiver<i32>>().unwrap();
+        tx.send(&5).unwrap();
+        tx1.send(&rx).unwrap();
+        assert_eq!(with_passed_nested_channel.run(rx1).unwrap(), 5);
+        println!("with_passed_nested_channel OK");
     }
 }

@@ -38,17 +38,24 @@ async fn with_passed_rx(mut rx: Receiver<i32>) -> i32 {
 
 #[multiprocessing::func]
 #[tokio::main(flavor = "current_thread")]
-async fn with_passed_tx(mut tx: Sender<i32>) -> () {
+async fn with_passed_tx(mut tx: Sender<i32>) {
     tx.send(&5).await.unwrap();
     tx.send(&7).await.unwrap();
 }
 
 #[multiprocessing::func]
 #[tokio::main(flavor = "current_thread")]
-async fn with_passed_duplex(mut chan: Duplex<i32, (i32, i32)>) -> () {
+async fn with_passed_duplex(mut chan: Duplex<i32, (i32, i32)>) {
     while let Some((x, y)) = chan.recv().await.unwrap() {
         chan.send(&(x - y)).await.unwrap();
     }
+}
+
+#[multiprocessing::func]
+#[tokio::main(flavor = "current_thread")]
+async fn with_passed_nested_channel(mut chan: Receiver<Receiver<i32>>) -> i32 {
+    let mut chan1 = chan.recv().await.unwrap().unwrap();
+    chan1.recv().await.unwrap().unwrap()
 }
 
 #[multiprocessing::main]
@@ -129,5 +136,14 @@ async fn main() {
         drop(local);
         child.join().await.unwrap();
         println!("with_passed_duplex OK");
+    }
+
+    {
+        let (mut tx, rx) = channel::<i32>().unwrap();
+        let (mut tx1, rx1) = channel::<Receiver<i32>>().unwrap();
+        tx.send(&5).await.unwrap();
+        tx1.send(&rx).await.unwrap();
+        assert_eq!(with_passed_nested_channel.run_tokio(rx1).await.unwrap(), 5);
+        println!("with_passed_nested_channel OK");
     }
 }
