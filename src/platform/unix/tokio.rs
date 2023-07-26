@@ -6,7 +6,7 @@
 //! Asynchronous channels work just like synchronous channels except that you need to add `.await`
 //! to each blocking call. Synchronous and asynchronous channels can be converted to each other.
 //! This might be useful if you use tokio in the parent process but use synchronous code in the
-//! child. In this case, you would create a channel using [`multiprocessing::channel`] and convert
+//! child. In this case, you would create a channel using [`crossmist::channel`] and convert
 //! one side to an asynchronous one.
 //!
 //!
@@ -242,9 +242,10 @@ impl<T: Object> IntoRawFd for Sender<T> {
 impl<T: Object> FromRawFd for Sender<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
-        Self::from_unix_seqpacket(UnixSeqpacket::from_raw_fd(fd).expect(
-            "Failed to register fd in tokio in multiprocessing::tokio::Sender::from_raw_fd",
-        ))
+        Self::from_unix_seqpacket(
+            UnixSeqpacket::from_raw_fd(fd)
+                .expect("Failed to register fd in tokio in crossmist::tokio::Sender::from_raw_fd"),
+        )
     }
 }
 
@@ -290,9 +291,11 @@ impl<T: Object> IntoRawFd for Receiver<T> {
 impl<T: Object> FromRawFd for Receiver<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
-        Self::from_unix_seqpacket(UnixSeqpacket::from_raw_fd(fd).expect(
-            "Failed to register fd in tokio in multiprocessing::tokio::Receiver::from_raw_fd",
-        ))
+        Self::from_unix_seqpacket(
+            UnixSeqpacket::from_raw_fd(fd).expect(
+                "Failed to register fd in tokio in crossmist::tokio::Receiver::from_raw_fd",
+            ),
+        )
     }
 }
 
@@ -360,9 +363,10 @@ impl<S: Object, R: Object> IntoRawFd for Duplex<S, R> {
 impl<S: Object, R: Object> FromRawFd for Duplex<S, R> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
-        Self::from_unix_seqpacket(UnixSeqpacket::from_raw_fd(fd).expect(
-            "Failed to register fd in tokio in multiprocessing::tokio::Duplex::from_raw_fd",
-        ))
+        Self::from_unix_seqpacket(
+            UnixSeqpacket::from_raw_fd(fd)
+                .expect("Failed to register fd in tokio in crossmist::tokio::Duplex::from_raw_fd"),
+        )
     }
 }
 

@@ -1,7 +1,7 @@
 #![feature(trait_upcasting)] // needed for trait intersection to work as expected
 
 use anyhow::{anyhow, bail, Result};
-use multiprocessing::{
+use crossmist::{
     func, lambda,
     tokio::{duplex, Child, Duplex},
     BindValue, FnOnceObject, Object,
@@ -111,7 +111,7 @@ async fn worker(
     }
 }
 
-#[multiprocessing::main]
+#[crossmist::main]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let pool = Arc::new(WorkerPool::new(4).await?);

@@ -121,7 +121,7 @@ pub(crate) unsafe fn _spawn_child(
                 nix::libc::execv(
                     b"/proc/self/exe\0" as *const u8 as *const c_char,
                     &[
-                        b"_multiprocessing_\0" as *const u8 as *const c_char,
+                        b"_crossmist_\0" as *const u8 as *const c_char,
                         child_fd_str.as_ptr() as *const u8 as *const c_char,
                         std::ptr::null(),
                     ] as *const *const c_char,

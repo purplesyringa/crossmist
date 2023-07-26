@@ -1,4 +1,4 @@
-use multiprocessing::{channel, duplex, BindValue, Duplex, Object, Receiver, Sender};
+use crossmist::{channel, duplex, BindValue, Duplex, Object, Receiver, Sender};
 
 #[derive(Debug, PartialEq, Object)]
 struct SimplePair {
@@ -6,27 +6,27 @@ struct SimplePair {
     y: i32,
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn simple() -> i64 {
     0x123456789abcdef
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn ret_string() -> String {
     "hello".to_string()
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn add_with_arguments(x: i32, y: i32) -> i32 {
     x + y
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn add_with_template<T: std::ops::Add<Output = T> + Object + 'static>(x: T, y: T) -> T {
     x + y
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn swap_complex_argument(pair: SimplePair) -> SimplePair {
     SimplePair {
         x: pair.y,
@@ -34,7 +34,7 @@ fn swap_complex_argument(pair: SimplePair) -> SimplePair {
     }
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn inc_with_boxed(item: Box<i32>) -> Box<i32> {
     Box::new(*item + 1)
 }
@@ -61,55 +61,53 @@ impl Trait for ImplB {
     }
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn with_passed_trait(arg: Box<dyn Trait>) -> String {
     arg.say()
 }
 
-#[multiprocessing::func]
-fn with_passed_fn(func: Box<dyn multiprocessing::FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
+#[crossmist::func]
+fn with_passed_fn(func: Box<dyn crossmist::FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
     func(5, 7)
 }
 
-#[multiprocessing::func]
-fn with_passed_bound_fn(func: Box<dyn multiprocessing::FnOnceObject<(i32,), Output = i32>>) -> i32 {
+#[crossmist::func]
+fn with_passed_bound_fn(func: Box<dyn crossmist::FnOnceObject<(i32,), Output = i32>>) -> i32 {
     func(7)
 }
 
-#[multiprocessing::func]
-fn with_passed_double_bound_fn(
-    func: Box<dyn multiprocessing::FnOnceObject<(), Output = i32>>,
-) -> i32 {
+#[crossmist::func]
+fn with_passed_double_bound_fn(func: Box<dyn crossmist::FnOnceObject<(), Output = i32>>) -> i32 {
     func()
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn with_passed_rx(mut rx: Receiver<i32>) -> i32 {
     let a = rx.recv().unwrap().unwrap();
     let b = rx.recv().unwrap().unwrap();
     a - b
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn with_passed_tx(mut tx: Sender<i32>) {
     tx.send(&5).unwrap();
     tx.send(&7).unwrap();
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn with_passed_duplex(mut chan: Duplex<i32, (i32, i32)>) {
     while let Some((x, y)) = chan.recv().unwrap() {
         chan.send(&(x - y)).unwrap();
     }
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 fn with_passed_nested_channel(mut chan: Receiver<Receiver<i32>>) -> i32 {
     let mut chan1 = chan.recv().unwrap().unwrap();
     chan1.recv().unwrap().unwrap()
 }
 
-#[multiprocessing::main]
+#[crossmist::main]
 fn main() {
     assert_eq!(simple.run().expect("simple run failed"), 0x123456789abcdef);
     println!("simple run OK");

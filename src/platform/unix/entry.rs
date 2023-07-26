@@ -3,11 +3,11 @@ use crate::{
     Deserializer, FnOnceObject, Receiver,
 };
 
-pub(crate) fn multiprocessing_main(mut args: std::env::Args) -> ! {
+pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     let handle: RawHandle = parse_raw_handle(
         &args
             .next()
-            .expect("Expected one CLI argument for multiprocessing"),
+            .expect("Expected one CLI argument for crossmist"),
     );
 
     enable_cloexec(handle).expect("Failed to set O_CLOEXEC for the file descriptor");
@@ -16,7 +16,7 @@ pub(crate) fn multiprocessing_main(mut args: std::env::Args) -> ! {
 
     let (entry_data, entry_handles) = entry_rx
         .recv()
-        .expect("Failed to read entry for multiprocessing")
+        .expect("Failed to read entry for crossmist")
         .expect("No entry passed");
 
     std::mem::forget(entry_rx);

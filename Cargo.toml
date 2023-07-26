@@ -1,12 +1,12 @@
 [package]
-name = "multiprocessing"
+name = "crossmist"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 ctor = "0.1.22"
 lazy_static = "1.4.0"
-multiprocessing-derive = { path = "multiprocessing-derive" }
+crossmist-derive = { path = "crossmist-derive" }
 paste = "1.0"
 
 [target.'cfg(unix)'.dependencies]

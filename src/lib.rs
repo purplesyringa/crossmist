@@ -6,12 +6,12 @@
 //! example, computing a sum of several numbers in a one-shot subprocess, looks like this:
 //!
 //! ```rust
-//! #[multiprocessing::main]
+//! #[crossmist::main]
 //! fn main() {
 //!     println!("5 + 7 = {}", add.run(vec![5, 7]).unwrap());
 //! }
 //!
-//! #[multiprocessing::func]
+//! #[crossmist::func]
 //! fn add(nums: Vec<i32>) -> i32 {
 //!     nums.into_iter().sum()
 //! }
@@ -20,9 +20,9 @@
 //! This crate also supports long-lived tasks with constant cross-process communication:
 //!
 //! ```rust
-//! #[multiprocessing::main]
+//! #[crossmist::main]
 //! fn main() {
-//!     let (mut ours, theirs) = multiprocessing::duplex().unwrap();
+//!     let (mut ours, theirs) = crossmist::duplex().unwrap();
 //!     add.spawn(theirs).expect("Failed to spawn child");
 //!     for i in 1..=5 {
 //!         for j in 1..=5 {
@@ -31,8 +31,8 @@
 //!     }
 //! }
 //!
-//! #[multiprocessing::func]
-//! fn add(mut chan: multiprocessing::Duplex<i32, Vec<i32>>) {
+//! #[crossmist::func]
+//! fn add(mut chan: crossmist::Duplex<i32, Vec<i32>>) {
 //!     while let Some(nums) = chan.recv().unwrap() {
 //!         chan.send(&nums.into_iter().sum());
 //!     }
@@ -51,7 +51,7 @@
 //! types:
 //!
 //! ```rust
-//! use multiprocessing::Object;
+//! use crossmist::Object;
 //!
 //! #[derive(Object)]
 //! struct MyPair<T: Object, U: Object> {
@@ -96,9 +96,9 @@
 #![feature(unwrap_infallible)]
 #![feature(tuple_trait)]
 
-extern crate self as multiprocessing;
+extern crate self as crossmist;
 
-pub use multiprocessing_derive::*;
+pub use crossmist_derive::*;
 
 #[doc(hidden)]
 pub mod imp;

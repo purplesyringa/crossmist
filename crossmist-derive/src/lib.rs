@@ -24,14 +24,14 @@ use syn::DeriveInput;
 /// ...the methods are:
 ///
 /// ```ignore
-/// pub fn spawn(&mut self, arg1: Type1, ...) -> std::io::Result<multiprocessing::Child<Output>>;
+/// pub fn spawn(&mut self, arg1: Type1, ...) -> std::io::Result<crossmist::Child<Output>>;
 /// pub fn run(arg1: Type1, ...) -> std::io::Result<Output>;
 /// ```
 ///
 /// For example:
 ///
 /// ```rust
-/// use multiprocessing::{func, main};
+/// use crossmist::{func, main};
 ///
 /// #[func]
 /// fn example(a: i32, b: i32) -> i32 {
@@ -55,7 +55,7 @@ use syn::DeriveInput;
 ///
 /// ```ignore
 /// pub async fn spawn_tokio(&mut self, arg1: Type1, ...) ->
-///     std::io::Result<multiprocessing::tokio::Child<Output>>;
+///     std::io::Result<crossmist::tokio::Child<Output>>;
 /// pub async fn run_tokio(arg1: Type1, ...) -> std::io::Result<Output>;
 /// ```
 ///
@@ -63,7 +63,7 @@ use syn::DeriveInput;
 /// attribute *after* `#[func]`. For instance:
 ///
 /// ```ignore
-/// #[multiprocessing::func]
+/// #[crossmist::func]
 /// #[tokio::main]
 /// async fn example() {}
 /// ```
@@ -71,7 +71,7 @@ use syn::DeriveInput;
 /// You may pass operands to `tokio::main` just like usual:
 ///
 /// ```rust
-/// #[multiprocessing::func]
+/// #[crossmist::func]
 /// #[tokio::main(flavor = "current_thread")]
 /// async fn example() {}
 /// ```
@@ -80,7 +80,7 @@ use syn::DeriveInput;
 /// `async`: you can start a synchronous function in a child process asynchronously, or vice versa:
 ///
 /// ```rust
-/// use multiprocessing::{func, main};
+/// use crossmist::{func, main};
 ///
 /// #[func]
 /// fn example(a: i32, b: i32) -> i32 {
@@ -96,7 +96,7 @@ use syn::DeriveInput;
 /// ```
 ///
 /// ```rust
-/// use multiprocessing::{func, main};
+/// use crossmist::{func, main};
 ///
 /// #[func]
 /// #[tokio::main]
@@ -171,7 +171,7 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
 
     // Pray all &input are distinct
     let link_name = format!(
-        "multiprocessing_{}_{:?}",
+        "crossmist_{}_{:?}",
         input.sig.ident.to_string(),
         &input as *const syn::ItemFn
     );
@@ -205,7 +205,7 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
                 let ty = &pattype.ty;
                 fn_args.push(quote! { #ident #colon_token #ty });
                 fn_types.push(quote! { #ty });
-                extracted_args.push(quote! { multiprocessing_args.#ident });
+                extracted_args.push(quote! { crossmist_args.#ident });
                 arg_names.push(quote! { #ident });
                 args_from_tuple.push(quote! { args.#i });
                 binding.push(quote! { .bind_value(#ident) });
@@ -261,23 +261,23 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
         quote! {}
     } else {
         quote! {
-            pub unsafe fn spawn_with_flags #generic_params(&self, flags: ::multiprocessing::subprocess::Flags, #(#fn_args,)*) -> ::std::io::Result<::multiprocessing::Child<#return_type>> {
-                use ::multiprocessing::BindValue;
-                ::multiprocessing::spawn(::std::boxed::Box::new(::multiprocessing::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound)))), flags)
+            pub unsafe fn spawn_with_flags #generic_params(&self, flags: ::crossmist::subprocess::Flags, #(#fn_args,)*) -> ::std::io::Result<::crossmist::Child<#return_type>> {
+                use ::crossmist::BindValue;
+                ::crossmist::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound)))), flags)
             }
 
             #[cfg(feature = "tokio")]
-            pub async unsafe fn spawn_with_flags_tokio #generic_params(&self, flags: ::multiprocessing::subprocess::Flags, #(#fn_args,)*) -> ::std::io::Result<::multiprocessing::tokio::Child<#return_type>> {
-                use ::multiprocessing::BindValue;
-                ::multiprocessing::tokio::spawn(::std::boxed::Box::new(::multiprocessing::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound)))), flags).await
+            pub async unsafe fn spawn_with_flags_tokio #generic_params(&self, flags: ::crossmist::subprocess::Flags, #(#fn_args,)*) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
+                use ::crossmist::BindValue;
+                ::crossmist::tokio::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound)))), flags).await
             }
 
-            pub fn spawn #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::multiprocessing::Child<#return_type>> {
+            pub fn spawn #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::Child<#return_type>> {
                 unsafe { self.spawn_with_flags(::std::default::Default::default(), #(#arg_names,)*) }
             }
 
             #[cfg(feature = "tokio")]
-            pub async fn spawn_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::multiprocessing::tokio::Child<#return_type>> {
+            pub async fn spawn_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
                 unsafe { self.spawn_with_flags_tokio(::std::default::Default::default(), #(#arg_names,)*) }.await
             }
 
@@ -293,30 +293,30 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        #[derive(::multiprocessing::Object)]
+        #[derive(::crossmist::Object)]
         struct #entry_ident #generic_params {
-            func: ::multiprocessing::Delayed<::std::boxed::Box<dyn ::multiprocessing::FnOnceObject<(), Output = #return_type_wrapped>>>,
+            func: ::crossmist::Delayed<::std::boxed::Box<dyn ::crossmist::FnOnceObject<(), Output = #return_type_wrapped>>>,
             #(#generic_phantom,)*
         }
 
         impl #generic_params #entry_ident #generics {
-            fn new(func: ::std::boxed::Box<dyn ::multiprocessing::FnOnceObject<(), Output = #return_type_wrapped>>) -> Self {
+            fn new(func: ::std::boxed::Box<dyn ::crossmist::FnOnceObject<(), Output = #return_type_wrapped>>) -> Self {
                 Self {
-                    func: ::multiprocessing::Delayed::new(func),
+                    func: ::crossmist::Delayed::new(func),
                     #(#generic_phantom_build,)*
                 }
             }
         }
 
-        impl #generic_params ::multiprocessing::InternalFnOnce<(::multiprocessing::handles::RawHandle,)> for #entry_ident #generics {
+        impl #generic_params ::crossmist::InternalFnOnce<(::crossmist::handles::RawHandle,)> for #entry_ident #generics {
             type Output = i32;
             #tokio_attr
             #[allow(unreachable_code)] // If func returns !
-            #async_ fn call_once(self, args: (::multiprocessing::handles::RawHandle,)) -> Self::Output {
+            #async_ fn call_once(self, args: (::crossmist::handles::RawHandle,)) -> Self::Output {
                 let output_tx_handle = args.0;
-                use ::multiprocessing::handles::FromRawHandle;
+                use ::crossmist::handles::FromRawHandle;
                 let mut output_tx = unsafe {
-                    ::multiprocessing #ns_tokio ::Sender::<#return_type>::from_raw_handle(output_tx_handle)
+                    ::crossmist #ns_tokio ::Sender::<#return_type>::from_raw_handle(output_tx_handle)
                 };
                 output_tx.send(&self.func.deserialize()() #dot_await)
                     #dot_await
@@ -325,25 +325,25 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl #generic_params ::multiprocessing::InternalFnOnce<(#(#fn_types,)*)> for #type_ident {
+        impl #generic_params ::crossmist::InternalFnOnce<(#(#fn_types,)*)> for #type_ident {
             type Output = #return_type_wrapped;
             fn call_once(self, args: (#(#fn_types,)*)) -> Self::Output {
                 #pin(#type_ident::call(#(#args_from_tuple,)*))
             }
         }
-        impl #generic_params ::multiprocessing::InternalFnMut<(#(#fn_types,)*)> for #type_ident {
+        impl #generic_params ::crossmist::InternalFnMut<(#(#fn_types,)*)> for #type_ident {
             fn call_mut(&mut self, args: (#(#fn_types,)*)) -> Self::Output {
                 #pin(#type_ident::call(#(#args_from_tuple,)*))
             }
         }
-        impl #generic_params ::multiprocessing::InternalFn<(#(#fn_types,)*)> for #type_ident {
+        impl #generic_params ::crossmist::InternalFn<(#(#fn_types,)*)> for #type_ident {
             fn call(&self, args: (#(#fn_types,)*)) -> Self::Output {
                 #pin(#type_ident::call(#(#args_from_tuple,)*))
             }
         }
 
         #[allow(non_camel_case_types)]
-        #[derive(::multiprocessing::Object)]
+        #[derive(::crossmist::Object)]
         #vis struct #type_ident;
 
         impl #type_ident {
@@ -354,7 +354,7 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         #[allow(non_upper_case_globals)]
-        #vis const #ident: ::multiprocessing::CallWrapper<#type_ident> = ::multiprocessing::CallWrapper(#type_ident);
+        #vis const #ident: ::crossmist::CallWrapper<#type_ident> = ::crossmist::CallWrapper(#type_ident);
     };
 
     TokenStream::from(expanded)
@@ -365,7 +365,7 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
 /// This attribute must always be added to `fn main`:
 ///
 /// ```rust
-/// #[multiprocessing::main]
+/// #[crossmist::main]
 /// fn main() {
 ///     // ...
 /// }
@@ -378,7 +378,7 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
 /// attribute should be the first in the list:
 ///
 /// ```rust
-/// #[multiprocessing::main]
+/// #[crossmist::main]
 /// #[tokio::main]
 /// async fn main() {
 ///     // ...
@@ -388,22 +388,22 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
 pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as syn::ItemFn);
 
-    input.sig.ident = syn::Ident::new("multiprocessing_old_main", input.sig.ident.span());
+    input.sig.ident = syn::Ident::new("crossmist_old_main", input.sig.ident.span());
 
     let expanded = quote! {
         #input
 
-        #[::multiprocessing::imp::ctor]
-        fn multiprocessing_add_main() {
-            *::multiprocessing::imp::MAIN_ENTRY
+        #[::crossmist::imp::ctor]
+        fn crossmist_add_main() {
+            *::crossmist::imp::MAIN_ENTRY
                 .write()
                 .expect("Failed to acquire write access to MAIN_ENTRY") = Some(|| {
-                ::multiprocessing::imp::Report::report(multiprocessing_old_main())
+                ::crossmist::imp::Report::report(crossmist_old_main())
             });
         }
 
         fn main() {
-            ::multiprocessing::imp::main()
+            ::crossmist::imp::main()
         }
     };
 
@@ -419,7 +419,7 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
 /// This is okay:
 ///
 /// ```rust
-/// # use multiprocessing::Object;
+/// # use crossmist::Object;
 /// #[derive(Object)]
 /// struct Test(String, i32);
 /// ```
@@ -427,7 +427,7 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
 /// This is not okay:
 ///
 /// ```compile_fail
-/// # use multiprocessing::Object;
+/// # use crossmist::Object;
 /// struct NotObject;
 ///
 /// #[derive(Object)]
@@ -440,7 +440,7 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
 /// This is okay:
 ///
 /// ```rust
-/// # use multiprocessing::Object;
+/// # use crossmist::Object;
 /// #[derive(Object)]
 /// struct MyPair<T: Object>(T, T);
 /// ```
@@ -448,7 +448,7 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
 /// This is not okay:
 ///
 /// ```compile_fail
-/// # use multiprocessing::Object;
+/// # use crossmist::Object;
 /// #[derive(Object)]
 /// struct MyPair<T>(T, T);
 /// ```
@@ -528,15 +528,15 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             };
 
             quote! {
-                impl #generics_impl ::multiprocessing::Object for #ident #generics #generics_where {
-                    fn serialize_self(&self, s: &mut ::multiprocessing::Serializer) {
+                impl #generics_impl ::crossmist::Object for #ident #generics #generics_where {
+                    fn serialize_self(&self, s: &mut ::crossmist::Serializer) {
                         #(#serialize_fields)*
                     }
-                    fn deserialize_self(d: &mut ::multiprocessing::Deserializer) -> Self {
+                    fn deserialize_self(d: &mut ::crossmist::Deserializer) -> Self {
                         #deserialize_fields
                     }
-                    fn deserialize_on_heap<'serde>(&self, d: &mut ::multiprocessing::Deserializer) -> ::std::boxed::Box<dyn ::multiprocessing::Object + 'serde> where Self: 'serde {
-                        use ::multiprocessing::Object;
+                    fn deserialize_on_heap<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist::Object + 'serde> where Self: 'serde {
+                        use ::crossmist::Object;
                         ::std::boxed::Box::new(Self::deserialize_self(d))
                     }
                 }
@@ -612,20 +612,20 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                 }
             });
             quote! {
-                impl #generics_impl ::multiprocessing::Object for #ident #generics #generics_where {
-                    fn serialize_self(&self, s: &mut ::multiprocessing::Serializer) {
+                impl #generics_impl ::crossmist::Object for #ident #generics #generics_where {
+                    fn serialize_self(&self, s: &mut ::crossmist::Serializer) {
                         match self {
                             #(#serialize_variants,)*
                         }
                     }
-                    fn deserialize_self(d: &mut ::multiprocessing::Deserializer) -> Self {
+                    fn deserialize_self(d: &mut ::crossmist::Deserializer) -> Self {
                         match d.deserialize::<usize>() {
                             #(#deserialize_variants,)*
                             _ => panic!("Unexpected enum variant"),
                         }
                     }
-                    fn deserialize_on_heap<'serde>(&self, d: &mut ::multiprocessing::Deserializer) -> ::std::boxed::Box<dyn ::multiprocessing::Object + 'serde> where Self: 'serde {
-                        use ::multiprocessing::Object;
+                    fn deserialize_on_heap<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist::Object + 'serde> where Self: 'serde {
+                        use ::crossmist::Object;
                         ::std::boxed::Box::new(Self::deserialize_self(d))
                     }
                 }

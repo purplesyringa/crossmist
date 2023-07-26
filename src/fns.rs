@@ -9,7 +9,7 @@
 //! To fix the following code:
 //!
 //! ```compile_fail
-//! use multiprocessing::{func, main, Object};
+//! use crossmist::{func, main, Object};
 //!
 //! #[main]
 //! fn main() {
@@ -26,7 +26,7 @@
 //! ...we have to use a macro:
 //!
 //! ```rust
-//! use multiprocessing::{FnObject, func, lambda, main};
+//! use crossmist::{FnObject, func, lambda, main};
 //!
 //! #[main]
 //! fn main() {
@@ -47,7 +47,7 @@
 //! syntax is used:
 //!
 //! ```rust
-//! use multiprocessing::{FnObject, func, lambda, main};
+//! use crossmist::{FnObject, func, lambda, main};
 //!
 //! #[main]
 //! fn main() {
@@ -68,7 +68,7 @@
 //! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`:
 //!
 //! ```rust
-//! use multiprocessing::{BindValue, FnObject, func, main};
+//! use crossmist::{BindValue, FnObject, func, main};
 //!
 //! #[main]
 //! fn main() {
@@ -299,7 +299,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// Simplest example:
 ///
 /// ```rust
-/// # use multiprocessing::{lambda, main};
+/// # use crossmist::{lambda, main};
 /// #[main]
 /// fn main() {
 ///     let func = lambda! { |a: i32, b: i32| -> i32 { a + b } };
@@ -310,7 +310,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// With captures:
 ///
 /// ```rust
-/// # use multiprocessing::{FnOnceObject, func, lambda, main};
+/// # use crossmist::{FnOnceObject, func, lambda, main};
 /// #[main]
 /// fn main() {
 ///     let a = 5;
@@ -330,7 +330,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// unnecessary):
 ///
 /// ```rust
-/// # use multiprocessing::{FnOnceObject, lambda, main};
+/// # use crossmist::{FnOnceObject, lambda, main};
 /// # #[main]
 /// # fn main() {
 /// let a = "Hello, ".to_string();
@@ -344,7 +344,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// ```
 ///
 /// ```rust
-/// # use multiprocessing::{FnMutObject, lambda, main};
+/// # use crossmist::{FnMutObject, lambda, main};
 /// # #[main]
 /// # fn main() {
 /// let cache = vec![0, 1];
@@ -364,7 +364,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// ```
 ///
 /// ```rust
-/// # use multiprocessing::{FnObject, lambda, main};
+/// # use crossmist::{FnObject, lambda, main};
 /// # #[main]
 /// # fn main() {
 /// let s = "Hello, world!".to_string();

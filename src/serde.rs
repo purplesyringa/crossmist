@@ -137,7 +137,7 @@ impl Deserializer {
 /// If you do need to implement this manually, use the following template:
 ///
 /// ```rust
-/// use multiprocessing::{Deserializer, Object, Serializer};
+/// use crossmist::{Deserializer, Object, Serializer};
 ///
 /// struct SimplePair<T: Object, U: Object> {
 ///     first: T,
@@ -178,7 +178,7 @@ impl Deserializer {
 /// if nothing better comes to your mind, you can do the same thing that `Rc` does:
 ///
 /// ```rust
-/// # use multiprocessing::{Deserializer, Object, Serializer};
+/// # use crossmist::{Deserializer, Object, Serializer};
 /// # use std::os::raw::c_void;
 /// # use std::rc::Rc;
 /// struct CustomRc<T: 'static>(Rc<T>);
@@ -246,7 +246,7 @@ impl Deserializer {
 /// In this case, the following example should be of help:
 ///
 /// ```rust
-/// # use multiprocessing::{
+/// # use crossmist::{
 /// #     handles::{AsRawHandle, OwnedHandle},
 /// #     Deserializer, Object, Serializer,
 /// # };

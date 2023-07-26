@@ -1,5 +1,5 @@
-use multiprocessing::tokio::{channel, duplex, Duplex, Receiver, Sender};
-use multiprocessing::Object;
+use crossmist::tokio::{channel, duplex, Duplex, Receiver, Sender};
+use crossmist::Object;
 
 #[derive(Debug, PartialEq, Object)]
 struct SimplePair {
@@ -7,19 +7,19 @@ struct SimplePair {
     y: i32,
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 #[tokio::main(flavor = "current_thread")]
 async fn simple() -> i64 {
     0x123456789abcdef
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 #[tokio::main(flavor = "current_thread")]
 async fn add_with_arguments(x: i32, y: i32) -> i32 {
     x + y
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 #[tokio::main(flavor = "current_thread")]
 async fn swap_complex_argument(pair: SimplePair) -> SimplePair {
     SimplePair {
@@ -28,7 +28,7 @@ async fn swap_complex_argument(pair: SimplePair) -> SimplePair {
     }
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 #[tokio::main(flavor = "current_thread")]
 async fn with_passed_rx(mut rx: Receiver<i32>) -> i32 {
     let a = rx.recv().await.unwrap().unwrap();
@@ -36,14 +36,14 @@ async fn with_passed_rx(mut rx: Receiver<i32>) -> i32 {
     a - b
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 #[tokio::main(flavor = "current_thread")]
 async fn with_passed_tx(mut tx: Sender<i32>) {
     tx.send(&5).await.unwrap();
     tx.send(&7).await.unwrap();
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 #[tokio::main(flavor = "current_thread")]
 async fn with_passed_duplex(mut chan: Duplex<i32, (i32, i32)>) {
     while let Some((x, y)) = chan.recv().await.unwrap() {
@@ -51,14 +51,14 @@ async fn with_passed_duplex(mut chan: Duplex<i32, (i32, i32)>) {
     }
 }
 
-#[multiprocessing::func]
+#[crossmist::func]
 #[tokio::main(flavor = "current_thread")]
 async fn with_passed_nested_channel(mut chan: Receiver<Receiver<i32>>) -> i32 {
     let mut chan1 = chan.recv().await.unwrap().unwrap();
     chan1.recv().await.unwrap().unwrap()
 }
 
-#[multiprocessing::main]
+#[crossmist::main]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     assert_eq!(

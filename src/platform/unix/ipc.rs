@@ -3,7 +3,7 @@
 //! Create and use a unidirectional channel:
 //!
 //! ```rust
-//! # use multiprocessing::{channel, Receiver, Sender};
+//! # use crossmist::{channel, Receiver, Sender};
 //! let (mut sender, mut receiver): (Sender<i32>, Receiver<i32>) = channel::<i32>()?;
 //! sender.send(&57)?;
 //! drop(sender);
@@ -15,7 +15,7 @@
 //! Create and use a bidirectional channel:
 //!
 //! ```rust
-//! # use multiprocessing::{duplex, Duplex};
+//! # use crossmist::{duplex, Duplex};
 //! let (mut side1, mut side2) = duplex::<i32, (i32, i32)>()?;
 //! side1.send(&57)?;
 //! assert_eq!(side2.recv()?, Some(57));

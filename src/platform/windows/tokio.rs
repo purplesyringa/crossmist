@@ -6,7 +6,7 @@
 //! Asynchronous channels work just like synchronous channels except that you need to add `.await`
 //! to each blocking call. Synchronous and asynchronous channels can be converted to each other.
 //! This might be useful if you use tokio in the parent process but use synchronous code in the
-//! child. In this case, you would create a channel using [`multiprocessing::channel`] and convert
+//! child. In this case, you would create a channel using [`crossmist::channel`] and convert
 //! one side to an asynchronous one.
 //!
 //!
@@ -191,7 +191,10 @@ impl<T: Object> io::AsRawHandle for Sender<T> {
 
 impl<T: Object> IntoRawHandle for Sender<T> {
     fn into_raw_handle(self) -> RawHandle {
-        self.file.try_into_std().expect("Unexpected in-flight operation").into_raw_handle()
+        self.file
+            .try_into_std()
+            .expect("Unexpected in-flight operation")
+            .into_raw_handle()
     }
 }
 
@@ -236,7 +239,10 @@ impl<T: Object> io::AsRawHandle for Receiver<T> {
 
 impl<T: Object> IntoRawHandle for Receiver<T> {
     fn into_raw_handle(self) -> RawHandle {
-        self.file.try_into_std().expect("Unexpected in-flight operation").into_raw_handle()
+        self.file
+            .try_into_std()
+            .expect("Unexpected in-flight operation")
+            .into_raw_handle()
     }
 }
 

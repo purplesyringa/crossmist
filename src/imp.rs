@@ -47,15 +47,14 @@ impl<T: ?Sized> IdentityImpl<'_> for T {
 pub fn main() {
     let mut args = std::env::args();
     if let Some(s) = args.next() {
-        if s == "_multiprocessing_" {
-            entry::multiprocessing_main(args);
+        if s == "_crossmist_" {
+            entry::crossmist_main(args);
         }
     }
 
     std::process::exit(MAIN_ENTRY
         .read()
         .expect("Failed to acquire read access to MAIN_ENTRY")
-        .expect(
-            "MAIN_ENTRY was not registered: is #[multiprocessing::main] missing?",
-        )());
+        .expect("MAIN_ENTRY was not registered: is #[crossmist::main] missing?")(
+    ));
 }

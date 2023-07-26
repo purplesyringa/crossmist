@@ -9,7 +9,7 @@
 //! In these cases, the following pattern may be used:
 //!
 //! ```rust
-//! use multiprocessing::{Delayed, func, main, Object};
+//! use crossmist::{Delayed, func, main, Object};
 //!
 //! #[derive(Object)]
 //! struct ComplexType;

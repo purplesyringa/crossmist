@@ -119,7 +119,7 @@ pub(crate) unsafe fn _spawn_child(
         }
     }
 
-    let mut cmd_line: Vec<u16> = format!("_multiprocessing_ {} {}\0", child_tx.0, child_rx.0)
+    let mut cmd_line: Vec<u16> = format!("_crossmist_ {} {}\0", child_tx.0, child_rx.0)
         .encode_utf16()
         .collect();
 
