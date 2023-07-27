@@ -6,6 +6,7 @@ use crate::{
     handles::{AsRawHandle, OwnedHandle},
     Deserializer, Object, Serializer,
 };
+use paste::paste;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};
 use std::os::raw::c_void;
@@ -116,14 +117,6 @@ impl Object for std::ffi::OsString {
     }
 }
 
-impl Object for () {
-    fn serialize_self(&self, _s: &mut Serializer) {}
-    fn deserialize_self(_d: &mut Deserializer) -> Self {}
-    fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self(d))
-    }
-}
-
 impl Object for ! {
     fn serialize_self(&self, _s: &mut Serializer) {
         unreachable!()
@@ -136,24 +129,44 @@ impl Object for ! {
     }
 }
 
-impl<T: Object, U: Object> Object for (T, U) {
-    fn serialize_self(&self, s: &mut Serializer) {
-        s.serialize(&self.0);
-        s.serialize(&self.1);
-    }
-    fn deserialize_self(d: &mut Deserializer) -> Self {
-        let a = d.deserialize();
-        let b = d.deserialize();
-        (a, b)
-    }
-    fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-        U: 'a,
-    {
-        Box::new(Self::deserialize_self(d))
+macro_rules! serialize_rev {
+    ($s:tt, $self:tt,) => {};
+
+    ($s:tt, $self:tt, $head:tt $($tail:tt)*) => {
+        serialize_rev!($s, $self, $($tail)*);
+        $s.serialize(&$self.$head);
     }
 }
+
+macro_rules! impl_serialize_for_tuple {
+    () => {};
+
+    ($head:tt $($tail:tt)*) => {
+        impl_serialize_for_tuple!($($tail)*);
+
+        paste! {
+            impl<$([<T $tail>]: Object),*> Object for ($([<T $tail>],)*) {
+                #[allow(unused_variables)]
+                fn serialize_self(&self, s: &mut Serializer) {
+                    serialize_rev!(s, self, $($tail)*);
+                }
+                #[allow(unused_variables)]
+                fn deserialize_self(d: &mut Deserializer) -> Self {
+                    $( let [<x $tail>] = d.deserialize(); )*
+                    ($([<x $tail>],)*)
+                }
+                fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+                where
+                    $([<T $tail>]: 'a),*
+                {
+                    Box::new(Self::deserialize_self(d))
+                }
+            }
+        }
+    }
+}
+
+impl_serialize_for_tuple!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 
 impl<T: Object> Object for Option<T> {
     fn serialize_self(&self, s: &mut Serializer) {
@@ -511,7 +524,11 @@ impl_serialize_for_sequence!(
     VecDeque::push_back
 );
 impl_serialize_for_map!(BTreeMap<K: Ord, V>, size, BTreeMap::new());
-impl_serialize_for_map!(HashMap<K: Eq + Hash, V, S: BuildHasher + Default>, size, HashMap::with_capacity_and_hasher(size, S::default()));
+impl_serialize_for_map!(
+    HashMap<K: Eq + Hash, V, S: BuildHasher + Default>,
+    size,
+    HashMap::with_capacity_and_hasher(size, S::default())
+);
 
 impl<T: Object, E: Object> Object for Result<T, E> {
     fn serialize_self(&self, s: &mut Serializer) {
