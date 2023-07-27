@@ -26,14 +26,17 @@
 //! # std::io::Result::Ok(())
 //! ```
 
-use crate::{handles, Deserializer, Object, Serializer};
+use crate::{entry, handles, Deserializer, Object, Serializer};
 use std::default::Default;
 use std::ffi::c_void;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::marker::PhantomData;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
-use windows::Win32::System::Pipes;
+use windows::Win32::{
+    Foundation,
+    System::{Pipes, Threading},
+};
 
 /// The transmitting side of a unidirectional channel.
 ///
@@ -105,23 +108,82 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
     Ok((ours, theirs))
 }
 
-fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
+pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
     let mut s = Serializer::new();
     s.serialize(value);
 
     let handles = s.drain_handles();
+    let mut dup_handles = Vec::new();
     if !handles.is_empty() {
-        return Err(Error::new(
-            ErrorKind::Other,
-            "The message contains attached handles",
-        ));
+        let handle_broker = *entry::HANDLE_BROKER
+            .read()
+            .expect("Failed to acquire read access to HANDLE_BROKER");
+
+        for handle in handles {
+            let mut dup_handle: handles::RawHandle = Default::default();
+            unsafe {
+                Foundation::DuplicateHandle(
+                    Threading::GetCurrentProcess(),
+                    handle,
+                    handle_broker,
+                    &mut dup_handle as *mut handles::RawHandle,
+                    0,
+                    false,
+                    Foundation::DUPLICATE_SAME_ACCESS,
+                )
+                .ok()?;
+            }
+            dup_handles.push(dup_handle);
+        }
     }
 
-    let serialized = s.into_vec();
+    let mut s1 = Serializer::new();
+    s1.serialize(&dup_handles);
+    s1.serialize(&s.into_vec());
+    Ok(s1.into_vec())
+}
 
+fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
+    let serialized = serialize_with_handles(value)?;
     file.write_all(&serialized.len().to_ne_bytes())?;
     file.write_all(&serialized)?;
     Ok(())
+}
+
+pub(crate) fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result<T> {
+    let mut d = Deserializer::new(serialized, Vec::new());
+    let handles: Vec<handles::RawHandle> = d.deserialize();
+    let serialized_contents: Vec<u8> = d.deserialize();
+
+    let mut dup_handles = Vec::new();
+    if !handles.is_empty() {
+        let handle_broker = *entry::HANDLE_BROKER
+            .read()
+            .expect("Failed to acquire read access to HANDLE_BROKER");
+
+        for handle in handles {
+            let mut dup_handle: handles::RawHandle = Default::default();
+            unsafe {
+                Foundation::DuplicateHandle(
+                    handle_broker,
+                    handle,
+                    Threading::GetCurrentProcess(),
+                    &mut dup_handle as *mut handles::RawHandle,
+                    0,
+                    false,
+                    Foundation::DUPLICATE_CLOSE_SOURCE | Foundation::DUPLICATE_SAME_ACCESS,
+                )
+                .ok()?;
+            }
+            let dup_handle = unsafe {
+                <handles::OwnedHandle as handles::FromRawHandle>::from_raw_handle(dup_handle)
+            };
+            dup_handles.push(dup_handle);
+        }
+    }
+
+    let mut d1 = Deserializer::new(serialized_contents, dup_handles);
+    Ok(d1.deserialize())
 }
 
 fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
@@ -137,8 +199,7 @@ fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
     let mut serialized = vec![0u8; len];
     file.read_exact(&mut serialized)?;
 
-    let mut d = Deserializer::new(serialized, Vec::new());
-    Ok(Some(d.deserialize()))
+    deserialize_with_handles(serialized).map(Some)
 }
 
 impl<T: Object> Sender<T> {
@@ -226,8 +287,8 @@ impl<S: Object, R: Object> Duplex<S, R> {
     pub fn request(&mut self, value: &S) -> Result<R> {
         self.send(value)?;
         self.recv()?.ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
+            Error::new(
+                ErrorKind::UnexpectedEof,
                 "The subprocess exitted before responding to the request",
             )
         })

@@ -1,19 +1,73 @@
 use crate::{
+    channel, func,
     handles::{FromRawHandle, OwnedHandle, RawHandle},
-    Deserializer, FnOnceObject, Receiver,
+    Deserializer, FnOnceObject, Receiver, Sender,
 };
+use lazy_static::lazy_static;
+use std::default::Default;
+use std::sync::RwLock;
+
+lazy_static! {
+    pub(crate) static ref HANDLE_BROKER: RwLock<RawHandle> = RwLock::new(Default::default());
+    pub(crate) static ref HANDLE_BROKER_HOLDER: RwLock<Option<Sender<()>>> =
+        RwLock::new(None);
+}
+
+pub(crate) fn start_root() {
+    let (ours, theirs) =
+        channel().expect("Failed to create holder channel for handle broker");
+    let id = Box::leak(Box::new(
+        handle_broker
+            .spawn(theirs)
+            .expect("Failed to start handle broker"),
+    ))
+    .id();
+    *HANDLE_BROKER
+        .write()
+        .expect("Failed to acquire write access to HANDLE_BROKER") = id;
+    *HANDLE_BROKER_HOLDER
+        .write()
+        .expect("Failed to acquire write access to HANDLE_BROKER_HOLDER") = Some(ours);
+}
+
+#[func]
+fn handle_broker(mut holder: Receiver<()>) -> ! {
+    holder
+        .recv()
+        .expect("Failed to receive from holder in handle broker");
+    // Everyone is dead by now, there is nobody to report to
+    std::process::exit(0);
+}
 
 pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
+    let handle_broker_id: RawHandle = parse_raw_handle(
+        &args
+            .next()
+            .expect("Expected four CLI arguments for crossmist"),
+    );
+    let handle_broker_holder_id: RawHandle = parse_raw_handle(
+        &args
+            .next()
+            .expect("Expected four CLI arguments for crossmist"),
+    );
     let handle_tx: RawHandle = parse_raw_handle(
         &args
             .next()
-            .expect("Expected two CLI arguments for crossmist"),
+            .expect("Expected four CLI arguments for crossmist"),
     );
     let handle_rx: RawHandle = parse_raw_handle(
         &args
             .next()
-            .expect("Expected two CLI arguments for crossmist"),
+            .expect("Expected four CLI arguments for crossmist"),
     );
+
+    *HANDLE_BROKER
+        .write()
+        .expect("Failed to acquire write access to HANDLE_BROKER") = handle_broker_id;
+    *HANDLE_BROKER_HOLDER
+        .write()
+        .expect("Failed to acquire write access to HANDLE_BROKER_HOLDER") =
+        Some(unsafe { Sender::from_raw_handle(handle_broker_holder_id) });
 
     enable_cloexec(handle_tx).expect("Failed to set O_CLOEXEC for the file descriptor");
     enable_cloexec(handle_rx).expect("Failed to set O_CLOEXEC for the file descriptor");

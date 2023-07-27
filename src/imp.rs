@@ -59,6 +59,8 @@ pub fn main() {
         }
     }
 
+    entry::start_root();
+
     std::process::exit(MAIN_ENTRY
         .read()
         .expect("Failed to acquire read access to MAIN_ENTRY")

@@ -3,6 +3,8 @@ use crate::{
     Deserializer, FnOnceObject, Receiver,
 };
 
+pub(crate) fn start_root() {}
+
 pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     let handle: RawHandle = parse_raw_handle(
         &args

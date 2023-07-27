@@ -105,6 +105,20 @@ pub(crate) unsafe fn _spawn_child(
     inherited_handles.push(child_tx);
     inherited_handles.push(child_rx);
 
+    let handle_broker = *entry::HANDLE_BROKER
+        .read()
+        .expect("Failed to acquire read access to HANDLE_BROKER");
+    if !handle_broker.is_invalid() {
+        inherited_handles.push(handle_broker);
+    }
+    if let Some(sender) = entry::HANDLE_BROKER_HOLDER
+        .read()
+        .expect("Failed to acquire read access to HANDLE_BROKER_HOLDER")
+        .as_ref()
+    {
+        inherited_handles.push(sender.as_raw_handle());
+    }
+
     let mut module_name = vec![0u16; 256];
     let mut module_name_len;
     loop {
@@ -119,9 +133,23 @@ pub(crate) unsafe fn _spawn_child(
         }
     }
 
-    let mut cmd_line: Vec<u16> = format!("_crossmist_ {} {}\0", child_tx.0, child_rx.0)
-        .encode_utf16()
-        .collect();
+    let mut cmd_line: Vec<u16> = format!(
+        "_crossmist_ {} {} {} {}\0",
+        entry::HANDLE_BROKER
+            .read()
+            .expect("Failed to acquire read access to HANDLE_BROKER")
+            .0,
+        entry::HANDLE_BROKER_HOLDER
+            .read()
+            .expect("Failed to acquire read access to HANDLE_BROKER_HOLDER")
+            .as_ref()
+            .map(|sender| sender.as_raw_handle().0)
+            .unwrap_or(0),
+        child_tx.0,
+        child_rx.0
+    )
+    .encode_utf16()
+    .collect();
 
     let n_attrs = 1;
     let mut size = 0;

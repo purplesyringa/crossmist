@@ -37,7 +37,7 @@
 //! ```
 
 use crate::{
-    handles, handles::OwnedHandle, imp, subprocess, Deserializer, FnOnceObject, Object, Serializer,
+    handles, handles::OwnedHandle, imp, ipc, subprocess, FnOnceObject, Object, Serializer,
 };
 use std::ffi::c_void;
 use std::io::{Error, ErrorKind, Result};
@@ -123,20 +123,7 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 }
 
 async fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
-    let serialized = {
-        let mut s = Serializer::new();
-        s.serialize(value);
-
-        let handles = s.drain_handles();
-        if !handles.is_empty() {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "The message contains attached handles",
-            ));
-        }
-
-        s.into_vec()
-    };
+    let serialized = ipc::serialize_with_handles(value)?;
     file.write_all(&serialized.len().to_ne_bytes()).await?;
     file.write_all(&serialized).await
 }
@@ -154,8 +141,7 @@ async fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
     let mut serialized = vec![0u8; len];
     file.read_exact(&mut serialized).await?;
 
-    let mut d = Deserializer::new(serialized, Vec::new());
-    Ok(Some(d.deserialize()))
+    ipc::deserialize_with_handles(serialized).map(Some)
 }
 
 impl<T: Object> Sender<T> {
