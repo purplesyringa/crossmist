@@ -115,8 +115,8 @@ extern crate self as crossmist;
 /// ...the methods are:
 ///
 /// ```ignore
-/// pub fn spawn(&mut self, arg1: Type1, ...) -> std::io::Result<crossmist::Child<Output>>;
-/// pub fn run(arg1: Type1, ...) -> std::io::Result<Output>;
+/// pub fn spawn(&self, arg1: Type1, ...) -> std::io::Result<crossmist::Child<Output>>;
+/// pub fn run(&self, arg1: Type1, ...) -> std::io::Result<Output>;
 /// ```
 ///
 /// For example:
@@ -145,9 +145,9 @@ extern crate self as crossmist;
 /// The following methods are also made available:
 ///
 /// ```ignore
-/// pub async fn spawn_tokio(&mut self, arg1: Type1, ...) ->
+/// pub async fn spawn_tokio(&self, arg1: Type1, ...) ->
 ///     std::io::Result<crossmist::tokio::Child<Output>>;
-/// pub async fn run_tokio(arg1: Type1, ...) -> std::io::Result<Output>;
+/// pub async fn run_tokio(&self, arg1: Type1, ...) -> std::io::Result<Output>;
 /// ```
 ///
 /// Additionally, the function may be `async`. In this case, you have to add the `#[tokio::main]`
