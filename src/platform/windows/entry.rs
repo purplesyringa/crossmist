@@ -9,13 +9,11 @@ use std::sync::RwLock;
 
 lazy_static! {
     pub(crate) static ref HANDLE_BROKER: RwLock<RawHandle> = RwLock::new(Default::default());
-    pub(crate) static ref HANDLE_BROKER_HOLDER: RwLock<Option<Sender<()>>> =
-        RwLock::new(None);
+    pub(crate) static ref HANDLE_BROKER_HOLDER: RwLock<Option<Sender<()>>> = RwLock::new(None);
 }
 
 pub(crate) fn start_root() {
-    let (ours, theirs) =
-        channel().expect("Failed to create holder channel for handle broker");
+    let (ours, theirs) = channel().expect("Failed to create holder channel for handle broker");
     let id = Box::leak(Box::new(
         handle_broker
             .spawn(theirs)
