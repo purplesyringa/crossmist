@@ -1,6 +1,6 @@
 [package]
 name = "crossmist"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Alisa Sireneva <imachug@gmail.com>"]
 edition = "2021"
 description = "Efficient and seamless cross-process communication, both synchronously and asynchronously"
