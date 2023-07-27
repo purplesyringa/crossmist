@@ -3,7 +3,7 @@
 //! It is common to use callbacks to specialize function behavior. Capturing lambdas play an
 //! especially big role in this. They are, however, of complex opaque types that cannot be
 //! inspected. Therefore, passing lambdas is not just complicated because they would have to be of
-//! type [`dyn Object + Fn() -> ()`], which Rust does not support at the moment, but downright
+//! type `dyn Object + Fn() -> ()`, which Rust does not support at the moment, but downright
 //! impossible in case of captures.
 //!
 //! To fix the following code:
@@ -154,16 +154,19 @@ impl<Args: Tuple, T: std::ops::FnOnce<Args> + Object> FnOnceObject<Args> for T {
 impl<Args: Tuple, T: std::ops::FnMut<Args> + Object> FnMutObject<Args> for T {}
 impl<Args: Tuple, T: std::ops::Fn<Args> + Object> FnObject<Args> for T {}
 
+#[doc(hidden)]
 pub trait BindValue<Head: Object, Tail> {
     fn bind_value(self, head: Head) -> BoundValue<Self, Head>
     where
         Self: Sized + Object;
 }
+#[doc(hidden)]
 pub trait BindMut<Head: Object, Tail> {
     fn bind_mut(self, head: Head) -> BoundMut<Self, Head>
     where
         Self: Sized + Object;
 }
+#[doc(hidden)]
 pub trait BindRef<Head: Object, Tail> {
     fn bind_ref(self, head: Head) -> BoundRef<Self, Head>
     where
