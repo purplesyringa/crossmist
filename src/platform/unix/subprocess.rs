@@ -14,7 +14,7 @@
 //! This module is about what happens *after* the child process is started: you can kill the child,
 //! get its PID, or join it (i.e. wait till it returns and obtain the returned value).
 
-use crate::{duplex, entry, FnOnceObject, Object, Receiver, Serializer};
+use crate::{duplex, entry, imp, FnOnceObject, Object, Receiver, Serializer};
 use nix::{
     libc::{c_char, c_int, c_void, pid_t},
     sys::signal,
@@ -144,6 +144,8 @@ pub unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawFd,), Output = i32>>,
     flags: Flags,
 ) -> Result<Child<T>> {
+    imp::perform_sanity_checks();
+
     let mut s = Serializer::new();
     s.serialize(&entry);
 

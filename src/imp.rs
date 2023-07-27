@@ -8,6 +8,13 @@ lazy_static! {
     pub static ref MAIN_ENTRY: RwLock<Option<fn() -> i32>> = RwLock::new(None);
 }
 
+pub(crate) fn perform_sanity_checks() {
+    MAIN_ENTRY
+        .read()
+        .expect("Failed to acquire read access to MAIN_ENTRY")
+        .expect("MAIN_ENTRY was not registered: is #[crossmist::main] missing?");
+}
+
 pub trait Report {
     fn report(self) -> i32;
 }

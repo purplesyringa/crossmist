@@ -17,7 +17,7 @@
 use crate::{
     duplex, entry,
     handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
-    FnOnceObject, Object, Receiver, Serializer,
+    imp, FnOnceObject, Object, Receiver, Serializer,
 };
 use std::ffi::c_void;
 use std::io::Result;
@@ -188,6 +188,8 @@ pub unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
     flags: Flags,
 ) -> Result<Child<T>> {
+    imp::perform_sanity_checks();
+
     let mut s = Serializer::new();
     s.serialize(&entry);
 

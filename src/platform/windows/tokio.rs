@@ -37,7 +37,7 @@
 //! ```
 
 use crate::{
-    handles, handles::OwnedHandle, subprocess, Deserializer, FnOnceObject, Object, Serializer,
+    handles, handles::OwnedHandle, imp, subprocess, Deserializer, FnOnceObject, Object, Serializer,
 };
 use std::ffi::c_void;
 use std::io::{Error, ErrorKind, Result};
@@ -389,6 +389,8 @@ pub async unsafe fn spawn<T: Object>(
     flags: subprocess::Flags,
 ) -> Result<Child<T>> {
     use handles::AsRawHandle;
+
+    imp::perform_sanity_checks();
 
     let mut s = Serializer::new();
     s.serialize(&entry);

@@ -213,8 +213,7 @@ pub use crossmist_derive::func;
 /// }
 /// ```
 ///
-/// Without it, starting child processes will not work. This might mean the application crashes,
-/// starts infinitely many child processes or does something else you don't want.
+/// Without it, starting child processes will panic.
 ///
 /// This attribute may be mixed with other attributes, e.g. `#[tokio::main]`. In this case, this
 /// attribute should be the first in the list:

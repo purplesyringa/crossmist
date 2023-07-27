@@ -37,7 +37,7 @@
 //! ```
 
 use crate::{
-    entry, ipc::MAX_PACKET_SIZE, subprocess, Deserializer, FnOnceObject, Object, Serializer,
+    entry, imp, ipc::MAX_PACKET_SIZE, subprocess, Deserializer, FnOnceObject, Object, Serializer,
 };
 use nix::libc::pid_t;
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
@@ -428,6 +428,8 @@ pub async unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawFd,), Output = i32>>,
     flags: subprocess::Flags,
 ) -> Result<Child<T>> {
+    imp::perform_sanity_checks();
+
     let mut s = Serializer::new();
     s.serialize(&entry);
 
