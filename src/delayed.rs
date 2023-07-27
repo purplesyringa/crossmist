@@ -44,7 +44,7 @@ impl<T: Object> Delayed<T> {
     /// Unwrap an object. Use this in the child process after initialization.
     pub fn deserialize(self) -> T {
         match self {
-            Self::Serialized(data, handles) => Deserializer::from(data, handles).deserialize(),
+            Self::Serialized(data, handles) => Deserializer::new(data, handles).deserialize(),
             Self::Deserialized(_) => panic!("Cannot deserialize a deserialized Delayed value"),
         }
     }

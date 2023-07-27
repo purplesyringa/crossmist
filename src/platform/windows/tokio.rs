@@ -154,7 +154,7 @@ async fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
     let mut serialized = vec![0u8; len];
     file.read_exact(&mut serialized).await?;
 
-    let mut d = Deserializer::from(serialized, Vec::new());
+    let mut d = Deserializer::new(serialized, Vec::new());
     Ok(Some(d.deserialize()))
 }
 

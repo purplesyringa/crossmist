@@ -31,7 +31,7 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
         .collect();
 
     let entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>> =
-        Deserializer::from(entry_data, entry_handles).deserialize();
+        Deserializer::new(entry_data, entry_handles).deserialize();
     std::process::exit(entry(handle))
 }
 

@@ -89,7 +89,7 @@ pub struct Deserializer {
 
 impl Deserializer {
     /// Start deserializing data obtain from a [`Serializer`].
-    pub fn from(data: Vec<u8>, handles: Vec<OwnedHandle>) -> Self {
+    pub fn new(data: Vec<u8>, handles: Vec<OwnedHandle>) -> Self {
         Deserializer {
             data,
             handles: handles.into_iter().map(Some).collect(),
@@ -104,7 +104,7 @@ impl Deserializer {
         self.pos += data.len();
     }
 
-    /// Deserialize an object of a given type from self.
+    /// Deserialize an object of a given type from `self`.
     pub fn deserialize<T: Object>(&mut self) -> T {
         T::deserialize_self(self)
     }
@@ -116,12 +116,12 @@ impl Deserializer {
             .expect("drain_handle can only be called once for a particular index")
     }
 
-    /// Store a reference to a newly build potentially cyclic object.
+    /// Store a reference to a newly built potentially cyclic object.
     pub fn learn_cyclic<T: 'static>(&mut self, obj: T) {
         self.cyclics.push(Box::new(obj));
     }
 
-    /// Get a reference to an earlier built object.
+    /// Get a reference to an object built earlier.
     pub fn get_cyclic<T: 'static>(&self, id: NonZeroUsize) -> &T {
         self.cyclics[id.get() - 1]
             .downcast_ref()

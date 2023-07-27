@@ -198,7 +198,7 @@ async fn recv_on_fd<T: Object>(fd: &mut UnixSeqpacket) -> Result<Option<T>> {
 
     serialized.truncate(buffer_pos);
 
-    let mut d = Deserializer::from(serialized, received_fds);
+    let mut d = Deserializer::new(serialized, received_fds);
     Ok(Some(d.deserialize()))
 }
 
