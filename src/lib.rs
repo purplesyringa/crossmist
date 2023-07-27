@@ -132,8 +132,8 @@ extern crate self as crossmist;
 /// #[main]
 /// fn main() {
 ///     assert_eq!(example(5, 7), 12);
-///     assert_eq!(example.spawn(5, 7).unwrap().join(), Ok(12));
-///     assert_eq!(example.run(5, 7), Ok(12));
+///     assert_eq!(example.spawn(5, 7).unwrap().join().unwrap(), 12);
+///     assert_eq!(example.run(5, 7).unwrap(), 12);
 /// }
 /// ```
 ///
@@ -179,10 +179,10 @@ extern crate self as crossmist;
 /// }
 ///
 /// #[main]
-/// #[tokio::main]
+/// #[tokio::main(flavor = "current_thread")]
 /// async fn main() {
 ///     assert_eq!(example(5, 7), 12);
-///     assert_eq!(example.run_tokio(5, 7).await, Ok(12));
+///     assert_eq!(example.run_tokio(5, 7).await.unwrap(), 12);
 /// }
 /// ```
 ///
@@ -190,14 +190,14 @@ extern crate self as crossmist;
 /// use crossmist::{func, main};
 ///
 /// #[func]
-/// #[tokio::main]
+/// #[tokio::main(flavor = "current_thread")]
 /// async fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
 ///
 /// #[main]
 /// fn main() {
-///     assert_eq!(example.run(5, 7), Ok(12));
+///     assert_eq!(example.run(5, 7).unwrap(), 12);
 /// }
 /// ```
 pub use crossmist_derive::func;
@@ -221,7 +221,7 @@ pub use crossmist_derive::func;
 ///
 /// ```rust
 /// #[crossmist::main]
-/// #[tokio::main]
+/// #[tokio::main(flavor = "current_thread")]
 /// async fn main() {
 ///     // ...
 /// }
