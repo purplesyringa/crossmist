@@ -47,3 +47,6 @@ harness = false
 name = "tokio-main"
 path = "tests/tokio.rs"
 harness = false
+
+[package.metadata.docs.rs]
+features = ["tokio"]
