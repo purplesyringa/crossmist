@@ -132,6 +132,8 @@ pub(crate) unsafe fn _spawn_child(
                 unreachable!()
             };
 
+            // Use abort() instead of panic!() to prevent stack unwinding, as unwinding in the fork
+            // child may free resources that would later be freed in the original process
             eprintln!("{}", res.into_err());
             std::process::abort();
         }
