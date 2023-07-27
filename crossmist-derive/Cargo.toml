@@ -1,7 +1,14 @@
 [package]
 name = "crossmist-derive"
 version = "0.1.0"
+authors = ["Alisa Sireneva <imachug@gmail.com>"]
 edition = "2021"
+description = "Efficient and seamless cross-process communication, both synchronously and asynchronously"
+documentation = "https://docs.rs/crossmist-derive"
+repository = "https://github.com/purplesyringa/crossmist/tree/master/crossmist-derive/"
+license = "MIT"
+keywords = ["multiprocessing"]
+categories = ["asynchronous", "concurrency"]
 
 [lib]
 proc-macro = true
