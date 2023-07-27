@@ -7,108 +7,6 @@ use quote::ToTokens;
 use syn::parse_macro_input;
 use syn::DeriveInput;
 
-/// Enable a function to be used as an entrypoint of a child process, and turn it into an
-/// [`Object`].
-///
-/// This macro applies to `fn` functions, including generic ones. It turns the function into an
-/// object that can be called (providing the same behavior as if `#[func]` was not used), but also
-/// adds various methods for spawning a child process from this function.
-///
-/// For a function declared as
-///
-/// ```ignore
-/// #[func]
-/// fn example(arg1: Type1, ...) -> Output;
-/// ```
-///
-/// ...the methods are:
-///
-/// ```ignore
-/// pub fn spawn(&mut self, arg1: Type1, ...) -> std::io::Result<crossmist::Child<Output>>;
-/// pub fn run(arg1: Type1, ...) -> std::io::Result<Output>;
-/// ```
-///
-/// For example:
-///
-/// ```rust
-/// use crossmist::{func, main};
-///
-/// #[func]
-/// fn example(a: i32, b: i32) -> i32 {
-///     a + b
-/// }
-///
-/// #[main]
-/// fn main() {
-///     assert_eq!(example(5, 7), 12);
-///     assert_eq!(example.spawn(5, 7).unwrap().join(), Ok(12));
-///     assert_eq!(example.run(5, 7), Ok(12));
-/// }
-/// ```
-///
-///
-/// ## Asynchronous case
-///
-/// This section applies if the `tokio` feature is enabled.
-///
-/// The following methods are also made available:
-///
-/// ```ignore
-/// pub async fn spawn_tokio(&mut self, arg1: Type1, ...) ->
-///     std::io::Result<crossmist::tokio::Child<Output>>;
-/// pub async fn run_tokio(arg1: Type1, ...) -> std::io::Result<Output>;
-/// ```
-///
-/// Additionally, the function may be `async`. In this case, you have to add the `#[tokio::main]`
-/// attribute *after* `#[func]`. For instance:
-///
-/// ```ignore
-/// #[crossmist::func]
-/// #[tokio::main]
-/// async fn example() {}
-/// ```
-///
-/// You may pass operands to `tokio::main` just like usual:
-///
-/// ```rust
-/// #[crossmist::func]
-/// #[tokio::main(flavor = "current_thread")]
-/// async fn example() {}
-/// ```
-///
-/// Notice that the use of `spawn` vs `spawn_tokio` is orthogonal to whether the function is
-/// `async`: you can start a synchronous function in a child process asynchronously, or vice versa:
-///
-/// ```rust
-/// use crossmist::{func, main};
-///
-/// #[func]
-/// fn example(a: i32, b: i32) -> i32 {
-///     a + b
-/// }
-///
-/// #[main]
-/// #[tokio::main]
-/// async fn main() {
-///     assert_eq!(example(5, 7), 12);
-///     assert_eq!(example.run_tokio(5, 7).await, Ok(12));
-/// }
-/// ```
-///
-/// ```rust
-/// use crossmist::{func, main};
-///
-/// #[func]
-/// #[tokio::main]
-/// async fn example(a: i32, b: i32) -> i32 {
-///     a + b
-/// }
-///
-/// #[main]
-/// fn main() {
-///     assert_eq!(example.run(5, 7), Ok(12));
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as syn::ItemFn);
@@ -360,30 +258,6 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// Setup an entrypoint.
-///
-/// This attribute must always be added to `fn main`:
-///
-/// ```rust
-/// #[crossmist::main]
-/// fn main() {
-///     // ...
-/// }
-/// ```
-///
-/// Without it, starting child processes will not work. This might mean the application crashes,
-/// starts infinitely many child processes or does something else you don't want.
-///
-/// This attribute may be mixed with other attributes, e.g. `#[tokio::main]`. In this case, this
-/// attribute should be the first in the list:
-///
-/// ```rust
-/// #[crossmist::main]
-/// #[tokio::main]
-/// async fn main() {
-///     // ...
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as syn::ItemFn);
@@ -410,48 +284,6 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// Make a structure or a enum serializable.
-///
-/// This derive macro enables the corresponding type to be passed via channels and to and from child
-/// processes. [`Object`] can be implemented for a struct/enum if all of its fields implement
-/// [`Object`]:
-///
-/// This is okay:
-///
-/// ```rust
-/// # use crossmist::Object;
-/// #[derive(Object)]
-/// struct Test(String, i32);
-/// ```
-///
-/// This is not okay:
-///
-/// ```compile_fail
-/// # use crossmist::Object;
-/// struct NotObject;
-///
-/// #[derive(Object)]
-/// struct Test(String, i32, NotObject);
-/// ```
-///
-/// Generics are supported. In this case, to ensure that all fields implement [`Object`],
-/// constraints might be necessary:
-///
-/// This is okay:
-///
-/// ```rust
-/// # use crossmist::Object;
-/// #[derive(Object)]
-/// struct MyPair<T: Object>(T, T);
-/// ```
-///
-/// This is not okay:
-///
-/// ```compile_fail
-/// # use crossmist::Object;
-/// #[derive(Object)]
-/// struct MyPair<T>(T, T);
-/// ```
 #[proc_macro_derive(Object)]
 pub fn derive_object(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
