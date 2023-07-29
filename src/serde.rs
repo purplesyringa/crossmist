@@ -39,7 +39,8 @@ impl Serializer {
         EfficientObject::serialize_self_efficiently(data, self);
     }
 
-    /// Append serialized data of a slice of objects, as if calling [`serialize`] for each element.
+    /// Append serialized data of a slice of objects, as if calling [`Serializer::serialize`] for
+    /// each element.
     pub fn serialize_slice<T: Object>(&mut self, data: &[T]) {
         EfficientObject::serialize_slice_efficiently(data, self);
     }
