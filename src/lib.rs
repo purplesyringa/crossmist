@@ -92,6 +92,7 @@
 #![feature(fn_traits)]
 #![feature(negative_impls)]
 #![feature(never_type)]
+#![feature(os_str_bytes)]
 #![feature(ptr_metadata)]
 #![feature(specialization)]
 #![feature(try_blocks)]

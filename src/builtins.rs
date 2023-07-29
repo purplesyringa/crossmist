@@ -79,14 +79,11 @@ impl_pod!(for std::time::Duration);
 
 impl Object for String {
     fn serialize_self(&self, s: &mut Serializer) {
-        // XXX: unnecessary heap usage
-        s.serialize(&Vec::from(self.as_bytes()))
+        s.serialize(&self.len());
+        s.serialize_slice(self.as_bytes());
     }
     fn deserialize_self(d: &mut Deserializer) -> Self {
-        // XXX: unnecessary heap usage
-        std::str::from_utf8(&d.deserialize::<Vec<u8>>())
-            .expect("Failed to deserialize string")
-            .to_string()
+        unsafe { String::from_utf8_unchecked(d.deserialize::<Vec<u8>>()) }
     }
     fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> {
         Box::new(Self::deserialize_self(d))
@@ -95,49 +92,26 @@ impl Object for String {
 
 impl Object for std::ffi::CString {
     fn serialize_self(&self, s: &mut Serializer) {
-        // XXX: unnecessary heap usage
-        s.serialize(&Vec::from(self.as_bytes()))
+        let bytes = self.as_bytes();
+        s.serialize(&bytes.len());
+        s.serialize_slice(bytes);
     }
     fn deserialize_self(d: &mut Deserializer) -> Self {
-        // XXX: unnecessary heap usage
-        Self::new(
-            std::str::from_utf8(&d.deserialize::<Vec<u8>>())
-                .expect("Failed to deserialize CString (UTF-8 decoding)"),
-        )
-        .expect("Failed to deserialize CString (null byte in the middle)")
+        unsafe { Self::from_vec_unchecked(d.deserialize::<Vec<u8>>()) }
     }
     fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> {
         Box::new(Self::deserialize_self(d))
     }
 }
 
-#[cfg(unix)]
 impl Object for std::ffi::OsString {
     fn serialize_self(&self, s: &mut Serializer) {
-        use std::os::unix::ffi::OsStringExt;
-        // XXX: unnecessary heap usage
-        s.serialize(&self.clone().into_vec())
+        let bytes = self.as_os_str_bytes();
+        s.serialize(&bytes.len());
+        s.serialize_slice(bytes);
     }
     fn deserialize_self(d: &mut Deserializer) -> Self {
-        use std::os::unix::ffi::OsStringExt;
-        Self::from_vec(d.deserialize())
-    }
-    fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self(d))
-    }
-}
-#[cfg(windows)]
-impl Object for std::ffi::OsString {
-    fn serialize_self(&self, s: &mut Serializer) {
-        use std::os::windows::ffi::OsStrExt;
-        // XXX: unnecessary heap usage
-        s.serialize(&self.encode_wide().collect::<Vec<u16>>())
-    }
-    fn deserialize_self(d: &mut Deserializer) -> Self {
-        use std::os::windows::ffi::OsStringExt;
-        // XXX: unnecessary heap usage
-        let vec: Vec<u16> = d.deserialize();
-        Self::from_wide(&vec)
+        unsafe { Self::from_os_str_bytes_unchecked(d.deserialize()) }
     }
     fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> {
         Box::new(Self::deserialize_self(d))
@@ -342,8 +316,9 @@ impl<T: 'static + Object> Object for Arc<T> {
 
 impl Object for std::path::PathBuf {
     fn serialize_self(&self, s: &mut Serializer) {
-        // XXX: unnecessary heap usage
-        s.serialize(&self.as_os_str().to_owned());
+        let bytes = self.as_os_str().as_os_str_bytes();
+        s.serialize(&bytes.len());
+        s.serialize_slice(bytes);
     }
     fn deserialize_self(d: &mut Deserializer) -> Self {
         d.deserialize::<std::ffi::OsString>().into()
