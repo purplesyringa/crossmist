@@ -1,3 +1,4 @@
+pub use crate::pod::PlainOldData;
 pub use ctor::ctor;
 
 use crate::entry;

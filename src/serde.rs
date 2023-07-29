@@ -3,7 +3,10 @@
 //! This is *not* the well-known `serde` crate. We use custom serialization methods because we need
 //! to serialize not only data structures, but objects with real-world side-effects, e.g. files.
 
-use crate::handles::{OwnedHandle, RawHandle};
+use crate::{
+    handles::{OwnedHandle, RawHandle},
+    pod::EfficientObject,
+};
 use std::any::Any;
 use std::collections::{hash_map, HashMap};
 use std::num::NonZeroUsize;
@@ -33,7 +36,12 @@ impl Serializer {
 
     /// Append serialized data of an object.
     pub fn serialize<T: Object + ?Sized>(&mut self, data: &T) {
-        data.serialize_self(self);
+        EfficientObject::serialize_self_efficiently(data, self);
+    }
+
+    /// Append serialized data of a slice of objects, as if calling [`serialize`] for each element.
+    pub fn serialize_slice<T: Object>(&mut self, data: &[T]) {
+        EfficientObject::serialize_slice_efficiently(data, self);
     }
 
     /// Store a file handle, returning its index.
@@ -106,7 +114,7 @@ impl Deserializer {
 
     /// Deserialize an object of a given type from `self`.
     pub fn deserialize<T: Object>(&mut self) -> T {
-        T::deserialize_self(self)
+        <T as EfficientObject>::deserialize_self_efficiently(self)
     }
 
     /// Extract a handle by an index.

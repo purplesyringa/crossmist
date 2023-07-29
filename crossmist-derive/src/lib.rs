@@ -311,6 +311,8 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
 
     let expanded = match input.data {
         syn::Data::Struct(struct_) => {
+            let field_types: Vec<_> = struct_.fields.iter().map(|field| &field.ty).collect();
+
             let serialize_fields = match struct_.fields {
                 syn::Fields::Named(ref fields) => fields
                     .named
@@ -359,6 +361,16 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                 }
             };
 
+            let generics_where_pod: Vec<_> = match generics_where {
+                Some(ref w) => w.predicates.iter().collect(),
+                None => Vec::new(),
+            };
+            let generics_where_pod = quote! {
+                where
+                    #(#generics_where_pod,)*
+                    #(for<'a> ::crossmist::imp::Identity<'a, #field_types>: ::crossmist::imp::PlainOldData,)*
+            };
+
             quote! {
                 impl #generics_impl ::crossmist::Object for #ident #generics #generics_where {
                     fn serialize_self(&self, s: &mut ::crossmist::Serializer) {
@@ -372,9 +384,16 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                         ::std::boxed::Box::new(Self::deserialize_self(d))
                     }
                 }
+                impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}
             }
         }
         syn::Data::Enum(enum_) => {
+            let field_types: Vec<_> = enum_
+                .variants
+                .iter()
+                .flat_map(|variant| variant.fields.iter().map(|field| &field.ty))
+                .collect();
+
             let serialize_variants = enum_.variants.iter().enumerate().map(|(i, variant)| {
                 let ident = &variant.ident;
                 match &variant.fields {
@@ -417,6 +436,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                     }
                 }
             });
+
             let deserialize_variants = enum_.variants.iter().enumerate().map(|(i, variant)| {
                 let ident = &variant.ident;
 
@@ -443,6 +463,17 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                     }
                 }
             });
+
+            let generics_where_pod: Vec<_> = match generics_where {
+                Some(ref w) => w.predicates.iter().collect(),
+                None => Vec::new(),
+            };
+            let generics_where_pod = quote! {
+                where
+                    #(#generics_where_pod,)*
+                    #(for<'a> ::crossmist::imp::Identity<'a, #field_types>: ::crossmist::imp::PlainOldData,)*
+            };
+
             quote! {
                 impl #generics_impl ::crossmist::Object for #ident #generics #generics_where {
                     fn serialize_self(&self, s: &mut ::crossmist::Serializer) {
@@ -461,6 +492,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                         ::std::boxed::Box::new(Self::deserialize_self(d))
                     }
                 }
+                impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}
             }
         }
         syn::Data::Union(_) => unimplemented!(),

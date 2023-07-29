@@ -87,14 +87,17 @@
 //! two processes started from the same executable file, this does not violate semver.
 
 #![cfg_attr(unix, feature(unix_socket_ancillary_data))]
+#![feature(auto_traits)]
 #![feature(doc_cfg)]
-#![feature(unboxed_closures)]
 #![feature(fn_traits)]
-#![feature(ptr_metadata)]
+#![feature(negative_impls)]
 #![feature(never_type)]
+#![feature(ptr_metadata)]
+#![feature(specialization)]
 #![feature(try_blocks)]
-#![feature(unwrap_infallible)]
 #![feature(tuple_trait)]
+#![feature(unboxed_closures)]
+#![feature(unwrap_infallible)]
 
 extern crate self as crossmist;
 
@@ -316,3 +319,5 @@ pub use delayed::Delayed;
 
 pub mod fns;
 pub use fns::*;
+
+mod pod;
