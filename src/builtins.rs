@@ -76,6 +76,8 @@ impl_pod!(for std::num::NonZeroU64);
 impl_pod!(for std::num::NonZeroU128);
 impl_pod!(for std::num::NonZeroUsize);
 impl_pod!(for std::time::Duration);
+impl_pod!(for std::time::Instant);
+impl_pod!(for std::time::SystemTime);
 
 impl Object for String {
     fn serialize_self(&self, s: &mut Serializer) {
