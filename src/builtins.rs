@@ -106,12 +106,12 @@ impl Object for std::ffi::CString {
 
 impl Object for std::ffi::OsString {
     fn serialize_self(&self, s: &mut Serializer) {
-        let bytes = self.as_os_str_bytes();
+        let bytes = self.as_encoded_bytes();
         s.serialize(&bytes.len());
         s.serialize_slice(bytes);
     }
     fn deserialize_self(d: &mut Deserializer) -> Self {
-        unsafe { Self::from_os_str_bytes_unchecked(d.deserialize()) }
+        unsafe { Self::from_encoded_bytes_unchecked(d.deserialize()) }
     }
     fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> {
         Box::new(Self::deserialize_self(d))
@@ -316,7 +316,7 @@ impl<T: 'static + Object> Object for Arc<T> {
 
 impl Object for std::path::PathBuf {
     fn serialize_self(&self, s: &mut Serializer) {
-        let bytes = self.as_os_str().as_os_str_bytes();
+        let bytes = self.as_os_str().as_encoded_bytes();
         s.serialize(&bytes.len());
         s.serialize_slice(bytes);
     }
