@@ -192,13 +192,17 @@ struct BaseType;
 
 impl BaseTrait for BaseType {}
 
+// This needs to be a singleton to prevent different codegen units from using different copies of a
+// single vtable for BaseType. See also: https://github.com/alecmocatta/relative/pull/2
+static BASE_OBJECT: &(dyn BaseTrait + Sync) = &BaseType;
+
 fn extract_vtable_ptr<T: ?Sized>(metadata: &std::ptr::DynMetadata<T>) -> *const () {
     // Yeah, screw me
     unsafe { *(metadata as *const std::ptr::DynMetadata<T> as *const *const ()) }
 }
 
 fn get_base_vtable_ptr() -> *const () {
-    extract_vtable_ptr(&std::ptr::metadata(&BaseType as &dyn BaseTrait))
+    extract_vtable_ptr(&std::ptr::metadata(BASE_OBJECT))
 }
 
 impl<T: ?Sized> Object for std::ptr::DynMetadata<T> {
