@@ -90,7 +90,6 @@
 #![feature(auto_traits)]
 #![feature(doc_cfg)]
 #![feature(fn_traits)]
-#![feature(negative_impls)]
 #![feature(never_type)]
 #![feature(ptr_metadata)]
 #![feature(specialization)]
