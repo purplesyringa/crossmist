@@ -87,7 +87,6 @@
 //! two processes started from the same executable file, this does not violate semver.
 
 #![cfg_attr(unix, feature(unix_socket_ancillary_data))]
-#![feature(auto_traits)]
 #![feature(doc_cfg)]
 #![feature(fn_traits)]
 #![feature(never_type)]
