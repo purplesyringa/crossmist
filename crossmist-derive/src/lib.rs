@@ -372,16 +372,15 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             };
 
             quote! {
-                impl #generics_impl ::crossmist::Object for #ident #generics #generics_where {
-                    fn serialize_self(&self, s: &mut ::crossmist::Serializer) {
+                impl #generics_impl ::crossmist:: NonTrivialObject for #ident #generics #generics_where {
+                    fn serialize_self_non_trivial(&self, s: &mut ::crossmist::Serializer) {
                         #(#serialize_fields)*
                     }
-                    fn deserialize_self(d: &mut ::crossmist::Deserializer) -> Self {
+                    fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> Self {
                         #deserialize_fields
                     }
-                    fn deserialize_on_heap<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist::Object + 'serde> where Self: 'serde {
-                        use ::crossmist::Object;
-                        ::std::boxed::Box::new(Self::deserialize_self(d))
+                    fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist:: Object + 'serde> where Self: 'serde {
+                        ::std::boxed::Box::new(Self::deserialize_self_non_trivial(d))
                     }
                 }
                 impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}
@@ -475,21 +474,20 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             };
 
             quote! {
-                impl #generics_impl ::crossmist::Object for #ident #generics #generics_where {
-                    fn serialize_self(&self, s: &mut ::crossmist::Serializer) {
+                impl #generics_impl ::crossmist::NonTrivialObject for #ident #generics #generics_where {
+                    fn serialize_self_non_trivial(&self, s: &mut ::crossmist::Serializer) {
                         match self {
                             #(#serialize_variants,)*
                         }
                     }
-                    fn deserialize_self(d: &mut ::crossmist::Deserializer) -> Self {
+                    fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> Self {
                         match d.deserialize::<usize>() {
                             #(#deserialize_variants,)*
                             _ => panic!("Unexpected enum variant"),
                         }
                     }
-                    fn deserialize_on_heap<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist::Object + 'serde> where Self: 'serde {
-                        use ::crossmist::Object;
-                        ::std::boxed::Box::new(Self::deserialize_self(d))
+                    fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist::Object + 'serde> where Self: 'serde {
+                        ::std::boxed::Box::new(Self::deserialize_self_non_trivial(d))
                     }
                 }
                 impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}

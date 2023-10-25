@@ -61,6 +61,12 @@ impl Trait for ImplB {
     }
 }
 
+impl Trait for bool {
+    fn say(&self) -> String {
+        format!("bool says: {}", self)
+    }
+}
+
 #[crossmist::func]
 fn with_passed_trait(arg: Box<dyn Trait>) -> String {
     arg.say()
@@ -186,6 +192,14 @@ fn main() {
             .join()
             .expect("with_passed_trait failed"),
         "ImplB says: 5"
+    );
+    assert_eq!(
+        with_passed_trait
+            .spawn(Box::new(true))
+            .unwrap()
+            .join()
+            .expect("with_passed_trait failed"),
+        "bool says: true"
     );
     println!("with_passed_trait OK");
 

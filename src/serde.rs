@@ -5,7 +5,7 @@
 
 use crate::{
     handles::{OwnedHandle, RawHandle},
-    pod::EfficientObject,
+    Object,
 };
 use std::any::Any;
 use std::collections::{hash_map, HashMap};
@@ -36,13 +36,13 @@ impl Serializer {
 
     /// Append serialized data of an object.
     pub fn serialize<T: Object + ?Sized>(&mut self, data: &T) {
-        EfficientObject::serialize_self_efficiently(data, self);
+        data.serialize_self(self);
     }
 
     /// Append serialized data of a slice of objects, as if calling [`Serializer::serialize`] for
     /// each element.
     pub fn serialize_slice<T: Object>(&mut self, data: &[T]) {
-        EfficientObject::serialize_slice_efficiently(data, self);
+        Object::serialize_slice(data, self);
     }
 
     /// Store a file handle, returning its index.
@@ -115,7 +115,7 @@ impl Deserializer {
 
     /// Deserialize an object of a given type from `self`.
     pub fn deserialize<T: Object>(&mut self) -> T {
-        <T as EfficientObject>::deserialize_self_efficiently(self)
+        T::deserialize_self(self)
     }
 
     /// Extract a handle by an index.
@@ -138,27 +138,29 @@ impl Deserializer {
     }
 }
 
-/// A serializable object.
+/// A serializable object with complicated serialization/deserialization.
 ///
-/// This trait can and should be implemented automatically via `#[derive(Object)]`. It is already
-/// implemented for most types from the standard library for which it can reasonably be implemented.
+/// This trait should only be implemented, not used directly. If you ever need to specify a generic
+/// type of a serializable object, you're looking for [`Object`].
 ///
-/// If you do need to implement this manually, use the following template:
+/// If you have a type for which `#[derive(Object)]` does not produce the desired semantics (e.g.
+/// you have additional state stored elsewhere that should be dumped in the serialization stream),
+/// implement this trait based on this template:
 ///
 /// ```rust
-/// use crossmist::{Deserializer, Object, Serializer};
+/// use crossmist::{Deserializer, NonTrivialObject, Object, Serializer};
 ///
 /// struct SimplePair<T: Object, U: Object> {
 ///     first: T,
 ///     second: U,
 /// }
 ///
-/// impl<T: Object, U: Object> Object for SimplePair<T, U> {
-///     fn serialize_self(&self, s: &mut Serializer) {
+/// impl<T: Object, U: Object> NonTrivialObject for SimplePair<T, U> {
+///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
 ///         s.serialize(&self.first);
 ///         s.serialize(&self.second);
 ///     }
-///     fn deserialize_self(d: &mut Deserializer) -> Self
+///     fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self
 ///     where
 ///         Self: Sized
 ///     {
@@ -166,18 +168,18 @@ impl Deserializer {
 ///         let second = d.deserialize::<U>();
 ///         Self { first, second }
 ///     }
-///     fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+///     fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
 ///     where
 ///         Self: 'a
 ///     {
-///         Box::new(Self::deserialize_self(d))
+///         Box::new(Self::deserialize_self_non_trivial(d))
 ///     }
 /// }
 /// ```
 ///
-/// The contents of `serialize_self` and `deserialize_self` should be fairly obvious.
-/// `deserialize_on_heap` must *always* contain this exact code (up to equivalent changes): this is
-/// a (somewhat unsafe) technical detail.
+/// The contents of `serialize_self_non_trivial` and `deserialize_self_non_trivial` should be fairly
+/// obvious. `deserialize_on_heap_non_trivial` must *always* contain this exact code (up to
+/// equivalent changes): this is a (somewhat unsafe) technical detail.
 ///
 ///
 /// ## Cyclic structures
@@ -187,13 +189,13 @@ impl Deserializer {
 /// if nothing better comes to your mind, you can do the same thing that `Rc` does:
 ///
 /// ```rust
-/// # use crossmist::{Deserializer, Object, Serializer};
+/// # use crossmist::{Deserializer, NonTrivialObject, Object, Serializer};
 /// # use std::os::raw::c_void;
 /// # use std::rc::Rc;
 /// struct CustomRc<T: 'static>(Rc<T>);
 ///
-/// impl<T: 'static + Object> Object for CustomRc<T> {
-///     fn serialize_self(&self, s: &mut Serializer) {
+/// impl<T: 'static + Object> NonTrivialObject for CustomRc<T> {
+///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
 ///         // Any unique identifier works, but it must be *globally* unique, not just for objects
 ///         // of the same type.
 ///         match s.learn_cyclic(Rc::as_ptr(&self.0) as *const c_void) {
@@ -209,7 +211,7 @@ impl Deserializer {
 ///             }
 ///         }
 ///     }
-///     fn deserialize_self(d: &mut Deserializer) -> Self {
+///     fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
 ///         let id = d.deserialize::<usize>();
 ///         match std::num::NonZeroUsize::new(id) {
 ///             None => {
@@ -236,11 +238,11 @@ impl Deserializer {
 ///             }
 ///         }
 ///     }
-///     fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+///     fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
 ///     where
 ///         T: 'a,
 ///     {
-///         Box::new(Self::deserialize_self(d))
+///         Box::new(Self::deserialize_self_non_trivial(d))
 ///     }
 /// }
 /// ```
@@ -257,33 +259,37 @@ impl Deserializer {
 /// ```rust
 /// # use crossmist::{
 /// #     handles::{AsRawHandle, OwnedHandle},
-/// #     Deserializer, Object, Serializer,
+/// #     Deserializer, NonTrivialObject, Object, Serializer,
 /// # };
 /// # use std::fs::File;
 /// struct CustomFile(std::fs::File);
 ///
-/// impl Object for CustomFile {
-///     fn serialize_self(&self, s: &mut Serializer) {
+/// impl NonTrivialObject for CustomFile {
+///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
 ///         // add_handle memorizes the handle (fd) and returns its ID
 ///         let handle = s.add_handle(self.0.as_raw_handle());
 ///         s.serialize(&handle)
 ///     }
-///     fn deserialize_self(d: &mut Deserializer) -> Self {
+///     fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
 ///         // Deserializing OwnedHandle results in the ID being resolved into the handle, which can
 ///         // then be used to create the instance of the object we are deserializing
 ///         Self(d.deserialize::<OwnedHandle>().into())
 ///     }
-///     fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> {
-///         Box::new(Self::deserialize_self(d))
+///     fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+///     {
+///         Box::new(Self::deserialize_self_non_trivial(d))
 ///     }
 /// }
 /// ```
-pub trait Object {
-    fn serialize_self(&self, s: &mut Serializer);
-    fn deserialize_self(d: &mut Deserializer) -> Self
+pub trait NonTrivialObject {
+    /// Serialize a single object into a serializer.
+    fn serialize_self_non_trivial(&self, s: &mut Serializer);
+    /// Deserialize a single object from a deserializer.
+    fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self
     where
         Self: Sized;
-    fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+    /// Deserialize a single object onto heap with dynamic typing from a deserializer.
+    fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
     where
         Self: 'a;
 }

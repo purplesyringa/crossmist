@@ -27,7 +27,7 @@
 //! }
 //! ```
 
-use crate::{handles::OwnedHandle, Deserializer, Object, Serializer};
+use crate::{handles::OwnedHandle, Deserializer, NonTrivialObject, Object, Serializer};
 
 /// A wrapper for objects that require global state to be configured before deserialization.
 pub enum Delayed<T: Object> {
@@ -50,8 +50,8 @@ impl<T: Object> Delayed<T> {
     }
 }
 
-impl<T: Object> Object for Delayed<T> {
-    fn serialize_self(&self, s: &mut Serializer) {
+impl<T: Object> NonTrivialObject for Delayed<T> {
+    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         match self {
             Self::Serialized(_, _) => panic!("Cannot serialize a serialized Delayed value"),
             Self::Deserialized(value) => {
@@ -67,7 +67,7 @@ impl<T: Object> Object for Delayed<T> {
             }
         }
     }
-    fn deserialize_self(d: &mut Deserializer) -> Self {
+    fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         let handles = d
             .deserialize::<Vec<usize>>()
             .into_iter()
@@ -75,10 +75,10 @@ impl<T: Object> Object for Delayed<T> {
             .collect();
         Delayed::Serialized(d.deserialize(), handles)
     }
-    fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+    fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
     where
         T: 'a,
     {
-        Box::new(Self::deserialize_self(d))
+        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
