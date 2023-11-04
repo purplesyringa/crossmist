@@ -362,12 +362,9 @@ impl<T: Object> NonTrivialObject for Vec<T> {
         }
         seq
     }
-    fn deserialize_on_heap_non_trivial<'serde>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'serde>
+    fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
     where
-        T: 'serde,
+        T: 'a,
     {
         Box::new(Self::deserialize_self_non_trivial(d))
     }
@@ -398,7 +395,7 @@ macro_rules! impl_serialize_for_sequence {
                 }
                 $seq
             }
-            fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut Deserializer) -> Box<dyn Object + 'serde> where T: 'serde $(, $typaram: 'serde)* {
+            fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> where T: 'a $(, $typaram: 'a)* {
                 Box::new(Self::deserialize_self_non_trivial(d))
             }
         }
@@ -437,7 +434,7 @@ macro_rules! impl_serialize_for_map {
                 }
                 map
             }
-            fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut Deserializer) -> Box<dyn Object + 'serde> where K: 'serde, V: 'serde $(, $typaram: 'serde)* {
+            fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> where K: 'a, V: 'a $(, $typaram: 'a)* {
                 Box::new(Self::deserialize_self_non_trivial(d))
             }
         }

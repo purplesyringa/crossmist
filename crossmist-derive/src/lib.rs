@@ -368,7 +368,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             let generics_where_pod = quote! {
                 where
                     #(#generics_where_pod,)*
-                    #(for<'a> ::crossmist::imp::Identity<'a, #field_types>: ::crossmist::imp::PlainOldData,)*
+                    #(for<'serde> ::crossmist::imp::Identity<'serde, #field_types>: ::crossmist::imp::PlainOldData,)*
             };
 
             quote! {
@@ -470,7 +470,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             let generics_where_pod = quote! {
                 where
                     #(#generics_where_pod,)*
-                    #(for<'a> ::crossmist::imp::Identity<'a, #field_types>: ::crossmist::imp::PlainOldData,)*
+                    #(for<'serde> ::crossmist::imp::Identity<'serde, #field_types>: ::crossmist::imp::PlainOldData,)*
             };
 
             quote! {
