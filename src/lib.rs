@@ -23,12 +23,14 @@
 //! #[crossmist::main]
 //! fn main() {
 //!     let (mut ours, theirs) = crossmist::duplex().unwrap();
-//!     add.spawn(theirs).expect("Failed to spawn child");
+//!     let child = add.spawn(theirs).expect("Failed to spawn child");
 //!     for i in 1..=5 {
 //!         for j in 1..=5 {
 //!             println!("{i} + {j} = {}", ours.request(&vec![i, j]).unwrap());
 //!         }
 //!     }
+//!     drop(ours);
+//!     child.join().unwrap();
 //! }
 //!
 //! #[crossmist::func]
