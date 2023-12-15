@@ -140,19 +140,16 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let async_;
     let pin;
     let dot_await;
-    let ns_tokio;
     if tokio_attr.is_some() {
         return_type_wrapped = quote! { ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = #return_type>>> };
         async_ = quote! { async };
         pin = quote! { Box::pin };
         dot_await = quote! { .await };
-        ns_tokio = quote! { ::tokio };
     } else {
         return_type_wrapped = return_type.clone();
         async_ = quote! {};
         pin = quote! {};
         dot_await = quote! {};
-        ns_tokio = quote! {};
     }
 
     let impl_code = if has_references {
@@ -213,11 +210,13 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
             #async_ fn call_once(self, args: (::crossmist::handles::RawHandle,)) -> Self::Output {
                 let output_tx_handle = args.0;
                 use ::crossmist::handles::FromRawHandle;
+                let return_value = self.func.deserialize()() #dot_await;
+                // If this function is async, there shouldn't be any tokio task running at this
+                // moment, so it is fine (and more efficient) to use a sync sender
                 let mut output_tx = unsafe {
-                    ::crossmist #ns_tokio ::Sender::<#return_type>::from_raw_handle(output_tx_handle)
+                    ::crossmist::Sender::<#return_type>::from_raw_handle(output_tx_handle)
                 };
-                output_tx.send(&self.func.deserialize()() #dot_await)
-                    #dot_await
+                output_tx.send(&return_value)
                     .expect("Failed to send subprocess output");
                 0
             }
