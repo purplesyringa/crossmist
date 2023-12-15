@@ -128,7 +128,7 @@ async fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
     file.write_all(&serialized).await
 }
 
-async fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
+async unsafe fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
     let mut len = [0u8; std::mem::size_of::<usize>()];
     if let Err(e) = file.read_exact(&mut len).await {
         if e.kind() == ErrorKind::UnexpectedEof {
@@ -145,7 +145,7 @@ async fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
 }
 
 impl<T: Object> Sender<T> {
-    fn from_file(file: File) -> Self {
+    unsafe fn from_file(file: File) -> Self {
         Sender {
             file,
             marker: PhantomData,
@@ -191,7 +191,7 @@ impl<T: Object> FromRawHandle for Sender<T> {
 }
 
 impl<T: Object> Receiver<T> {
-    fn from_file(file: File) -> Self {
+    unsafe fn from_file(file: File) -> Self {
         Receiver {
             file,
             marker: PhantomData,
@@ -202,7 +202,7 @@ impl<T: Object> Receiver<T> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub async fn recv(&mut self) -> Result<Option<T>> {
-        recv_on_handle(&mut self.file).await
+        unsafe { recv_on_handle(&mut self.file).await }
     }
 }
 
@@ -248,7 +248,7 @@ impl<S: Object, R: Object> Duplex<S, R> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub async fn recv(&mut self) -> Result<Option<R>> {
-        recv_on_handle(&mut self.receiver_file).await
+        unsafe { recv_on_handle(&mut self.receiver_file).await }
     }
 
     /// Send a value from the other side and wait for a response immediately.

@@ -343,7 +343,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                     let deserialize_fields = fields.named.iter().map(|field| {
                         let ident = &field.ident;
                         quote! {
-                            #ident: d.deserialize(),
+                            #ident: unsafe { d.deserialize() },
                         }
                     });
                     quote! { Self { #(#deserialize_fields)* } }
@@ -351,7 +351,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                 syn::Fields::Unnamed(ref fields) => {
                     let deserialize_fields = fields.unnamed.iter().map(|_| {
                         quote! {
-                            d.deserialize(),
+                            unsafe { d.deserialize() },
                         }
                     });
                     quote! { Self (#(#deserialize_fields)*) }
@@ -376,10 +376,10 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                     fn serialize_self_non_trivial(&self, s: &mut ::crossmist::Serializer) {
                         #(#serialize_fields)*
                     }
-                    fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> Self {
+                    unsafe fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> Self {
                         #deserialize_fields
                     }
-                    fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist:: Object + 'serde> where Self: 'serde {
+                    unsafe fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist:: Object + 'serde> where Self: 'serde {
                         ::std::boxed::Box::new(Self::deserialize_self_non_trivial(d))
                     }
                 }
@@ -446,14 +446,14 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                             .iter()
                             .map(|field| {
                                 let ident = &field.ident;
-                                quote! { #ident: d.deserialize() }
+                                quote! { #ident: unsafe { d.deserialize() } }
                             })
                             .collect();
                         quote! { #i => Self::#ident{ #(#des,)* } }
                     }
                     syn::Fields::Unnamed(fields) => {
                         let des: Vec<_> = (0..fields.unnamed.len())
-                            .map(|_| quote! { d.deserialize() })
+                            .map(|_| quote! { unsafe { d.deserialize() } })
                             .collect();
                         quote! { #i => Self::#ident(#(#des,)*) }
                     }
@@ -480,13 +480,13 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                             #(#serialize_variants,)*
                         }
                     }
-                    fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> Self {
+                    unsafe fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> Self {
                         match d.deserialize::<usize>() {
                             #(#deserialize_variants,)*
                             _ => panic!("Unexpected enum variant"),
                         }
                     }
-                    fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist::Object + 'serde> where Self: 'serde {
+                    unsafe fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist::Object + 'serde> where Self: 'serde {
                         ::std::boxed::Box::new(Self::deserialize_self_non_trivial(d))
                     }
                 }

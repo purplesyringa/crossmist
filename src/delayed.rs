@@ -44,7 +44,9 @@ impl<T: Object> Delayed<T> {
     /// Unwrap an object. Use this in the child process after initialization.
     pub fn deserialize(self) -> T {
         match self {
-            Self::Serialized(data, handles) => Deserializer::new(data, handles).deserialize(),
+            Self::Serialized(data, handles) => unsafe {
+                Deserializer::new(data, handles).deserialize()
+            },
             Self::Deserialized(_) => panic!("Cannot deserialize a deserialized Delayed value"),
         }
     }
@@ -67,7 +69,7 @@ impl<T: Object> NonTrivialObject for Delayed<T> {
             }
         }
     }
-    fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         let handles = d
             .deserialize::<Vec<usize>>()
             .into_iter()
@@ -75,7 +77,10 @@ impl<T: Object> NonTrivialObject for Delayed<T> {
             .collect();
         Delayed::Serialized(d.deserialize(), handles)
     }
-    fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+    unsafe fn deserialize_on_heap_non_trivial<'a>(
+        &self,
+        d: &mut Deserializer,
+    ) -> Box<dyn Object + 'a>
     where
         T: 'a,
     {

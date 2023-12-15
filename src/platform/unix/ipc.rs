@@ -126,7 +126,7 @@ fn send_on_fd<T: Object>(fd: &mut UnixStream, value: &T) -> Result<()> {
     Ok(())
 }
 
-fn recv_on_fd<T: Object>(fd: &mut UnixStream) -> Result<Option<T>> {
+unsafe fn recv_on_fd<T: Object>(fd: &mut UnixStream) -> Result<Option<T>> {
     // Read the data and the passed file descriptors
     let mut serialized: Vec<u8> = Vec::new();
     let mut buffer_pos: usize = 0;
@@ -189,7 +189,7 @@ fn recv_on_fd<T: Object>(fd: &mut UnixStream) -> Result<Option<T>> {
 }
 
 impl<T: Object> Sender<T> {
-    fn from_unix_stream(fd: UnixStream) -> Self {
+    unsafe fn from_unix_stream(fd: UnixStream) -> Self {
         Sender {
             fd,
             marker: PhantomData,
@@ -222,7 +222,7 @@ impl<T: Object> FromRawFd for Sender<T> {
 }
 
 impl<T: Object> Receiver<T> {
-    fn from_unix_stream(fd: UnixStream) -> Self {
+    unsafe fn from_unix_stream(fd: UnixStream) -> Self {
         Receiver {
             fd,
             marker: PhantomData,
@@ -233,7 +233,7 @@ impl<T: Object> Receiver<T> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<T>> {
-        recv_on_fd(&mut self.fd)
+        unsafe { recv_on_fd(&mut self.fd) }
     }
 }
 
@@ -257,7 +257,7 @@ impl<T: Object> FromRawFd for Receiver<T> {
 }
 
 impl<S: Object, R: Object> Duplex<S, R> {
-    fn from_unix_stream(fd: UnixStream) -> Self {
+    unsafe fn from_unix_stream(fd: UnixStream) -> Self {
         Duplex {
             fd,
             marker: PhantomData,
@@ -273,7 +273,7 @@ impl<S: Object, R: Object> Duplex<S, R> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<R>> {
-        recv_on_fd(&mut self.fd)
+        unsafe { recv_on_fd(&mut self.fd) }
     }
 
     /// Send a value from the other side and wait for a response immediately.
@@ -290,11 +290,11 @@ impl<S: Object, R: Object> Duplex<S, R> {
     }
 
     pub(crate) fn into_sender(self) -> Sender<S> {
-        Sender::from_unix_stream(self.fd)
+        unsafe { Sender::from_unix_stream(self.fd) }
     }
 
     pub(crate) fn into_receiver(self) -> Receiver<R> {
-        Receiver::from_unix_stream(self.fd)
+        unsafe { Receiver::from_unix_stream(self.fd) }
     }
 }
 

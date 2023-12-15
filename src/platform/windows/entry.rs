@@ -88,8 +88,9 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
         .map(|handle| unsafe { OwnedHandle::from_raw_handle(handle) })
         .collect();
 
+    let mut deserializer = Deserializer::new(entry_data, entry_handles);
     let entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>> =
-        Deserializer::new(entry_data, entry_handles).deserialize();
+        unsafe { deserializer.deserialize() };
     std::process::exit(entry(handle_tx))
 }
 

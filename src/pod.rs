@@ -23,11 +23,23 @@ pub trait Object: NonTrivialObject {
     where
         Self: Sized;
     /// Deserialize a single object from a deserializer.
-    fn deserialize_self(d: &mut Deserializer) -> Self
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if the order of serialized types during serialization and
+    /// deserialization matches, up to serialization layout. See the documentation of
+    /// [`Deserializer::deserialize`] for more details.
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self
     where
         Self: Sized;
     /// Deserialize a single object onto heap with dynamic typing from a deserializer.
-    fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if the order of serialized types during serialization and
+    /// deserialization matches, up to serialization layout. See the documentation of
+    /// [`Deserializer::deserialize`] for more details.
+    unsafe fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
     where
         Self: 'a;
 }
@@ -44,13 +56,13 @@ impl<T: NonTrivialObject + ?Sized> Object for T {
             element.serialize_self_non_trivial(s)
         }
     }
-    default fn deserialize_self(d: &mut Deserializer) -> Self
+    default unsafe fn deserialize_self(d: &mut Deserializer) -> Self
     where
         Self: Sized,
     {
         T::deserialize_self_non_trivial(d)
     }
-    default fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+    default unsafe fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
     where
         Self: 'a,
     {
@@ -72,7 +84,7 @@ impl<T: PlainOldData> Object for T {
             )
         });
     }
-    fn deserialize_self(d: &mut Deserializer) -> Self {
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe {
             let mut val = std::mem::MaybeUninit::<T>::uninit();
             d.read(std::slice::from_raw_parts_mut(
@@ -82,7 +94,7 @@ impl<T: PlainOldData> Object for T {
             val.assume_init()
         }
     }
-    fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
+    unsafe fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
     where
         Self: 'a,
     {

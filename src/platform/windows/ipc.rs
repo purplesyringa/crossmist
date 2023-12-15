@@ -150,7 +150,7 @@ fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result<T> {
+pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result<T> {
     let mut d = Deserializer::new(serialized, Vec::new());
     let handles: Vec<handles::RawHandle> = d.deserialize();
     let serialized_contents: Vec<u8> = d.deserialize();
@@ -186,7 +186,7 @@ pub(crate) fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result
     Ok(d1.deserialize())
 }
 
-fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
+unsafe fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
     let mut len = [0u8; std::mem::size_of::<usize>()];
     if let Err(e) = file.read_exact(&mut len) {
         if e.kind() == ErrorKind::UnexpectedEof {
@@ -203,7 +203,7 @@ fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
 }
 
 impl<T: Object> Sender<T> {
-    fn from_file(file: File) -> Self {
+    unsafe fn from_file(file: File) -> Self {
         Sender {
             file,
             marker: PhantomData,
@@ -235,7 +235,7 @@ impl<T: Object> FromRawHandle for Sender<T> {
 }
 
 impl<T: Object> Receiver<T> {
-    fn from_file(file: File) -> Self {
+    unsafe fn from_file(file: File) -> Self {
         Receiver {
             file,
             marker: PhantomData,
@@ -246,7 +246,7 @@ impl<T: Object> Receiver<T> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<T>> {
-        recv_on_handle(&mut self.file)
+        unsafe { recv_on_handle(&mut self.file) }
     }
 }
 
@@ -278,7 +278,7 @@ impl<S: Object, R: Object> Duplex<S, R> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<R>> {
-        recv_on_handle(&mut self.receiver_file)
+        unsafe { recv_on_handle(&mut self.receiver_file) }
     }
 
     /// Send a value from the other side and wait for a response immediately.
