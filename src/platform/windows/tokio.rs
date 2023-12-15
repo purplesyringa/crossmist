@@ -335,7 +335,7 @@ impl<T: Object> Child<T> {
     /// An error is returned if the process panics, is terminated, or exits via
     /// [`std::process::exit`] or alike instead of returning a
     /// value.
-    pub async fn join(&mut self) -> Result<T> {
+    pub async fn join(mut self) -> Result<T> {
         use handles::AsRawHandle;
         let value = self.output_rx.recv().await?;
         // This is synchronous, but should be really fast

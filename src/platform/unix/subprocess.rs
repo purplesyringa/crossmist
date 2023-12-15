@@ -56,7 +56,7 @@ impl<T: Object> Child<T> {
     /// An error is returned if the process panics, is terminated, or exits via
     /// [`std::process::exit`] or alike instead of returning a
     /// value.
-    pub fn join(&mut self) -> Result<T> {
+    pub fn join(mut self) -> Result<T> {
         let value = self.output_rx.recv()?;
         let status = nix::sys::wait::waitpid(self.proc_pid, None)?;
         if let nix::sys::wait::WaitStatus::Exited(_, 0) = status {
