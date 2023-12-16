@@ -43,7 +43,7 @@ pub(crate) const MAX_PACKET_SIZE: usize = 16 * 1024;
 #[derive(Object)]
 pub struct Sender<T: Object> {
     fd: UnixStream,
-    marker: PhantomData<fn(T) -> T>,
+    marker: PhantomData<fn(T)>,
 }
 
 /// The receiving side of a unidirectional channel.
@@ -52,7 +52,7 @@ pub struct Sender<T: Object> {
 #[derive(Object)]
 pub struct Receiver<T: Object> {
     fd: UnixStream,
-    marker: PhantomData<fn(T) -> T>,
+    marker: PhantomData<fn() -> T>,
 }
 
 /// A side of a bidirectional channel.
@@ -62,7 +62,7 @@ pub struct Receiver<T: Object> {
 #[derive(Object)]
 pub struct Duplex<S: Object, R: Object> {
     fd: UnixStream,
-    marker: PhantomData<fn(S, R) -> (S, R)>,
+    marker: PhantomData<fn(S) -> R>,
 }
 
 /// Create a unidirectional channel.

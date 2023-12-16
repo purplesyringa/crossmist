@@ -58,7 +58,7 @@ use windows::Win32::System::{Pipes, Threading, WindowsProgramming};
 #[derive(Object)]
 pub struct Sender<T: Object> {
     file: File,
-    marker: PhantomData<fn(T) -> T>,
+    marker: PhantomData<fn(T)>,
 }
 
 /// The receiving side of a unidirectional channel.
@@ -67,7 +67,7 @@ pub struct Sender<T: Object> {
 #[derive(Object)]
 pub struct Receiver<T: Object> {
     file: File,
-    marker: PhantomData<fn(T) -> T>,
+    marker: PhantomData<fn() -> T>,
 }
 
 /// A side of a bidirectional channel.
@@ -78,7 +78,7 @@ pub struct Receiver<T: Object> {
 pub struct Duplex<S: Object, R: Object> {
     sender_file: File,
     receiver_file: File,
-    marker: PhantomData<fn(S, R) -> (S, R)>,
+    marker: PhantomData<fn(S) -> R>,
 }
 
 /// Create a unidirectional channel.

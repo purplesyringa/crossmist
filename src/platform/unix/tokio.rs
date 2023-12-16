@@ -54,7 +54,7 @@ use tokio_seqpacket::{
 #[derive(Object)]
 pub struct Sender<T: Object> {
     fd: UnixSeqpacket,
-    marker: PhantomData<fn(T) -> T>,
+    marker: PhantomData<fn(T)>,
 }
 
 /// The receiving side of a unidirectional channel.
@@ -63,7 +63,7 @@ pub struct Sender<T: Object> {
 #[derive(Object)]
 pub struct Receiver<T: Object> {
     fd: UnixSeqpacket,
-    marker: PhantomData<fn(T) -> T>,
+    marker: PhantomData<fn() -> T>,
 }
 
 /// A side of a bidirectional channel.
@@ -73,7 +73,7 @@ pub struct Receiver<T: Object> {
 #[derive(Object)]
 pub struct Duplex<S: Object, R: Object> {
     fd: UnixSeqpacket,
-    marker: PhantomData<fn(S, R) -> (S, R)>,
+    marker: PhantomData<fn(S) -> R>,
 }
 
 /// Create a unidirectional channel.
