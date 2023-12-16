@@ -84,7 +84,7 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
     }
 }
 
-fn send_on_fd<T: Object>(fd: &mut UnixStream, value: &T) -> Result<()> {
+fn send_on_fd<T: Object>(fd: &UnixStream, value: &T) -> Result<()> {
     let mut s = Serializer::new();
     s.serialize(value);
 
@@ -126,7 +126,7 @@ fn send_on_fd<T: Object>(fd: &mut UnixStream, value: &T) -> Result<()> {
     Ok(())
 }
 
-unsafe fn recv_on_fd<T: Object>(fd: &mut UnixStream) -> Result<Option<T>> {
+unsafe fn recv_on_fd<T: Object>(fd: &UnixStream) -> Result<Option<T>> {
     // Read the data and the passed file descriptors
     let mut serialized: Vec<u8> = Vec::new();
     let mut buffer_pos: usize = 0;
@@ -198,7 +198,7 @@ impl<T: Object> Sender<T> {
 
     /// Send a value to the other side.
     pub fn send(&mut self, value: &T) -> Result<()> {
-        send_on_fd(&mut self.fd, value)
+        send_on_fd(&self.fd, value)
     }
 }
 
@@ -233,7 +233,7 @@ impl<T: Object> Receiver<T> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<T>> {
-        unsafe { recv_on_fd(&mut self.fd) }
+        unsafe { recv_on_fd(&self.fd) }
     }
 }
 
@@ -266,14 +266,14 @@ impl<S: Object, R: Object> Duplex<S, R> {
 
     /// Send a value to the other side.
     pub fn send(&mut self, value: &S) -> Result<()> {
-        send_on_fd(&mut self.fd, value)
+        send_on_fd(&self.fd, value)
     }
 
     /// Receive a value from the other side.
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<R>> {
-        unsafe { recv_on_fd(&mut self.fd) }
+        unsafe { recv_on_fd(&self.fd) }
     }
 
     /// Send a value from the other side and wait for a response immediately.

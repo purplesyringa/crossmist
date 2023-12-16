@@ -151,6 +151,7 @@ macro_rules! impl_serialize_for_tuple {
                     serialize_rev!(s, self, $($tail)*);
                 }
                 #[allow(unused_variables)]
+                #[allow(clippy::unused_unit)]
                 unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
                     $( let [<x $tail>] = d.deserialize(); )*
                     ($([<x $tail>],)*)
@@ -229,8 +230,7 @@ impl<T: ?Sized> NonTrivialObject for std::ptr::DynMetadata<T> {
             .wrapping_add(get_base_vtable_ptr() as usize) as *const ();
         let mut metadata: std::mem::MaybeUninit<Self> = std::mem::MaybeUninit::uninit();
         unsafe {
-            *(metadata.as_mut_ptr() as *mut std::ptr::DynMetadata<T> as *mut *const ()) =
-                vtable_ptr;
+            *(metadata.as_mut_ptr() as *mut *const ()) = vtable_ptr;
             metadata.assume_init()
         }
     }

@@ -80,7 +80,7 @@ impl<T: PlainOldData> Object for T {
         s.write(unsafe {
             std::slice::from_raw_parts(
                 elements.as_ptr() as *const u8,
-                std::mem::size_of::<T>() * elements.len(),
+                std::mem::size_of_val(elements),
             )
         });
     }
