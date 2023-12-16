@@ -211,13 +211,16 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
                 let output_tx_handle = args.0;
                 use ::crossmist::handles::FromRawHandle;
                 let return_value = self.func.deserialize()() #dot_await;
-                // If this function is async, there shouldn't be any tokio task running at this
-                // moment, so it is fine (and more efficient) to use a sync sender
-                let mut output_tx = unsafe {
-                    ::crossmist::Sender::<#return_type>::from_raw_handle(output_tx_handle)
-                };
-                output_tx.send(&return_value)
-                    .expect("Failed to send subprocess output");
+                // Avoid explicitly sending a () result
+                if ::crossmist::imp::if_void::<#return_type>().is_none() {
+                    // If this function is async, there shouldn't be any tokio task running at this
+                    // moment, so it is fine (and more efficient) to use a sync sender
+                    let mut output_tx = unsafe {
+                        ::crossmist::Sender::<#return_type>::from_raw_handle(output_tx_handle)
+                    };
+                    output_tx.send(&return_value)
+                        .expect("Failed to send subprocess output");
+                }
                 0
             }
         }

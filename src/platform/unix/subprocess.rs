@@ -53,11 +53,15 @@ impl<T: Object> Child<T> {
 
     /// Wait for the process to finish and obtain the value it returns.
     ///
-    /// An error is returned if the process panics, is terminated, or exits via
-    /// [`std::process::exit`] or alike instead of returning a
-    /// value.
+    /// An error is returned if the process panics or is terminated. An error is also delivered if
+    /// it exits via [`std::process::exit`] or alike instead of returning a value, unless the return
+    /// type is `()`. In that case, `Ok(())` is returned.
     pub fn join(mut self) -> Result<T> {
-        let value = self.output_rx.recv()?;
+        let mut value = self.output_rx.recv()?;
+        if let Some(void) = imp::if_void::<T>() {
+            // The value should be None at this moment
+            value = Some(void);
+        }
         let status = nix::sys::wait::waitpid(self.proc_pid, None)?;
         if let nix::sys::wait::WaitStatus::Exited(_, 0) = status {
             value.ok_or_else(|| {

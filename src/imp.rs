@@ -52,6 +52,57 @@ impl<T: ?Sized> IdentityImpl<'_> for T {
     type Type = Self;
 }
 
+trait IfVoid {
+    fn if_void() -> Option<Self>
+    where
+        Self: Sized;
+}
+impl<T> IfVoid for T {
+    default fn if_void() -> Option<Self> {
+        None
+    }
+}
+impl IfVoid for () {
+    fn if_void() -> Option<Self> {
+        Some(())
+    }
+}
+
+/// Returns Some(()) if T is (), None otherwise
+///
+/// This function is used to enable simplistic overloading for generic types with the ability to
+/// hard-code simpler behavior for () than for other types while being able to construct () without
+/// needing to prove T = () at the moment of construction.
+///
+/// At the moment, this is used to avoid explicitly sending () to the parent on child completion.
+/// This is explicitly pessimized for other ZSTs, because some ZSTs cannot be safely constructed by
+/// design, which potentially makes the following code unsound:
+///
+/// ```no_run
+/// use crossmist::Object;
+///
+/// #[derive(Object)]
+/// struct ZST;
+///
+/// // "Safely" constructs a ZST
+/// fn conjure_zst() -> ZST {
+///     helper.spawn().unwrap().join().unwrap()
+/// }
+///
+/// #[crossmist::func]
+/// fn helper() -> ZST {
+///     std::process::exit(0)
+/// }
+///
+/// #[crossmist::main]
+/// fn main() {
+///     conjure_zst();
+/// }
+/// ```
+pub fn if_void<T>() -> Option<T> {
+    T::if_void()
+}
+
 pub fn main() {
     let mut args = std::env::args();
     if let Some(s) = args.next() {

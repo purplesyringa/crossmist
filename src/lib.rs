@@ -23,14 +23,12 @@
 //! #[crossmist::main]
 //! fn main() {
 //!     let (mut ours, theirs) = crossmist::duplex().unwrap();
-//!     let child = add.spawn(theirs).expect("Failed to spawn child");
+//!     add.spawn(theirs).expect("Failed to spawn child");
 //!     for i in 1..=5 {
 //!         for j in 1..=5 {
 //!             println!("{i} + {j} = {}", ours.request(&vec![i, j]).unwrap());
 //!         }
 //!     }
-//!     drop(ours);
-//!     child.join().unwrap();
 //! }
 //!
 //! #[crossmist::func]
@@ -122,6 +120,11 @@ extern crate self as crossmist;
 /// pub fn run(&self, arg1: Type1, ...) -> std::io::Result<Output>;
 /// ```
 ///
+/// `spawn` runs the function in a subprocess and returns a [`Child`] instance which can be used to
+/// monitor the process and retrieve its return value when it finishes via [`Child::join`]. `run`
+/// combines the two operations into one, which may be useful if a new process is needed for a
+/// reason other than parallel execution.
+///
 /// For example:
 ///
 /// ```rust
@@ -137,6 +140,93 @@ extern crate self as crossmist;
 ///     assert_eq!(example(5, 7), 12);
 ///     assert_eq!(example.spawn(5, 7).unwrap().join().unwrap(), 12);
 ///     assert_eq!(example.run(5, 7).unwrap(), 12);
+/// }
+/// ```
+///
+/// `spawn` and `run` return an error if spawning the child process failed (e.g. the process limit
+/// is exceeded or the system lacks memory). `run` also returns an error if the process panics,
+/// calls [`std::process::exit`] or alike instead of returning a value, or is terminated (as does
+/// [`Child::join`]).
+///
+/// The child process relays its return value to the parent via an implicit channel. Therefore, it
+/// is important to keep the [`Child`] instance around until the child process terminates and never
+/// drop it before joining, or the child process will panic.
+///
+/// Do:
+///
+/// ```rust
+/// #[crossmist::main]
+/// fn main() {
+///     let child = long_running_task.spawn().expect("Failed to spawn child");
+///     // ...
+///     let need_child_result = false;  // assume this is computed from some external data
+///     // ...
+///     let return_value = child.join().expect("Child died");
+///     if need_child_result {
+///         eprintln!("{return_value}");
+///     }
+/// }
+///
+/// #[crossmist::func]
+/// fn long_running_task() -> u32 {
+///     std::thread::sleep(std::time::Duration::from_secs(1));
+///     123
+/// }
+/// ```
+///
+/// Don't:
+///
+/// ```no_run
+/// #[crossmist::main]
+/// fn main() {
+///     let child = long_running_task.spawn().expect("Failed to spawn child");
+///     // ...
+///     let need_child_result = false;  // assume this is computed from some external data
+///     // ...
+///     if need_child_result {
+///         eprintln!("{}", child.join().expect("Child died"));
+///     }
+/// }
+///
+/// #[crossmist::func]
+/// fn long_running_task() -> u32 {
+///     std::thread::sleep(std::time::Duration::from_secs(1));
+///     123
+/// }
+/// ```
+///
+/// The void return type (`()`) is an exception to this rule: such return values are not delivered,
+/// and thus [`Child`] may be safely dropped at any point, and the child process is allowed to use
+/// [`std::process::exit`] instead of explicitly returning `()`.
+///
+/// Do:
+///
+/// ```rust
+/// #[crossmist::main]
+/// fn main() {
+///     long_running_task.spawn().expect("Failed to spawn child");
+/// }
+///
+/// #[crossmist::func]
+/// fn long_running_task() {
+///     std::thread::sleep(std::time::Duration::from_secs(1));
+/// }
+/// ```
+///
+/// Do:
+///
+/// ```rust
+/// #[crossmist::main]
+/// fn main() {
+///     let child = long_running_task.spawn().expect("Failed to spawn child");
+///     // ...
+///     child.join().expect("Child died");
+/// }
+///
+/// #[crossmist::func]
+/// fn long_running_task() {
+///     std::thread::sleep(std::time::Duration::from_secs(1));
+///     std::process::exit(0);
 /// }
 /// ```
 ///
