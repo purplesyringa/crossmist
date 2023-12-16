@@ -80,6 +80,12 @@ impl Serializer {
     }
 }
 
+impl Default for Serializer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IntoIterator for Serializer {
     type Item = u8;
     type IntoIter = <Vec<u8> as IntoIterator>::IntoIter;

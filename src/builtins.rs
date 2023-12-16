@@ -661,6 +661,5 @@ impl NonTrivialObject for tokio_seqpacket::UnixSeqpacket {
     }
 }
 
-#[doc(cfg(windows))]
 #[cfg(windows)]
 impl_pod!(for RawHandle);

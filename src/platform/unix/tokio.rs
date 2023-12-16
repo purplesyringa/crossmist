@@ -98,7 +98,7 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
     }
 }
 
-async fn send_on_fd<T: Object>(fd: &mut UnixSeqpacket, value: &T) -> Result<()> {
+async fn send_on_fd<T: Object>(fd: &UnixSeqpacket, value: &T) -> Result<()> {
     let (fds, serialized) = {
         let mut s = Serializer::new();
         s.serialize(value);
@@ -142,7 +142,7 @@ async fn send_on_fd<T: Object>(fd: &mut UnixSeqpacket, value: &T) -> Result<()> 
     Ok(())
 }
 
-async unsafe fn recv_on_fd<T: Object>(fd: &mut UnixSeqpacket) -> Result<Option<T>> {
+async unsafe fn recv_on_fd<T: Object>(fd: &UnixSeqpacket) -> Result<Option<T>> {
     // Read the data and the passed file descriptors
     let mut serialized: Vec<u8> = Vec::new();
     let mut buffer_pos: usize = 0;
@@ -216,7 +216,7 @@ impl<T: Object> Sender<T> {
 
     /// Send a value to the other side.
     pub async fn send(&mut self, value: &T) -> Result<()> {
-        send_on_fd(&mut self.fd, value).await
+        send_on_fd(&self.fd, value).await
     }
 }
 
@@ -265,7 +265,7 @@ impl<T: Object> Receiver<T> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub async fn recv(&mut self) -> Result<Option<T>> {
-        unsafe { recv_on_fd(&mut self.fd).await }
+        unsafe { recv_on_fd(&self.fd).await }
     }
 }
 
@@ -313,14 +313,14 @@ impl<S: Object, R: Object> Duplex<S, R> {
 
     /// Send a value to the other side.
     pub async fn send(&mut self, value: &S) -> Result<()> {
-        send_on_fd(&mut self.fd, value).await
+        send_on_fd(&self.fd, value).await
     }
 
     /// Receive a value from the other side.
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub async fn recv(&mut self) -> Result<Option<R>> {
-        unsafe { recv_on_fd(&mut self.fd).await }
+        unsafe { recv_on_fd(&self.fd).await }
     }
 
     /// Send a value from the other side and wait for a response immediately.
