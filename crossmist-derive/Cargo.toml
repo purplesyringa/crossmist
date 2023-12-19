@@ -1,7 +1,7 @@
 [package]
 name = "crossmist-derive"
-version = "0.1.8"
-authors = ["Alisa Sireneva <imachug@gmail.com>"]
+version = "0.2.0"
+authors = ["Alisa Sireneva <me@purplesyringa.moe>"]
 edition = "2021"
 description = "Efficient and seamless cross-process communication, both synchronously and asynchronously"
 documentation = "https://docs.rs/crossmist-derive"
