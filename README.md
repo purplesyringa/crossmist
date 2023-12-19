@@ -16,7 +16,7 @@ $ cargo add crossmist
 Or add the following to your `Cargo.toml`:
 
 ```toml
-crossmist = "0.1"
+crossmist = "0.2"
 ```
 
 
