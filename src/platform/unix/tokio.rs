@@ -37,7 +37,9 @@
 //! ```
 
 use crate::{
-    entry, imp, ipc::MAX_PACKET_SIZE, subprocess, Deserializer, FnOnceObject, Object, Serializer,
+    entry, imp,
+    ipc::{AncillaryBuffer, MAX_PACKET_FDS, MAX_PACKET_SIZE},
+    subprocess, Deserializer, FnOnceObject, Object, Serializer,
 };
 use nix::libc::pid_t;
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
@@ -105,19 +107,18 @@ async fn send_on_fd<T: Object>(fd: &UnixSeqpacket, value: &T) -> Result<()> {
         (s.drain_handles(), s.into_vec())
     };
 
-    let mut ancillary_buffer = [0; 253];
-
     // Send the data and pass file descriptors
     let mut buffer_pos: usize = 0;
     let mut fds_pos: usize = 0;
 
     loop {
         let buffer_end = serialized.len().min(buffer_pos + MAX_PACKET_SIZE - 1);
-        let fds_end = fds.len().min(fds_pos + 253);
+        let fds_end = fds.len().min(fds_pos + MAX_PACKET_FDS);
 
         let is_last = buffer_end == serialized.len() && fds_end == fds.len();
 
-        let mut ancillary = SocketAncillary::new(&mut ancillary_buffer);
+        let mut ancillary_buffer = AncillaryBuffer::new();
+        let mut ancillary = SocketAncillary::new(&mut ancillary_buffer.data);
         if !ancillary.add_fds(&fds[fds_pos..fds_end]) {
             return Err(Error::new(ErrorKind::Other, "Too many fds to pass"));
         }
@@ -147,14 +148,14 @@ async unsafe fn recv_on_fd<T: Object>(fd: &UnixSeqpacket) -> Result<Option<T>> {
     let mut serialized: Vec<u8> = Vec::new();
     let mut buffer_pos: usize = 0;
 
-    let mut ancillary_buffer = [0; 253];
     let mut received_fds: Vec<OwnedFd> = Vec::new();
 
     loop {
         serialized.resize(buffer_pos + MAX_PACKET_SIZE - 1, 0);
 
         let mut marker = [0];
-        let mut ancillary = SocketAncillary::new(&mut ancillary_buffer[..]);
+        let mut ancillary_buffer = AncillaryBuffer::new();
+        let mut ancillary = SocketAncillary::new(&mut ancillary_buffer.data);
 
         let n_read = fd
             .recv_vectored_with_ancillary(
