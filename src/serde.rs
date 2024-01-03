@@ -24,7 +24,7 @@ impl Serializer {
     pub fn new() -> Self {
         Serializer {
             data: Vec::new(),
-            handles: Option::from(Vec::new()),
+            handles: Some(Vec::new()),
             cyclic_ids: HashMap::new(),
         }
     }
