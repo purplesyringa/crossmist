@@ -1,19 +1,15 @@
 pub use crate::pod::PlainOldData;
-pub use ctor::ctor;
 
 use crate::entry;
-use lazy_static::lazy_static;
-use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-lazy_static! {
-    pub static ref MAIN_ENTRY: RwLock<Option<fn() -> i32>> = RwLock::new(None);
-}
+pub static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn perform_sanity_checks() {
-    MAIN_ENTRY
-        .read()
-        .expect("Failed to acquire read access to MAIN_ENTRY")
-        .expect("MAIN_ENTRY was not registered: is #[crossmist::main] missing?");
+    assert!(
+        INITIALIZED.load(Ordering::Acquire),
+        "#[crossmist::main] is missing"
+    );
 }
 
 pub trait Report {
@@ -103,7 +99,9 @@ pub fn if_void<T>() -> Option<T> {
     T::if_void()
 }
 
-pub fn main() {
+pub fn start() {
+    INITIALIZED.store(true, Ordering::Release);
+
     let mut args = std::env::args();
     if let Some(s) = args.next() {
         if s == "_crossmist_" {
@@ -112,10 +110,4 @@ pub fn main() {
     }
 
     entry::start_root();
-
-    std::process::exit(MAIN_ENTRY
-        .read()
-        .expect("Failed to acquire read access to MAIN_ENTRY")
-        .expect("MAIN_ENTRY was not registered: is #[crossmist::main] missing?")(
-    ));
 }

@@ -11,8 +11,6 @@ keywords = ["multiprocessing"]
 categories = ["asynchronous", "concurrency"]
 
 [dependencies]
-ctor = "0.1.22"
-lazy_static = "1.4.0"
 crossmist-derive = { version = "0.2.0", path = "crossmist-derive" }
 paste = "1.0"
 
@@ -22,6 +20,7 @@ tokio = { version = "1", features = ["rt", "macros", "fs", "sync"], optional = t
 tokio-seqpacket = { version = "0.5.4", optional = true }
 
 [target.'cfg(windows)'.dependencies]
+lazy_static = "1.4.0"
 tokio = { version = "1", features = ["rt", "macros", "fs", "io-util", "sync"], optional = true }
 windows = { version = "0.39.0", features = [
     "Win32_Foundation",

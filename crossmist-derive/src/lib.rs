@@ -269,17 +269,9 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #input
 
-        #[::crossmist::imp::ctor]
-        fn crossmist_add_main() {
-            *::crossmist::imp::MAIN_ENTRY
-                .write()
-                .expect("Failed to acquire write access to MAIN_ENTRY") = Some(|| {
-                ::crossmist::imp::Report::report(crossmist_old_main())
-            });
-        }
-
         fn main() {
-            ::crossmist::imp::main()
+            ::crossmist::imp::start();
+            ::std::process::exit(::crossmist::imp::Report::report(crossmist_old_main()));
         }
     };
 
