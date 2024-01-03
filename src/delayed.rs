@@ -30,7 +30,12 @@
 use crate::{handles::OwnedHandle, Deserializer, NonTrivialObject, Object, Serializer};
 
 /// A wrapper for objects that require global state to be configured before deserialization.
-pub enum Delayed<T: Object> {
+pub struct Delayed<T: Object> {
+    inner: DelayedInner<T>,
+}
+
+// Use a private enum to stop the user from matching/creating it manually
+enum DelayedInner<T: Object> {
     Serialized(Vec<u8>, Vec<OwnedHandle>),
     Deserialized(T),
 }
@@ -38,25 +43,29 @@ pub enum Delayed<T: Object> {
 impl<T: Object> Delayed<T> {
     /// Wrap an object. Use this in the parent process.
     pub fn new(value: T) -> Self {
-        Self::Deserialized(value)
+        Self {
+            inner: DelayedInner::Deserialized(value),
+        }
     }
 
     /// Unwrap an object. Use this in the child process after initialization.
     pub fn deserialize(self) -> T {
-        match self {
-            Self::Serialized(data, handles) => unsafe {
+        match self.inner {
+            DelayedInner::Serialized(data, handles) => unsafe {
                 Deserializer::new(data, handles).deserialize()
             },
-            Self::Deserialized(_) => panic!("Cannot deserialize a deserialized Delayed value"),
+            DelayedInner::Deserialized(_) => {
+                panic!("Cannot deserialize a deserialized Delayed value")
+            }
         }
     }
 }
 
 impl<T: Object> NonTrivialObject for Delayed<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        match self {
-            Self::Serialized(_, _) => panic!("Cannot serialize a serialized Delayed value"),
-            Self::Deserialized(value) => {
+        match self.inner {
+            DelayedInner::Serialized(_, _) => panic!("Cannot serialize a serialized Delayed value"),
+            DelayedInner::Deserialized(ref value) => {
                 let mut s1 = Serializer::new();
                 s1.serialize(value);
                 let handles = s1
@@ -75,7 +84,9 @@ impl<T: Object> NonTrivialObject for Delayed<T> {
             .into_iter()
             .map(|handle| d.drain_handle(handle))
             .collect();
-        Delayed::Serialized(d.deserialize(), handles)
+        Delayed {
+            inner: DelayedInner::Serialized(d.deserialize(), handles),
+        }
     }
     unsafe fn deserialize_on_heap_non_trivial<'a>(
         &self,
