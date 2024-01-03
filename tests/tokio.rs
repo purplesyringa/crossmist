@@ -108,7 +108,7 @@ async fn main() {
 
     {
         let (mut tx, rx) = channel::<i32>().unwrap();
-        let mut child = with_passed_rx.spawn_tokio(rx).await.unwrap();
+        let child = with_passed_rx.spawn_tokio(rx).await.unwrap();
         tx.send(&5).await.unwrap();
         tx.send(&7).await.unwrap();
         assert_eq!(child.join().await.expect("with_passed_rx failed"), -2);
@@ -117,7 +117,7 @@ async fn main() {
 
     {
         let (tx, mut rx) = channel::<i32>().unwrap();
-        let mut child = with_passed_tx.spawn_tokio(tx).await.unwrap();
+        let child = with_passed_tx.spawn_tokio(tx).await.unwrap();
         assert_eq!(
             rx.recv().await.unwrap().unwrap() - rx.recv().await.unwrap().unwrap(),
             -2
@@ -128,7 +128,7 @@ async fn main() {
 
     {
         let (mut local, downstream) = duplex::<(i32, i32), i32>().unwrap();
-        let mut child = with_passed_duplex.spawn_tokio(downstream).await.unwrap();
+        let child = with_passed_duplex.spawn_tokio(downstream).await.unwrap();
         for (x, y) in [(5, 7), (100, -1), (53, 2354)] {
             local.send(&(x, y)).await.unwrap();
             assert_eq!(local.recv().await.unwrap().unwrap(), x - y);

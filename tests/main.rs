@@ -235,7 +235,7 @@ fn main() {
 
     {
         let (mut tx, rx) = channel::<i32>().unwrap();
-        let mut child = with_passed_rx.spawn(rx).unwrap();
+        let child = with_passed_rx.spawn(rx).unwrap();
         tx.send(&5).unwrap();
         tx.send(&7).unwrap();
         assert_eq!(child.join().expect("with_passed_rx failed"), -2);
@@ -244,7 +244,7 @@ fn main() {
 
     {
         let (tx, mut rx) = channel::<i32>().unwrap();
-        let mut child = with_passed_tx.spawn(tx).unwrap();
+        let child = with_passed_tx.spawn(tx).unwrap();
         assert_eq!(
             rx.recv().unwrap().unwrap() - rx.recv().unwrap().unwrap(),
             -2
@@ -255,7 +255,7 @@ fn main() {
 
     {
         let (mut local, downstream) = duplex::<(i32, i32), i32>().unwrap();
-        let mut child = with_passed_duplex.spawn(downstream).unwrap();
+        let child = with_passed_duplex.spawn(downstream).unwrap();
         for (x, y) in [(5, 7), (100, -1), (53, 2354)] {
             local.send(&(x, y)).unwrap();
             assert_eq!(local.recv().unwrap().unwrap(), x - y);

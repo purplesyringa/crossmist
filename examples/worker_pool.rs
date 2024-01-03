@@ -1,5 +1,3 @@
-#![feature(trait_upcasting)] // needed for trait intersection to work as expected
-
 use anyhow::{anyhow, bail, Result};
 use crossmist::{
     func, lambda,
@@ -80,7 +78,7 @@ impl WorkerPool {
     async fn close(self) -> Result<()> {
         drop(self.workers_sender);
         let mut workers_receiver = self.workers_receiver.lock().await;
-        while let Some(mut worker_obj) = workers_receiver.recv().await {
+        while let Some(worker_obj) = workers_receiver.recv().await {
             drop(worker_obj.channel);
             worker_obj.child.join().await?;
         }
