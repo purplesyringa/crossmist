@@ -222,12 +222,20 @@ impl<T: Object> Sender<T> {
 
 impl<T: Object> From<crate::Sender<T>> for Sender<T> {
     fn from(value: crate::Sender<T>) -> Self {
-        unsafe { Self::from_raw_fd(value.into_raw_fd()) }
+        unsafe {
+            let fd = value.into_raw_fd();
+            entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
+            Self::from_raw_fd(fd)
+        }
     }
 }
 impl<T: Object> From<Sender<T>> for crate::Sender<T> {
     fn from(value: Sender<T>) -> Self {
-        unsafe { Self::from_raw_fd(value.into_raw_fd()) }
+        unsafe {
+            let fd = value.into_raw_fd();
+            entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
+            Self::from_raw_fd(fd)
+        }
     }
 }
 
@@ -245,7 +253,6 @@ impl<T: Object> IntoRawFd for Sender<T> {
 
 impl<T: Object> FromRawFd for Sender<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
         Self::from_unix_seqpacket(
             UnixSeqpacket::from_raw_fd(fd)
                 .expect("Failed to register fd in tokio in crossmist::tokio::Sender::from_raw_fd"),
@@ -271,12 +278,20 @@ impl<T: Object> Receiver<T> {
 
 impl<T: Object> From<crate::Receiver<T>> for Receiver<T> {
     fn from(value: crate::Receiver<T>) -> Self {
-        unsafe { Self::from_raw_fd(value.into_raw_fd()) }
+        unsafe {
+            let fd = value.into_raw_fd();
+            entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
+            Self::from_raw_fd(fd)
+        }
     }
 }
 impl<T: Object> From<Receiver<T>> for crate::Receiver<T> {
     fn from(value: Receiver<T>) -> Self {
-        unsafe { Self::from_raw_fd(value.into_raw_fd()) }
+        unsafe {
+            let fd = value.into_raw_fd();
+            entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
+            Self::from_raw_fd(fd)
+        }
     }
 }
 
@@ -294,7 +309,6 @@ impl<T: Object> IntoRawFd for Receiver<T> {
 
 impl<T: Object> FromRawFd for Receiver<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
         Self::from_unix_seqpacket(
             UnixSeqpacket::from_raw_fd(fd).expect(
                 "Failed to register fd in tokio in crossmist::tokio::Receiver::from_raw_fd",
@@ -343,12 +357,20 @@ impl<S: Object, R: Object> Duplex<S, R> {
 
 impl<S: Object, R: Object> From<crate::Duplex<S, R>> for Duplex<S, R> {
     fn from(value: crate::Duplex<S, R>) -> Self {
-        unsafe { Self::from_raw_fd(value.into_raw_fd()) }
+        unsafe {
+            let fd = value.into_raw_fd();
+            entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
+            Self::from_raw_fd(fd)
+        }
     }
 }
 impl<S: Object, R: Object> From<Duplex<S, R>> for crate::Duplex<S, R> {
     fn from(value: Duplex<S, R>) -> Self {
-        unsafe { Self::from_raw_fd(value.into_raw_fd()) }
+        unsafe {
+            let fd = value.into_raw_fd();
+            entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
+            Self::from_raw_fd(fd)
+        }
     }
 }
 
@@ -366,7 +388,6 @@ impl<S: Object, R: Object> IntoRawFd for Duplex<S, R> {
 
 impl<S: Object, R: Object> FromRawFd for Duplex<S, R> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
         Self::from_unix_seqpacket(
             UnixSeqpacket::from_raw_fd(fd)
                 .expect("Failed to register fd in tokio in crossmist::tokio::Duplex::from_raw_fd"),

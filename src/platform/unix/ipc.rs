@@ -26,7 +26,7 @@
 //! # std::io::Result::Ok(())
 //! ```
 
-use crate::{entry, Deserializer, Object, Serializer};
+use crate::{Deserializer, Object, Serializer};
 use nix::libc::{AF_UNIX, SOCK_CLOEXEC, SOCK_SEQPACKET};
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
@@ -216,7 +216,6 @@ impl<T: Object> IntoRawFd for Sender<T> {
 
 impl<T: Object> FromRawFd for Sender<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
         Self::from_unix_stream(UnixStream::from_raw_fd(fd))
     }
 }
@@ -251,7 +250,6 @@ impl<T: Object> IntoRawFd for Receiver<T> {
 
 impl<T: Object> FromRawFd for Receiver<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
         Self::from_unix_stream(UnixStream::from_raw_fd(fd))
     }
 }
@@ -312,7 +310,6 @@ impl<S: Object, R: Object> IntoRawFd for Duplex<S, R> {
 
 impl<S: Object, R: Object> FromRawFd for Duplex<S, R> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
         Self::from_unix_stream(UnixStream::from_raw_fd(fd))
     }
 }
