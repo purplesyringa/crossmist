@@ -41,7 +41,7 @@ const fn round_to_usize(n: usize) -> usize {
 }
 
 pub(crate) const MAX_PACKET_SIZE: usize = 16 * 1024;
-pub(crate) const MAX_PACKET_FDS: usize = 128;
+pub(crate) const MAX_PACKET_FDS: usize = 253; // SCM_MAX_FD
 pub(crate) const ANCILLARY_BUFFER_SIZE: usize =
     round_to_usize(MAX_PACKET_FDS * std::mem::size_of::<i32>())
         + round_to_usize(std::mem::size_of::<cmsghdr>());
