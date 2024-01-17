@@ -1,6 +1,6 @@
 [package]
 name = "crossmist"
-version = "0.2.1"
+version = "0.2.3"
 authors = ["Alisa Sireneva <me@purplesyringa.moe>"]
 edition = "2021"
 description = "Efficient and seamless cross-process communication, both synchronously and asynchronously"
@@ -11,7 +11,7 @@ keywords = ["multiprocessing"]
 categories = ["asynchronous", "concurrency"]
 
 [dependencies]
-crossmist-derive = { version = "0.2.0", path = "crossmist-derive" }
+crossmist-derive = { version = "0.2.3", path = "crossmist-derive" }
 paste = "1.0"
 
 [target.'cfg(unix)'.dependencies]
