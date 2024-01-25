@@ -457,7 +457,6 @@ impl<T: Object> Child<T> {
 #[doc(hidden)]
 pub async unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawFd,), Output = i32>>,
-    flags: subprocess::Flags,
 ) -> Result<Child<T>> {
     imp::perform_sanity_checks();
 
@@ -467,7 +466,7 @@ pub async unsafe fn spawn<T: Object>(
     let fds = s.drain_handles();
 
     let (mut local, child) = duplex::<(Vec<u8>, Vec<RawFd>), T>()?;
-    let pid = subprocess::_spawn_child(child.as_raw_fd(), flags, &fds)?;
+    let pid = subprocess::_spawn_child(child.as_raw_fd(), &fds)?;
     local.send(&(s.into_vec(), fds)).await?;
 
     Ok(Child::new(pid, local.into_receiver()))

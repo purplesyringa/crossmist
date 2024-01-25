@@ -16,15 +16,12 @@
 
 use crate::{duplex, entry, imp, FnOnceObject, Object, Receiver, Serializer};
 use nix::{
-    libc::{c_char, c_int, c_void, pid_t},
+    libc::{c_char, c_void, pid_t},
     sys::signal,
 };
 use std::ffi::CString;
 use std::io::Result;
 use std::os::unix::io::{AsRawFd, RawFd};
-
-#[doc(hidden)]
-pub type Flags = c_int;
 
 /// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
 pub struct Child<T: Object> {
@@ -84,14 +81,13 @@ impl<T: Object> Child<T> {
 
 pub(crate) unsafe fn _spawn_child(
     child_fd: RawFd,
-    flags: Flags,
     inherited_fds: &[RawFd],
 ) -> Result<nix::unistd::Pid> {
     let child_fd_str = CString::new(child_fd.to_string()).unwrap();
 
     match nix::libc::syscall(
         nix::libc::SYS_clone,
-        nix::libc::SIGCHLD | flags,
+        nix::libc::SIGCHLD,
         std::ptr::null::<c_void>(),
     ) {
         -1 => Err(std::io::Error::last_os_error()),
@@ -148,7 +144,6 @@ pub(crate) unsafe fn _spawn_child(
 #[doc(hidden)]
 pub unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawFd,), Output = i32>>,
-    flags: Flags,
 ) -> Result<Child<T>> {
     imp::perform_sanity_checks();
 
@@ -158,7 +153,7 @@ pub unsafe fn spawn<T: Object>(
     let fds = s.drain_handles();
 
     let (mut local, child) = duplex::<(Vec<u8>, Vec<RawFd>), T>()?;
-    let pid = _spawn_child(child.as_raw_fd(), flags, &fds)?;
+    let pid = _spawn_child(child.as_raw_fd(), &fds)?;
     local.send(&(s.into_vec(), fds))?;
 
     Ok(Child::new(pid, local.into_receiver()))
