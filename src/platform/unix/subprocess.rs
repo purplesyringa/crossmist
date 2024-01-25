@@ -16,15 +16,13 @@
 
 use crate::{duplex, entry, imp, FnOnceObject, Object, Receiver, Serializer};
 use nix::{
-    libc::{c_char, c_int, c_void, pid_t},
+    libc::{c_char, pid_t},
+    sched,
     sys::signal,
 };
 use std::ffi::CString;
 use std::io::Result;
 use std::os::unix::io::{AsRawFd, RawFd};
-
-#[doc(hidden)]
-pub type Flags = c_int;
 
 /// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
 pub struct Child<T: Object> {
@@ -84,71 +82,69 @@ impl<T: Object> Child<T> {
 
 pub(crate) unsafe fn _spawn_child(
     child_fd: RawFd,
-    flags: Flags,
     inherited_fds: &[RawFd],
 ) -> Result<nix::unistd::Pid> {
     let child_fd_str = CString::new(child_fd.to_string()).unwrap();
 
-    match nix::libc::syscall(
-        nix::libc::SYS_clone,
-        nix::libc::SIGCHLD | flags,
-        std::ptr::null::<c_void>(),
-    ) {
-        -1 => Err(std::io::Error::last_os_error()),
-        0 => {
-            // No heap allocations are allowed from now on
-            let res: Result<!> = try {
-                signal::sigprocmask(
-                    signal::SigmaskHow::SIG_SETMASK,
-                    Some(&signal::SigSet::empty()),
-                    None,
-                )?;
-                for i in 1..32 {
-                    if i != nix::libc::SIGKILL && i != nix::libc::SIGSTOP {
-                        signal::sigaction(
-                            signal::Signal::try_from(i).unwrap(),
-                            &signal::SigAction::new(
-                                signal::SigHandler::SigDfl,
-                                signal::SaFlags::empty(),
-                                signal::SigSet::empty(),
-                            ),
-                        )?;
-                    }
+    let spawn_cb = || {
+        // No heap allocations are allowed from now on
+        let res: Result<!> = try {
+            for i in 1..32 {
+                if i != nix::libc::SIGKILL && i != nix::libc::SIGSTOP {
+                    signal::sigaction(
+                        signal::Signal::try_from(i).unwrap(),
+                        &signal::SigAction::new(
+                            signal::SigHandler::SigDfl,
+                            signal::SaFlags::empty(),
+                            signal::SigSet::empty(),
+                        ),
+                    )?;
                 }
+            }
+            signal::sigprocmask(
+                signal::SigmaskHow::SIG_SETMASK,
+                Some(&signal::SigSet::empty()),
+                None,
+            )?;
 
-                entry::disable_cloexec(child_fd)?;
-                for fd in inherited_fds {
-                    entry::disable_cloexec(*fd)?;
-                }
+            entry::disable_cloexec(child_fd)?;
+            for fd in inherited_fds {
+                entry::disable_cloexec(*fd)?;
+            }
 
-                // nix::unistd::execv uses allocations
-                nix::libc::execv(
-                    b"/proc/self/exe\0" as *const u8 as *const c_char,
-                    &[
-                        b"_crossmist_\0" as *const u8 as *const c_char,
-                        child_fd_str.as_ptr() as *const u8 as *const c_char,
-                        std::ptr::null(),
-                    ] as *const *const c_char,
-                );
+            // nix::unistd::execv uses allocations
+            nix::libc::execv(
+                b"/proc/self/exe\0" as *const u8 as *const c_char,
+                &[
+                    b"_crossmist_\0" as *const u8 as *const c_char,
+                    child_fd_str.as_ptr() as *const u8 as *const c_char,
+                    std::ptr::null(),
+                ] as *const *const c_char,
+            );
 
-                Err(std::io::Error::last_os_error())?;
+            Err(std::io::Error::last_os_error())?;
 
-                unreachable!()
-            };
+            unreachable!()
+        };
 
-            // Use abort() instead of panic!() to prevent stack unwinding, as unwinding in the fork
-            // child may free resources that would later be freed in the original process
-            eprintln!("{}", res.into_err());
-            std::process::abort();
-        }
-        child_pid => Ok(nix::unistd::Pid::from_raw(child_pid as pid_t)),
-    }
+        // Use abort() instead of panic!() to prevent stack unwinding, as unwinding in the fork
+        // child may free resources that would later be freed in the original process
+        eprintln!("{}", res.into_err());
+        std::process::abort();
+    };
+
+    let mut stack = [0u8; 4096];
+    Ok(sched::clone(
+        Box::new(spawn_cb),
+        &mut stack,
+        sched::CloneFlags::CLONE_VM | sched::CloneFlags::CLONE_VFORK,
+        Some(nix::libc::SIGCHLD),
+    )?)
 }
 
 #[doc(hidden)]
 pub unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawFd,), Output = i32>>,
-    flags: Flags,
 ) -> Result<Child<T>> {
     imp::perform_sanity_checks();
 
@@ -158,7 +154,7 @@ pub unsafe fn spawn<T: Object>(
     let fds = s.drain_handles();
 
     let (mut local, child) = duplex::<(Vec<u8>, Vec<RawFd>), T>()?;
-    let pid = _spawn_child(child.as_raw_fd(), flags, &fds)?;
+    let pid = _spawn_child(child.as_raw_fd(), &fds)?;
     local.send(&(s.into_vec(), fds))?;
 
     Ok(Child::new(pid, local.into_receiver()))

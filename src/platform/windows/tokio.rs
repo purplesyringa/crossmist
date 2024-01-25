@@ -376,7 +376,6 @@ impl<T: Object> Child<T> {
 #[doc(hidden)]
 pub async unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(handles::RawHandle,), Output = i32>>,
-    flags: subprocess::Flags,
 ) -> Result<Child<T>> {
     use handles::AsRawHandle;
 
@@ -389,12 +388,8 @@ pub async unsafe fn spawn<T: Object>(
 
     let (mut local, child) = duplex::<(Vec<u8>, Vec<handles::RawHandle>), T>()?;
     let (child_tx, child_rx) = child.split();
-    let handle = subprocess::_spawn_child(
-        child_tx.as_raw_handle(),
-        child_rx.as_raw_handle(),
-        flags,
-        &handles,
-    )?;
+    let handle =
+        subprocess::_spawn_child(child_tx.as_raw_handle(), child_rx.as_raw_handle(), &handles)?;
     local.send(&(s.into_vec(), handles)).await?;
 
     let (_, receiver) = local.split();

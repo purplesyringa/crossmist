@@ -29,9 +29,6 @@ use windows::{
     },
 };
 
-#[doc(hidden)]
-pub type Flags = ();
-
 /// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
 pub struct Child<T: Object> {
     proc_handle: OwnedHandle,
@@ -103,7 +100,6 @@ impl<T: Object> Child<T> {
 pub(crate) unsafe fn _spawn_child(
     child_tx: RawHandle,
     child_rx: RawHandle,
-    _flags: Flags,
     inherited_handles: &[RawHandle],
 ) -> Result<OwnedHandle> {
     let mut inherited_handles = inherited_handles.to_vec();
@@ -219,7 +215,6 @@ pub(crate) unsafe fn _spawn_child(
 #[doc(hidden)]
 pub unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
-    flags: Flags,
 ) -> Result<Child<T>> {
     imp::perform_sanity_checks();
 
@@ -230,12 +225,7 @@ pub unsafe fn spawn<T: Object>(
 
     let (mut local, child) = duplex::<(Vec<u8>, Vec<RawHandle>), T>()?;
     let (child_tx, child_rx) = child.split();
-    let handle = _spawn_child(
-        child_tx.as_raw_handle(),
-        child_rx.as_raw_handle(),
-        flags,
-        &handles,
-    )?;
+    let handle = _spawn_child(child_tx.as_raw_handle(), child_rx.as_raw_handle(), &handles)?;
     local.send(&(s.into_vec(), handles))?;
 
     let (_, receiver) = local.split();

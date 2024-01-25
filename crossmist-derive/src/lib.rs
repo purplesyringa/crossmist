@@ -156,24 +156,15 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
         quote! {}
     } else {
         quote! {
-            pub unsafe fn spawn_with_flags #generic_params(&self, flags: ::crossmist::subprocess::Flags, #(#fn_args,)*) -> ::std::io::Result<::crossmist::Child<#return_type>> {
-                use ::crossmist::BindValue;
-                ::crossmist::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound)))), flags)
-            }
-
-            #[cfg(feature = "tokio")]
-            pub async unsafe fn spawn_with_flags_tokio #generic_params(&self, flags: ::crossmist::subprocess::Flags, #(#fn_args,)*) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
-                use ::crossmist::BindValue;
-                ::crossmist::tokio::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound)))), flags).await
-            }
-
             pub fn spawn #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::Child<#return_type>> {
-                unsafe { self.spawn_with_flags(::std::default::Default::default(), #(#arg_names,)*) }
+                use ::crossmist::BindValue;
+                unsafe { ::crossmist::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))) }
             }
 
             #[cfg(feature = "tokio")]
             pub async fn spawn_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
-                unsafe { self.spawn_with_flags_tokio(::std::default::Default::default(), #(#arg_names,)*) }.await
+                use ::crossmist::BindValue;
+                unsafe { ::crossmist::tokio::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
             }
 
             pub fn run #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
