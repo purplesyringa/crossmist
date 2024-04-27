@@ -639,27 +639,5 @@ impl NonTrivialObject for tokio::net::UnixStream {
     }
 }
 
-#[doc(cfg(all(unix, feature = "tokio")))]
-#[cfg(all(unix, feature = "tokio"))]
-impl NonTrivialObject for tokio_seqpacket::UnixSeqpacket {
-    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        let handle = s.add_handle(self.as_raw_fd());
-        s.serialize(&handle)
-    }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
-        let handle = d.deserialize();
-        unsafe {
-            Self::from_raw_fd(d.drain_handle(handle).into_raw_handle())
-                .expect("Failed to deserialize tokio_seqpacket::UnixSeqpacket")
-        }
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
-}
-
 #[cfg(windows)]
 impl_pod!(for RawHandle);

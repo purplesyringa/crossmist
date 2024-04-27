@@ -16,8 +16,7 @@ paste = "1.0"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.27", features = ["fs", "process", "sched", "signal", "socket", "uio"] }
-tokio = { version = "1", features = ["rt", "macros", "fs", "sync"], optional = true }
-tokio-seqpacket = { version = "0.5.4", optional = true }
+tokio = { version = "1", features = ["fs", "macros", "net", "rt", "sync"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 lazy_static = "1.4.0"
@@ -35,7 +34,7 @@ windows = { version = "0.39.0", features = [
 anyhow = "1"
 
 [features]
-tokio = ["dep:tokio", "dep:tokio-seqpacket"]
+tokio = ["dep:tokio"]
 
 [[test]]
 name = "sync-main"

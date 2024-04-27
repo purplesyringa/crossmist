@@ -27,10 +27,9 @@
 //! ```
 
 use crate::{
-    internals::{SingleObjectReceiver, SingleObjectSender},
+    internals::{socketpair, SingleObjectReceiver, SingleObjectSender},
     Object,
 };
-use nix::libc::{AF_UNIX, SOCK_CLOEXEC, SOCK_SEQPACKET};
 use std::io::Result;
 use std::marker::PhantomData;
 use std::os::unix::{
@@ -74,15 +73,8 @@ pub fn channel<T: Object>() -> Result<(Sender<T>, Receiver<T>)> {
 
 /// Create a bidirectional channel.
 pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
-    // UnixStream creates a SOCK_STREAM by default, while we need SOCK_SEQPACKET
-    unsafe {
-        let mut fds = [0, 0];
-        if nix::libc::socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, fds.as_mut_ptr()) == -1
-        {
-            return Err(std::io::Error::last_os_error());
-        }
-        Ok((Duplex::from_raw_fd(fds[0]), Duplex::from_raw_fd(fds[1])))
-    }
+    let (tx, rx) = socketpair(0)?;
+    unsafe { Ok((Duplex::from_unix_stream(tx), Duplex::from_unix_stream(rx))) }
 }
 
 fn send_on_fd<T: Object>(fd: &UnixStream, value: &T) -> Result<()> {

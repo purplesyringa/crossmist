@@ -38,22 +38,21 @@
 
 use crate::{
     entry, imp,
-    internals::{SingleObjectReceiver, SingleObjectSender},
+    internals::{socketpair, SingleObjectReceiver, SingleObjectSender},
     subprocess, FnOnceObject, Object, Serializer,
 };
-use nix::libc::pid_t;
+use nix::libc::{pid_t, SOCK_NONBLOCK};
 use std::io::Result;
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use tokio::io::Interest;
-use tokio_seqpacket::UnixSeqpacket;
+use tokio::{io::Interest, net::UnixStream};
 
 /// The transmitting side of a unidirectional channel.
 ///
 /// `T` is the type of the objects this side sends via the channel and the other side receives.
 #[derive(Object)]
 pub struct Sender<T: Object> {
-    fd: UnixSeqpacket,
+    fd: UnixStream,
     marker: PhantomData<fn(T)>,
 }
 
@@ -62,7 +61,7 @@ pub struct Sender<T: Object> {
 /// `T` is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
 pub struct Receiver<T: Object> {
-    fd: UnixSeqpacket,
+    fd: UnixStream,
     marker: PhantomData<fn() -> T>,
 }
 
@@ -72,48 +71,40 @@ pub struct Receiver<T: Object> {
 /// is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
 pub struct Duplex<S: Object, R: Object> {
-    fd: UnixSeqpacket,
+    fd: UnixStream,
     marker: PhantomData<fn(S) -> R>,
 }
 
 /// Create a unidirectional channel.
 pub fn channel<T: Object>() -> Result<(Sender<T>, Receiver<T>)> {
-    let (tx, rx) = UnixSeqpacket::pair()?;
-    unsafe {
-        Ok((
-            Sender::from_unix_seqpacket(tx),
-            Receiver::from_unix_seqpacket(rx),
-        ))
-    }
+    let (tx, rx) = duplex::<T, T>()?;
+    Ok((tx.into_sender(), rx.into_receiver()))
 }
 
 /// Create a bidirectional channel.
 pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
-    let (tx, rx) = UnixSeqpacket::pair()?;
+    let (tx, rx) = socketpair(SOCK_NONBLOCK)?;
     unsafe {
         Ok((
-            Duplex::from_unix_seqpacket(tx),
-            Duplex::from_unix_seqpacket(rx),
+            Duplex::from_unix_stream(tx.try_into()?),
+            Duplex::from_unix_stream(rx.try_into()?),
         ))
     }
 }
 
-async fn send_on_fd<T: Object>(fd: &UnixSeqpacket, value: &T) -> Result<()> {
+async fn send_on_fd<T: Object>(fd: &UnixStream, value: &T) -> Result<()> {
     let mut sender = SingleObjectSender::new(fd.as_raw_fd(), value);
-    fd.as_async_fd()
-        .async_io(Interest::WRITABLE, |_| sender.send_next())
-        .await
+    fd.async_io(Interest::WRITABLE, || sender.send_next()).await
 }
 
-async unsafe fn recv_on_fd<T: Object>(fd: &UnixSeqpacket) -> Result<Option<T>> {
+async unsafe fn recv_on_fd<T: Object>(fd: &UnixStream) -> Result<Option<T>> {
     let mut receiver = SingleObjectReceiver::new(fd.as_raw_fd());
-    fd.as_async_fd()
-        .async_io(Interest::READABLE, |_| receiver.recv_next())
+    fd.async_io(Interest::READABLE, || receiver.recv_next())
         .await
 }
 
 impl<T: Object> Sender<T> {
-    unsafe fn from_unix_seqpacket(fd: UnixSeqpacket) -> Self {
+    unsafe fn from_unix_stream(fd: UnixStream) -> Self {
         Sender {
             fd,
             marker: PhantomData,
@@ -126,12 +117,15 @@ impl<T: Object> Sender<T> {
     }
 }
 
-impl<T: Object> From<crate::Sender<T>> for Sender<T> {
-    fn from(value: crate::Sender<T>) -> Self {
+impl<T: Object> TryFrom<crate::Sender<T>> for Sender<T> {
+    type Error = std::io::Error;
+    fn try_from(value: crate::Sender<T>) -> Result<Self> {
         unsafe {
             let fd = value.into_raw_fd();
-            entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
-            Self::from_raw_fd(fd)
+            entry::enable_nonblock(fd)?;
+            Ok(Self::from_unix_stream(
+                std::os::unix::net::UnixStream::from_raw_fd(fd).try_into()?,
+            ))
         }
     }
 }
@@ -153,21 +147,14 @@ impl<T: Object> AsRawFd for Sender<T> {
 
 impl<T: Object> IntoRawFd for Sender<T> {
     fn into_raw_fd(self) -> RawFd {
-        self.fd.into_raw_fd()
-    }
-}
-
-impl<T: Object> FromRawFd for Sender<T> {
-    unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        Self::from_unix_seqpacket(
-            UnixSeqpacket::from_raw_fd(fd)
-                .expect("Failed to register fd in tokio in crossmist::tokio::Sender::from_raw_fd"),
-        )
+        let fd = self.as_raw_fd();
+        std::mem::forget(self);
+        fd
     }
 }
 
 impl<T: Object> Receiver<T> {
-    unsafe fn from_unix_seqpacket(fd: UnixSeqpacket) -> Self {
+    unsafe fn from_unix_stream(fd: UnixStream) -> Self {
         Receiver {
             fd,
             marker: PhantomData,
@@ -182,12 +169,15 @@ impl<T: Object> Receiver<T> {
     }
 }
 
-impl<T: Object> From<crate::Receiver<T>> for Receiver<T> {
-    fn from(value: crate::Receiver<T>) -> Self {
+impl<T: Object> TryFrom<crate::Receiver<T>> for Receiver<T> {
+    type Error = std::io::Error;
+    fn try_from(value: crate::Receiver<T>) -> Result<Self> {
         unsafe {
             let fd = value.into_raw_fd();
-            entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
-            Self::from_raw_fd(fd)
+            entry::enable_nonblock(fd)?;
+            Ok(Self::from_unix_stream(
+                std::os::unix::net::UnixStream::from_raw_fd(fd).try_into()?,
+            ))
         }
     }
 }
@@ -209,22 +199,14 @@ impl<T: Object> AsRawFd for Receiver<T> {
 
 impl<T: Object> IntoRawFd for Receiver<T> {
     fn into_raw_fd(self) -> RawFd {
-        self.fd.into_raw_fd()
-    }
-}
-
-impl<T: Object> FromRawFd for Receiver<T> {
-    unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        Self::from_unix_seqpacket(
-            UnixSeqpacket::from_raw_fd(fd).expect(
-                "Failed to register fd in tokio in crossmist::tokio::Receiver::from_raw_fd",
-            ),
-        )
+        let fd = self.as_raw_fd();
+        std::mem::forget(self);
+        fd
     }
 }
 
 impl<S: Object, R: Object> Duplex<S, R> {
-    unsafe fn from_unix_seqpacket(fd: UnixSeqpacket) -> Self {
+    unsafe fn from_unix_stream(fd: UnixStream) -> Self {
         Duplex {
             fd,
             marker: PhantomData,
@@ -256,17 +238,24 @@ impl<S: Object, R: Object> Duplex<S, R> {
         })
     }
 
+    fn into_sender(self) -> Sender<R> {
+        unsafe { Sender::from_unix_stream(self.fd) }
+    }
+
     fn into_receiver(self) -> Receiver<R> {
-        unsafe { Receiver::from_unix_seqpacket(self.fd) }
+        unsafe { Receiver::from_unix_stream(self.fd) }
     }
 }
 
-impl<S: Object, R: Object> From<crate::Duplex<S, R>> for Duplex<S, R> {
-    fn from(value: crate::Duplex<S, R>) -> Self {
+impl<S: Object, R: Object> TryFrom<crate::Duplex<S, R>> for Duplex<S, R> {
+    type Error = std::io::Error;
+    fn try_from(value: crate::Duplex<S, R>) -> Result<Self> {
         unsafe {
             let fd = value.into_raw_fd();
-            entry::enable_nonblock(fd).expect("Failed to set O_NONBLOCK");
-            Self::from_raw_fd(fd)
+            entry::enable_nonblock(fd)?;
+            Ok(Self::from_unix_stream(
+                std::os::unix::net::UnixStream::from_raw_fd(fd).try_into()?,
+            ))
         }
     }
 }
@@ -288,16 +277,9 @@ impl<S: Object, R: Object> AsRawFd for Duplex<S, R> {
 
 impl<S: Object, R: Object> IntoRawFd for Duplex<S, R> {
     fn into_raw_fd(self) -> RawFd {
-        self.fd.into_raw_fd()
-    }
-}
-
-impl<S: Object, R: Object> FromRawFd for Duplex<S, R> {
-    unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        Self::from_unix_seqpacket(
-            UnixSeqpacket::from_raw_fd(fd)
-                .expect("Failed to register fd in tokio in crossmist::tokio::Duplex::from_raw_fd"),
-        )
+        let fd = self.as_raw_fd();
+        std::mem::forget(self);
+        fd
     }
 }
 
