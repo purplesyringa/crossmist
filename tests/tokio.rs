@@ -58,6 +58,18 @@ async fn with_passed_nested_channel(mut chan: Receiver<Receiver<i32>>) -> i32 {
     chan1.recv().await.unwrap().unwrap()
 }
 
+#[crossmist::func]
+#[tokio::main(flavor = "current_thread")]
+async fn with_async_write(mut tx_data: Sender<i32>, mut tx_signal: Sender<()>) {
+    let future = tokio::spawn(async move {
+        for i in 0..1000 {
+            tx_data.send(&i).await.unwrap();
+        }
+    });
+    tx_signal.send(&()).await.unwrap();
+    future.await.unwrap();
+}
+
 #[crossmist::main]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -145,5 +157,20 @@ async fn main() {
         tx1.send(&rx).await.unwrap();
         assert_eq!(with_passed_nested_channel.run_tokio(rx1).await.unwrap(), 5);
         println!("with_passed_nested_channel OK");
+    }
+
+    {
+        let (tx_data, mut rx_data) = channel().unwrap();
+        let (tx_signal, mut rx_signal) = channel().unwrap();
+        let child = with_async_write
+            .spawn_tokio(tx_data, tx_signal)
+            .await
+            .unwrap();
+        rx_signal.recv().await.unwrap();
+        for i in 0..1000 {
+            assert_eq!(rx_data.recv().await.unwrap().unwrap(), i);
+        }
+        child.join().await.unwrap();
+        println!("with_async_write OK");
     }
 }

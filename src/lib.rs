@@ -374,6 +374,7 @@ mod platform {
     pub mod unix {
         pub(crate) mod entry;
         pub mod handles;
+        pub mod internals;
         pub mod ipc;
         pub mod subprocess;
         #[doc(cfg(feature = "tokio"))]

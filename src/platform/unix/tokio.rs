@@ -38,17 +38,15 @@
 
 use crate::{
     entry, imp,
-    ipc::{AncillaryBuffer, MAX_PACKET_FDS, MAX_PACKET_SIZE},
-    subprocess, Deserializer, FnOnceObject, Object, Serializer,
+    internals::{SingleObjectReceiver, SingleObjectSender},
+    subprocess, FnOnceObject, Object, Serializer,
 };
 use nix::libc::pid_t;
-use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
+use std::io::Result;
 use std::marker::PhantomData;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
-use tokio_seqpacket::{
-    ancillary::{AncillaryData, SocketAncillary},
-    UnixSeqpacket,
-};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use tokio::io::Interest;
+use tokio_seqpacket::UnixSeqpacket;
 
 /// The transmitting side of a unidirectional channel.
 ///
@@ -101,110 +99,17 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 }
 
 async fn send_on_fd<T: Object>(fd: &UnixSeqpacket, value: &T) -> Result<()> {
-    let (fds, serialized) = {
-        let mut s = Serializer::new();
-        s.serialize(value);
-        (s.drain_handles(), s.into_vec())
-    };
-
-    // Send the data and pass file descriptors
-    let mut buffer_pos: usize = 0;
-    let mut fds_pos: usize = 0;
-
-    loop {
-        let buffer_end = serialized.len().min(buffer_pos + MAX_PACKET_SIZE - 1);
-        let fds_end = fds.len().min(fds_pos + MAX_PACKET_FDS);
-
-        let is_last = buffer_end == serialized.len() && fds_end == fds.len();
-
-        let mut ancillary_buffer = AncillaryBuffer::new();
-        let mut ancillary = SocketAncillary::new(&mut ancillary_buffer.data);
-        if !ancillary.add_fds(&fds[fds_pos..fds_end]) {
-            return Err(Error::new(ErrorKind::Other, "Too many fds to pass"));
-        }
-
-        let n_written = fd
-            .send_vectored_with_ancillary(
-                &[
-                    IoSlice::new(&[is_last as u8]),
-                    IoSlice::new(&serialized[buffer_pos..buffer_end]),
-                ],
-                &mut ancillary,
-            )
-            .await?;
-        buffer_pos += n_written - 1;
-        fds_pos = fds_end;
-
-        if is_last {
-            break;
-        }
-    }
-
-    Ok(())
+    let mut sender = SingleObjectSender::new(fd.as_raw_fd(), value);
+    fd.as_async_fd()
+        .async_io(Interest::WRITABLE, |_| sender.send_next())
+        .await
 }
 
 async unsafe fn recv_on_fd<T: Object>(fd: &UnixSeqpacket) -> Result<Option<T>> {
-    // Read the data and the passed file descriptors
-    let mut serialized: Vec<u8> = Vec::new();
-    let mut buffer_pos: usize = 0;
-
-    let mut received_fds: Vec<OwnedFd> = Vec::new();
-
-    loop {
-        serialized.resize(buffer_pos + MAX_PACKET_SIZE - 1, 0);
-
-        let mut marker = [0];
-        let mut ancillary_buffer = AncillaryBuffer::new();
-        let mut ancillary = SocketAncillary::new(&mut ancillary_buffer.data);
-
-        let n_read = fd
-            .recv_vectored_with_ancillary(
-                &mut [
-                    IoSliceMut::new(&mut marker),
-                    IoSliceMut::new(&mut serialized[buffer_pos..]),
-                ],
-                &mut ancillary,
-            )
-            .await?;
-
-        for cmsg in ancillary.messages() {
-            if let Ok(AncillaryData::ScmRights(rights)) = cmsg {
-                for fd in rights {
-                    received_fds.push(unsafe { OwnedFd::from_raw_fd(fd) });
-                }
-            } else {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "Unexpected kind of cmsg on stream",
-                ));
-            }
-        }
-
-        if ancillary.is_empty() && n_read == 0 {
-            if buffer_pos == 0 && received_fds.is_empty() {
-                return Ok(None);
-            } else {
-                return Err(Error::new(ErrorKind::Other, "Unterminated data on stream"));
-            }
-        }
-
-        if n_read == 0 {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "Unexpected empty message on stream",
-            ));
-        }
-
-        buffer_pos += n_read - 1;
-        if marker[0] == 1 {
-            break;
-        }
-    }
-
-    serialized.truncate(buffer_pos);
-
-    let mut d = Deserializer::new(serialized, received_fds);
-    Ok(Some(d.deserialize()))
+    let mut receiver = SingleObjectReceiver::new(fd.as_raw_fd());
+    fd.as_async_fd()
+        .async_io(Interest::READABLE, |_| receiver.recv_next())
+        .await
 }
 
 impl<T: Object> Sender<T> {

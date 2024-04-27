@@ -26,44 +26,17 @@
 //! # std::io::Result::Ok(())
 //! ```
 
-use crate::{Deserializer, Object, Serializer};
-use nix::{
-    cmsg_space,
-    libc::{cmsghdr, AF_UNIX, SOCK_CLOEXEC, SOCK_SEQPACKET},
-    sys::socket::{recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags},
+use crate::{
+    internals::{SingleObjectReceiver, SingleObjectSender},
+    Object,
 };
-use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
+use nix::libc::{AF_UNIX, SOCK_CLOEXEC, SOCK_SEQPACKET};
+use std::io::Result;
 use std::marker::PhantomData;
 use std::os::unix::{
-    io::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd},
+    io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
     net::UnixStream,
 };
-
-const fn round_to_usize(n: usize) -> usize {
-    const ALIGNMENT: usize = std::mem::size_of::<usize>();
-    (n + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT
-}
-
-pub(crate) const MAX_PACKET_SIZE: usize = 16 * 1024;
-pub(crate) const MAX_PACKET_FDS: usize = 253; // SCM_MAX_FD
-pub(crate) const ANCILLARY_BUFFER_SIZE: usize =
-    round_to_usize(MAX_PACKET_FDS * std::mem::size_of::<i32>())
-        + round_to_usize(std::mem::size_of::<cmsghdr>());
-
-// https://github.com/rust-lang/rust/issues/76915#issuecomment-1875845773
-pub(crate) struct AncillaryBuffer {
-    _alignment: [usize; 0],
-    pub(crate) data: [u8; ANCILLARY_BUFFER_SIZE],
-}
-
-impl AncillaryBuffer {
-    pub(crate) fn new() -> Self {
-        Self {
-            _alignment: [],
-            data: [0u8; ANCILLARY_BUFFER_SIZE],
-        }
-    }
-}
 
 /// The transmitting side of a unidirectional channel.
 ///
@@ -113,107 +86,11 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 }
 
 fn send_on_fd<T: Object>(fd: &UnixStream, value: &T) -> Result<()> {
-    let mut s = Serializer::new();
-    s.serialize(value);
-
-    let fds = s.drain_handles();
-    let serialized = s.into_vec();
-
-    // Send the data and pass file descriptors
-    let mut buffer_pos: usize = 0;
-    let mut fds_pos: usize = 0;
-
-    loop {
-        let buffer_end = serialized.len().min(buffer_pos + MAX_PACKET_SIZE - 1);
-        let fds_end = fds.len().min(fds_pos + MAX_PACKET_FDS);
-
-        let is_last = buffer_end == serialized.len() && fds_end == fds.len();
-
-        let n_written = sendmsg::<()>(
-            fd.as_raw_fd(),
-            &[
-                IoSlice::new(&[is_last as u8]),
-                IoSlice::new(&serialized[buffer_pos..buffer_end]),
-            ],
-            &[ControlMessage::ScmRights(&fds[fds_pos..fds_end])],
-            MsgFlags::empty(),
-            None,
-        )?;
-
-        buffer_pos += n_written - 1;
-        fds_pos = fds_end;
-
-        if is_last {
-            break;
-        }
-    }
-
-    Ok(())
+    SingleObjectSender::new(fd.as_raw_fd(), value).send_next()
 }
 
 unsafe fn recv_on_fd<T: Object>(fd: &UnixStream) -> Result<Option<T>> {
-    // Read the data and the passed file descriptors
-    let mut serialized: Vec<u8> = Vec::new();
-    let mut buffer_pos: usize = 0;
-
-    let mut received_fds: Vec<OwnedFd> = Vec::new();
-
-    loop {
-        serialized.resize(buffer_pos + MAX_PACKET_SIZE - 1, 0);
-
-        let mut marker = [0];
-        let mut iovecs = [
-            IoSliceMut::new(&mut marker),
-            IoSliceMut::new(&mut serialized[buffer_pos..]),
-        ];
-
-        let mut ancillary = cmsg_space!([RawFd; MAX_PACKET_FDS]);
-
-        let message = recvmsg::<()>(
-            fd.as_raw_fd(),
-            &mut iovecs,
-            Some(&mut ancillary),
-            MsgFlags::MSG_CMSG_CLOEXEC,
-        )?;
-
-        for cmsg in message.cmsgs() {
-            if let ControlMessageOwned::ScmRights(rights) = cmsg {
-                for fd in rights {
-                    received_fds.push(unsafe { OwnedFd::from_raw_fd(fd) });
-                }
-            } else {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "Unexpected kind of cmsg on stream",
-                ));
-            }
-        }
-
-        if message.cmsgs().next().is_none() && message.bytes == 0 {
-            if buffer_pos == 0 && received_fds.is_empty() {
-                return Ok(None);
-            } else {
-                return Err(Error::new(ErrorKind::Other, "Unterminated data on stream"));
-            }
-        }
-
-        if message.bytes == 0 {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "Unexpected empty message on stream",
-            ));
-        }
-
-        buffer_pos += message.bytes - 1;
-        if marker[0] == 1 {
-            break;
-        }
-    }
-
-    serialized.truncate(buffer_pos);
-
-    let mut d = Deserializer::new(serialized, received_fds);
-    Ok(Some(d.deserialize()))
+    SingleObjectReceiver::new(fd.as_raw_fd()).recv_next()
 }
 
 impl<T: Object> Sender<T> {
