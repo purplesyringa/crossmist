@@ -27,12 +27,16 @@
 //! ```
 
 use crate::{Deserializer, Object, Serializer};
-use nix::libc::{cmsghdr, AF_UNIX, SOCK_CLOEXEC, SOCK_SEQPACKET};
+use nix::{
+    cmsg_space,
+    libc::{cmsghdr, AF_UNIX, SOCK_CLOEXEC, SOCK_SEQPACKET},
+    sys::socket::{recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags},
+};
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
 use std::os::unix::{
     io::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd},
-    net::{AncillaryData, SocketAncillary, UnixStream},
+    net::UnixStream,
 };
 
 const fn round_to_usize(n: usize) -> usize {
@@ -125,19 +129,17 @@ fn send_on_fd<T: Object>(fd: &UnixStream, value: &T) -> Result<()> {
 
         let is_last = buffer_end == serialized.len() && fds_end == fds.len();
 
-        let mut ancillary_buffer = AncillaryBuffer::new();
-        let mut ancillary = SocketAncillary::new(&mut ancillary_buffer.data);
-        if !ancillary.add_fds(&fds[fds_pos..fds_end]) {
-            return Err(Error::new(ErrorKind::Other, "Too many fds to pass"));
-        }
-
-        let n_written = fd.send_vectored_with_ancillary(
+        let n_written = sendmsg::<()>(
+            fd.as_raw_fd(),
             &[
                 IoSlice::new(&[is_last as u8]),
                 IoSlice::new(&serialized[buffer_pos..buffer_end]),
             ],
-            &mut ancillary,
+            &[ControlMessage::ScmRights(&fds[fds_pos..fds_end])],
+            MsgFlags::empty(),
+            None,
         )?;
+
         buffer_pos += n_written - 1;
         fds_pos = fds_end;
 
@@ -160,19 +162,22 @@ unsafe fn recv_on_fd<T: Object>(fd: &UnixStream) -> Result<Option<T>> {
         serialized.resize(buffer_pos + MAX_PACKET_SIZE - 1, 0);
 
         let mut marker = [0];
-        let mut ancillary_buffer = AncillaryBuffer::new();
-        let mut ancillary = SocketAncillary::new(&mut ancillary_buffer.data);
+        let mut iovecs = [
+            IoSliceMut::new(&mut marker),
+            IoSliceMut::new(&mut serialized[buffer_pos..]),
+        ];
 
-        let n_read = fd.recv_vectored_with_ancillary(
-            &mut [
-                IoSliceMut::new(&mut marker),
-                IoSliceMut::new(&mut serialized[buffer_pos..]),
-            ],
-            &mut ancillary,
+        let mut ancillary = cmsg_space!([RawFd; MAX_PACKET_FDS]);
+
+        let message = recvmsg::<()>(
+            fd.as_raw_fd(),
+            &mut iovecs,
+            Some(&mut ancillary),
+            MsgFlags::MSG_CMSG_CLOEXEC,
         )?;
 
-        for cmsg in ancillary.messages() {
-            if let Ok(AncillaryData::ScmRights(rights)) = cmsg {
+        for cmsg in message.cmsgs() {
+            if let ControlMessageOwned::ScmRights(rights) = cmsg {
                 for fd in rights {
                     received_fds.push(unsafe { OwnedFd::from_raw_fd(fd) });
                 }
@@ -184,7 +189,7 @@ unsafe fn recv_on_fd<T: Object>(fd: &UnixStream) -> Result<Option<T>> {
             }
         }
 
-        if ancillary.is_empty() && n_read == 0 {
+        if message.cmsgs().next().is_none() && message.bytes == 0 {
             if buffer_pos == 0 && received_fds.is_empty() {
                 return Ok(None);
             } else {
@@ -192,14 +197,14 @@ unsafe fn recv_on_fd<T: Object>(fd: &UnixStream) -> Result<Option<T>> {
             }
         }
 
-        if n_read == 0 {
+        if message.bytes == 0 {
             return Err(Error::new(
                 ErrorKind::Other,
                 "Unexpected empty message on stream",
             ));
         }
 
-        buffer_pos += n_read - 1;
+        buffer_pos += message.bytes - 1;
         if marker[0] == 1 {
             break;
         }

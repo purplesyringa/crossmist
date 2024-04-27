@@ -86,7 +86,6 @@
 //! implemented and to let us fix bugs quickly when they arise. As channels may only be used between
 //! two processes started from the same executable file, this does not violate semver.
 
-#![cfg_attr(unix, feature(unix_socket_ancillary_data))]
 #![feature(doc_cfg)]
 #![feature(fn_traits)]
 #![feature(never_type)]
