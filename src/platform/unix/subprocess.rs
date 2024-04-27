@@ -14,7 +14,7 @@
 //! This module is about what happens *after* the child process is started: you can kill the child,
 //! get its PID, or join it (i.e. wait till it returns and obtain the returned value).
 
-use crate::{duplex, entry, imp, FnOnceObject, Object, Receiver, Serializer};
+use crate::{duplex, entry, imp, Duplex, FnOnceObject, Object, Receiver, Serializer};
 use nix::{
     libc::{c_char, pid_t},
     sched,
@@ -80,11 +80,11 @@ impl<T: Object> Child<T> {
     }
 }
 
-pub(crate) unsafe fn _spawn_child(
-    child_fd: RawFd,
+pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
+    child_fd: Duplex<S, R>,
     inherited_fds: &[RawFd],
 ) -> Result<nix::unistd::Pid> {
-    let child_fd_str = CString::new(child_fd.to_string()).unwrap();
+    let child_fd_str = CString::new(child_fd.as_raw_fd().to_string()).unwrap();
 
     let spawn_cb = || {
         // No heap allocations are allowed from now on
@@ -107,7 +107,7 @@ pub(crate) unsafe fn _spawn_child(
                 None,
             )?;
 
-            entry::disable_cloexec(child_fd)?;
+            entry::disable_cloexec(child_fd.as_raw_fd())?;
             for fd in inherited_fds {
                 entry::disable_cloexec(*fd)?;
             }
@@ -154,7 +154,7 @@ pub unsafe fn spawn<T: Object>(
     let fds = s.drain_handles();
 
     let (mut local, child) = duplex::<(Vec<u8>, Vec<RawFd>), T>()?;
-    let pid = _spawn_child(child.as_raw_fd(), &fds)?;
+    let pid = _spawn_child(child, &fds)?;
     local.send(&(s.into_vec(), fds))?;
 
     Ok(Child::new(pid, local.into_receiver()))

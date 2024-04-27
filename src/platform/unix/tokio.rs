@@ -353,7 +353,7 @@ pub async unsafe fn spawn<T: Object>(
     let fds = s.drain_handles();
 
     let (mut local, child) = duplex::<(Vec<u8>, Vec<RawFd>), T>()?;
-    let pid = subprocess::_spawn_child(child.as_raw_fd(), &fds)?;
+    let pid = subprocess::_spawn_child(crate::Duplex::from(child), &fds)?;
     local.send(&(s.into_vec(), fds)).await?;
 
     Ok(Child::new(pid, local.into_receiver()))
