@@ -1,3 +1,6 @@
+// https://github.com/rust-lang/rust/issues/65991
+#![feature(trait_upcasting)]
+
 use anyhow::{anyhow, bail, Result};
 use crossmist::{
     func, lambda,
