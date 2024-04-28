@@ -11,6 +11,7 @@ use paste::paste;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};
 use std::os::raw::c_void;
+use std::ptr::{DynMetadata, Pointee};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -218,7 +219,7 @@ fn get_base_vtable_ptr() -> *const () {
     extract_vtable_ptr(&std::ptr::metadata(BASE_OBJECT))
 }
 
-impl<T: ?Sized> NonTrivialObject for std::ptr::DynMetadata<T> {
+impl<T: ?Sized> NonTrivialObject for DynMetadata<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         s.serialize(
             &(extract_vtable_ptr(self) as usize).wrapping_sub(get_base_vtable_ptr() as usize),
@@ -241,20 +242,26 @@ impl<T: ?Sized> NonTrivialObject for std::ptr::DynMetadata<T> {
     where
         T: 'a,
     {
-        Box::new(Self::deserialize_self_non_trivial(d))
+        Box::new(<Self as NonTrivialObject>::deserialize_self_non_trivial(d))
     }
 }
 
-impl<T: Object + std::ptr::Pointee + ?Sized> NonTrivialObject for Box<T>
+trait BoxMetadata<T: ?Sized>: Object
 where
-    T::Metadata: Object,
+    T: Pointee<Metadata = Self>,
 {
-    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        s.serialize(&std::ptr::metadata(self.as_ref()));
-        s.serialize(self.as_ref());
+    unsafe fn deserialize(d: &mut Deserializer) -> Box<T>;
+}
+
+impl<T: Object> BoxMetadata<T> for () {
+    unsafe fn deserialize(d: &mut Deserializer) -> Box<T> {
+        Box::new(d.deserialize())
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
-        let metadata = d.deserialize::<T::Metadata>();
+}
+
+impl<T: Object + Pointee<Metadata = Self> + ?Sized> BoxMetadata<T> for DynMetadata<T> {
+    unsafe fn deserialize(d: &mut Deserializer) -> Box<T> {
+        let metadata: Self = d.deserialize();
         let data_ptr = unsafe {
             Box::into_raw(
                 (*std::ptr::from_raw_parts::<T>(std::ptr::null(), metadata)).deserialize_on_heap(d),
@@ -263,6 +270,19 @@ where
         // Switch vtable
         let fat_ptr = std::ptr::from_raw_parts_mut(data_ptr.to_raw_parts().0, metadata);
         unsafe { Box::from_raw(fat_ptr) }
+    }
+}
+
+impl<T: Object + ?Sized> NonTrivialObject for Box<T>
+where
+    <T as Pointee>::Metadata: BoxMetadata<T>,
+{
+    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+        s.serialize(&std::ptr::metadata(self.as_ref()));
+        s.serialize(self.as_ref());
+    }
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+        <T as Pointee>::Metadata::deserialize(d)
     }
     unsafe fn deserialize_on_heap_non_trivial<'a>(
         &self,
