@@ -162,22 +162,12 @@ impl<T: Object> NonTrivialObject for Option<T> {
 }
 impl<T: PlainOldData> PlainOldData for Option<T> {}
 
-fn extract_vtable_ptr<T: ?Sized>(metadata: &std::ptr::DynMetadata<T>) -> *const () {
-    // Yeah, screw me
-    unsafe { *(metadata as *const std::ptr::DynMetadata<T> as *const *const ()) }
-}
-
 impl<T: ?Sized> NonTrivialObject for DynMetadata<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        s.serialize(&RelocatablePtr(extract_vtable_ptr(self)));
+        s.serialize(&RelocatablePtr::<()>(unsafe { std::mem::transmute(*self) }));
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
-        let vtable_ptr = d.deserialize::<RelocatablePtr<()>>().0;
-        let mut metadata: std::mem::MaybeUninit<Self> = std::mem::MaybeUninit::uninit();
-        unsafe {
-            *(metadata.as_mut_ptr() as *mut *const ()) = vtable_ptr;
-            metadata.assume_init()
-        }
+        std::mem::transmute(d.deserialize::<RelocatablePtr<()>>())
     }
 }
 
