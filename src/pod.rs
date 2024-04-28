@@ -32,14 +32,19 @@ pub trait Object {
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self
     where
         Self: Sized;
-    /// Deserialize a single object onto heap from a deserializer.
+    /// Deserialize a single object onto heap with dynamic typing from a deserializer.
     ///
     /// # Safety
     ///
-    /// The returned function is safe to call if the order of serialized types during serialization
-    /// and deserialization matches, up to serialization layout. See the documentation of
+    /// This function is safe to call if the order of serialized types during serialization and
+    /// deserialization matches, up to serialization layout. See the documentation of
     /// [`Deserializer::deserialize`] for more details.
-    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut ();
+    unsafe fn deserialize_on_heap<'a>(
+        self: *const Self,
+        d: &mut Deserializer,
+    ) -> Box<dyn Object + 'a>
+    where
+        Self: 'a;
 }
 
 impl<T: NonTrivialObject> Object for T {
@@ -60,8 +65,14 @@ impl<T: NonTrivialObject> Object for T {
     {
         T::deserialize_self_non_trivial(d)
     }
-    default fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut () {
-        |d| unsafe { Box::into_raw(Box::new(Self::deserialize_self_non_trivial(d))) as *mut () }
+    default unsafe fn deserialize_on_heap<'a>(
+        self: *const T,
+        d: &mut Deserializer,
+    ) -> Box<dyn Object + 'a>
+    where
+        Self: 'a,
+    {
+        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 
@@ -89,7 +100,10 @@ impl<T: PlainOldData> Object for T {
             val.assume_init()
         }
     }
-    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut () {
-        |d| unsafe { Box::into_raw(Box::new(Self::deserialize_self(d))) as *mut () }
+    unsafe fn deserialize_on_heap<'a>(self: *const T, d: &mut Deserializer) -> Box<dyn Object + 'a>
+    where
+        Self: 'a,
+    {
+        Box::new(Self::deserialize_self(d))
     }
 }

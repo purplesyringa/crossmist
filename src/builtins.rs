@@ -185,27 +185,26 @@ trait BoxMetadata<T: ?Sized>: Object
 where
     T: Pointee<Metadata = Self>,
 {
-    fn serialize_metadata(&self, value: &T, s: &mut Serializer);
     unsafe fn deserialize(d: &mut Deserializer) -> Box<T>;
 }
 
 impl<T: Object> BoxMetadata<T> for () {
-    fn serialize_metadata(&self, _value: &T, _s: &mut Serializer) {}
     unsafe fn deserialize(d: &mut Deserializer) -> Box<T> {
         Box::new(d.deserialize())
     }
 }
 
-impl<'a, T: Object + Pointee<Metadata = Self> + ?Sized + 'a> BoxMetadata<T> for DynMetadata<T> {
-    fn serialize_metadata(&self, value: &T, s: &mut Serializer) {
-        s.serialize(&RelocatablePtr(value.get_heap_deserializer() as *const ()));
-        s.serialize(self);
-    }
+impl<T: Object + Pointee<Metadata = Self> + ?Sized> BoxMetadata<T> for DynMetadata<T> {
     unsafe fn deserialize(d: &mut Deserializer) -> Box<T> {
-        let deserializer: unsafe fn(&mut Deserializer) -> *mut () =
-            unsafe { std::mem::transmute(d.deserialize::<RelocatablePtr<()>>()) };
         let metadata: Self = d.deserialize();
-        unsafe { Box::from_raw(std::ptr::from_raw_parts_mut(deserializer(d), metadata)) }
+        let data_ptr = unsafe {
+            Box::into_raw(
+                std::ptr::from_raw_parts::<T>(std::ptr::null(), metadata).deserialize_on_heap(d),
+            )
+        };
+        // Switch vtable
+        let fat_ptr = std::ptr::from_raw_parts_mut(data_ptr.to_raw_parts().0, metadata);
+        unsafe { Box::from_raw(fat_ptr) }
     }
 }
 
@@ -214,7 +213,7 @@ where
     <T as Pointee>::Metadata: BoxMetadata<T>,
 {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        std::ptr::metadata(self.as_ref()).serialize_metadata(self, s);
+        s.serialize(&std::ptr::metadata(self.as_ref()));
         self.as_ref().serialize_self(s);
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {

@@ -86,6 +86,7 @@
 //! implemented and to let us fix bugs quickly when they arise. As channels may only be used between
 //! two processes started from the same executable file, this does not violate semver.
 
+#![feature(arbitrary_self_types)]
 #![feature(doc_cfg)]
 #![feature(fn_traits)]
 #![feature(never_type)]
