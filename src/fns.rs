@@ -205,7 +205,7 @@ macro_rules! decl_fn {
         decl_fn!($($tail)*);
 
         paste! {
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Func: std::ops::FnOnce<([<T $head>], $([<T $tail>]),*)> + Object> BindValue<[<T $head>], ($([<T $tail>],)*)> for Func {
+            impl<[<T $head>]: Object $(, [<T $tail>])*, Func: FnOnceObject<([<T $head>], $([<T $tail>]),*)>> BindValue<[<T $head>], ($([<T $tail>],)*)> for Func {
                 fn bind_value(self, head: [<T $head>]) -> BoundValue<Self, [<T $head>]> {
                     BoundValue {
                         func: self,
@@ -213,7 +213,7 @@ macro_rules! decl_fn {
                     }
                 }
             }
-            impl<'a, [<T $head>]: 'a + Object $(, [<T $tail>])*, Func: std::ops::FnOnce<(&'a mut [<T $head>], $([<T $tail>]),*)> + Object> BindMut<[<T $head>], ($([<T $tail>],)*)> for Func {
+            impl<'a, [<T $head>]: 'a + Object $(, [<T $tail>])*, Func: FnOnceObject<(&'a mut [<T $head>], $([<T $tail>]),*)>> BindMut<[<T $head>], ($([<T $tail>],)*)> for Func {
                 fn bind_mut(self, head: [<T $head>]) -> BoundMut<Self, [<T $head>]> {
                     BoundMut {
                         func: self,
@@ -221,7 +221,7 @@ macro_rules! decl_fn {
                     }
                 }
             }
-            impl<'a, [<T $head>]: 'a + Object $(, [<T $tail>])*, Func: std::ops::FnOnce<(&'a [<T $head>], $([<T $tail>]),*)> + Object> BindRef<[<T $head>], ($([<T $tail>],)*)> for Func {
+            impl<'a, [<T $head>]: 'a + Object $(, [<T $tail>])*, Func: FnOnceObject<(&'a [<T $head>], $([<T $tail>]),*)>> BindRef<[<T $head>], ($([<T $tail>],)*)> for Func {
                 fn bind_ref(self, head: [<T $head>]) -> BoundRef<Self, [<T $head>]> {
                     BoundRef {
                         func: self,
@@ -230,7 +230,7 @@ macro_rules! decl_fn {
                 }
             }
 
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Func: std::ops::FnOnce<([<T $head>], $([<T $tail>]),*)> + Object> std::ops::FnOnce<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
+            impl<[<T $head>]: Object $(, [<T $tail>])*, Func: FnOnceObject<([<T $head>], $([<T $tail>]),*)>> std::ops::FnOnce<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
                 type Output = Func::Output;
 
                 #[allow(unused_variables)]
@@ -238,20 +238,20 @@ macro_rules! decl_fn {
                     self.func.call_once(reverse!([] $((args.$tail),)* (self.head)))
                 }
             }
-            impl<[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: std::ops::FnMut<([<T $head>], $([<T $tail>]),*)> + Object> std::ops::FnMut<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
+            impl<[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: FnMutObject<([<T $head>], $([<T $tail>]),*)>> std::ops::FnMut<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
                 #[allow(unused_variables)]
                 extern "rust-call" fn call_mut(&mut self, args: ($([<T $tail>],)*)) -> Self::Output {
                     self.func.call_mut(reverse!([] $((args.$tail),)* (self.head)))
                 }
             }
-            impl<[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: std::ops::Fn<([<T $head>], $([<T $tail>]),*)> + Object> std::ops::Fn<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
+            impl<[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: FnObject<([<T $head>], $([<T $tail>]),*)>> std::ops::Fn<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
                 #[allow(unused_variables)]
                 extern "rust-call" fn call(&self, args: ($([<T $tail>],)*)) -> Self::Output {
                     self.func.call(reverse!([] $((args.$tail),)* (self.head)))
                 }
             }
 
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> std::ops::FnOnce<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output> + Object> std::ops::FnOnce<($([<T $tail>],)*)> for BoundMut<Func, [<T $head>]> {
+            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output>> std::ops::FnOnce<($([<T $tail>],)*)> for BoundMut<Func, [<T $head>]> {
                 type Output = Output;
 
                 #[allow(unused_variables)]
@@ -259,14 +259,14 @@ macro_rules! decl_fn {
                     self.func.call_once(reverse!([] $((args.$tail),)* (&mut self.head)))
                 }
             }
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> std::ops::FnMut<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output> + Object> std::ops::FnMut<($([<T $tail>],)*)> for BoundMut<Func, [<T $head>]> {
+            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output>> std::ops::FnMut<($([<T $tail>],)*)> for BoundMut<Func, [<T $head>]> {
                 #[allow(unused_variables)]
                 extern "rust-call" fn call_mut(&mut self, args: ($([<T $tail>],)*)) -> Self::Output {
                     self.func.call_mut(reverse!([] $((args.$tail),)* (&mut self.head)))
                 }
             }
 
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> std::ops::FnOnce<(&'a [<T $head>], $([<T $tail>]),*), Output = Output> + Object> std::ops::FnOnce<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
+            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>> std::ops::FnOnce<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
                 type Output = Output;
 
                 #[allow(unused_variables)]
@@ -274,13 +274,13 @@ macro_rules! decl_fn {
                     self.func.call_once(reverse!([] $((args.$tail),)* (&self.head)))
                 }
             }
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> std::ops::FnMut<(&'a [<T $head>], $([<T $tail>]),*), Output = Output> + Object> std::ops::FnMut<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
+            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>> std::ops::FnMut<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
                 #[allow(unused_variables)]
                 extern "rust-call" fn call_mut(&mut self, args: ($([<T $tail>],)*)) -> Self::Output {
                     self.func.call_mut(reverse!([] $((args.$tail),)* (&self.head)))
                 }
             }
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> std::ops::Fn<(&'a [<T $head>], $([<T $tail>]),*), Output = Output> + Object> std::ops::Fn<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
+            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>> std::ops::Fn<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
                 #[allow(unused_variables)]
                 extern "rust-call" fn call(&self, args: ($([<T $tail>],)*)) -> Self::Output {
                     self.func.call(reverse!([] $((args.$tail),)* (&self.head)))
