@@ -35,7 +35,7 @@ impl Serializer {
     }
 
     /// Append serialized data of an object.
-    pub fn serialize<T: Object + ?Sized>(&mut self, data: &T) {
+    pub fn serialize<T: Object>(&mut self, data: &T) {
         data.serialize_self(self);
     }
 
@@ -213,22 +213,8 @@ impl Deserializer {
 ///         let second = d.deserialize::<U>();
 ///         Self { first, second }
 ///     }
-///     unsafe fn deserialize_on_heap_non_trivial<'a>(
-///         &self,
-///         d: &mut Deserializer,
-///     ) -> Box<dyn Object + 'a>
-///     where
-///         Self: 'a
-///     {
-///         Box::new(Self::deserialize_self_non_trivial(d))
-///     }
 /// }
 /// ```
-///
-/// The contents of `serialize_self_non_trivial` and `deserialize_self_non_trivial` should be fairly
-/// obvious. `deserialize_on_heap_non_trivial` must *always* contain this exact code (up to
-/// equivalent changes): this is an unsafe technical detail that can't be avoided due to certain
-/// limitations of Rust.
 ///
 ///
 /// ## Cyclic structures
@@ -287,15 +273,6 @@ impl Deserializer {
 ///             }
 ///         }
 ///     }
-///     unsafe fn deserialize_on_heap_non_trivial<'a>(
-///         &self,
-///         d: &mut Deserializer,
-///     ) -> Box<dyn Object + 'a>
-///     where
-///         T: 'a,
-///     {
-///         Box::new(Self::deserialize_self_non_trivial(d))
-///     }
 /// }
 /// ```
 ///
@@ -327,13 +304,6 @@ impl Deserializer {
 ///         // then be used to create the instance of the object we are deserializing
 ///         Self(d.deserialize::<OwnedHandle>().into())
 ///     }
-///     unsafe fn deserialize_on_heap_non_trivial<'a>(
-///         &self,
-///         d: &mut Deserializer,
-///     ) -> Box<dyn Object + 'a>
-///     {
-///         Box::new(Self::deserialize_self_non_trivial(d))
-///     }
 /// }
 /// ```
 pub trait NonTrivialObject {
@@ -346,20 +316,5 @@ pub trait NonTrivialObject {
     /// This function is safe to call if the order of serialized types during serialization and
     /// deserialization matches, up to serialization layout. See the documentation of
     /// [`Deserializer::deserialize`] for more details.
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self
-    where
-        Self: Sized;
-    /// Deserialize a single object onto heap with dynamic typing from a deserializer.
-    ///
-    /// # Safety
-    ///
-    /// This function is safe to call if the order of serialized types during serialization and
-    /// deserialization matches, up to serialization layout. See the documentation of
-    /// [`Deserializer::deserialize`] for more details.
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        Self: 'a;
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self;
 }

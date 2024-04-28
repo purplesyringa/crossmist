@@ -88,13 +88,4 @@ impl<T: Object> NonTrivialObject for Delayed<T> {
             inner: DelayedInner::Serialized(d.deserialize(), handles),
         }
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }

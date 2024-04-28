@@ -15,7 +15,7 @@ pub trait PlainOldData: NonTrivialObject {}
 /// You don't need to call the methods of this trait directly: crossmist does this for you whenever
 /// you pass objects over channels. In case you need to transmit data via other ways of
 /// communication, use [`Serializer`] and [`Deserializer`] APIs.
-pub trait Object: NonTrivialObject {
+pub trait Object {
     /// Serialize a single object into a serializer.
     fn serialize_self(&self, s: &mut Serializer);
     /// Serialize an array of objects into a serializer.
@@ -44,7 +44,7 @@ pub trait Object: NonTrivialObject {
         Self: 'a;
 }
 
-impl<T: NonTrivialObject + ?Sized> Object for T {
+impl<T: NonTrivialObject> Object for T {
     default fn serialize_self(&self, s: &mut Serializer) {
         self.serialize_self_non_trivial(s);
     }
@@ -66,7 +66,7 @@ impl<T: NonTrivialObject + ?Sized> Object for T {
     where
         Self: 'a,
     {
-        self.deserialize_on_heap_non_trivial(d)
+        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 

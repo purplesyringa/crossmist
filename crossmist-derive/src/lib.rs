@@ -415,9 +415,6 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                     unsafe fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> Self {
                         #deserialize_fields
                     }
-                    unsafe fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist:: Object + 'serde> where Self: 'serde {
-                        ::std::boxed::Box::new(Self::deserialize_self_non_trivial(d))
-                    }
                 }
                 impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}
             }
@@ -521,9 +518,6 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                             #(#deserialize_variants,)*
                             _ => panic!("Unexpected enum variant"),
                         }
-                    }
-                    unsafe fn deserialize_on_heap_non_trivial<'serde>(&self, d: &mut ::crossmist::Deserializer) -> ::std::boxed::Box<dyn ::crossmist::Object + 'serde> where Self: 'serde {
-                        ::std::boxed::Box::new(Self::deserialize_self_non_trivial(d))
                     }
                 }
                 impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}

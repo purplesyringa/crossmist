@@ -24,9 +24,6 @@ macro_rules! impl_pod {
             unsafe fn deserialize_self_non_trivial(_d: &mut Deserializer) -> Self {
                 unreachable!()
             }
-            unsafe fn deserialize_on_heap_non_trivial<'a>(&self, _d: &mut Deserializer) -> Box<dyn Object + 'a> {
-                unreachable!()
-            }
         }
         impl<$($generics)*> PlainOldData for $t {}
     };
@@ -36,9 +33,6 @@ macro_rules! impl_pod {
                 unreachable!()
             }
             unsafe fn deserialize_self_non_trivial(_d: &mut Deserializer) -> Self {
-                unreachable!()
-            }
-            unsafe fn deserialize_on_heap_non_trivial<'a>(&self, _d: &mut Deserializer) -> Box<dyn Object + 'a> {
                 unreachable!()
             }
         }
@@ -88,12 +82,6 @@ impl NonTrivialObject for String {
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         unsafe { String::from_utf8_unchecked(d.deserialize::<Vec<u8>>()) }
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 impl NonTrivialObject for std::ffi::CString {
@@ -105,12 +93,6 @@ impl NonTrivialObject for std::ffi::CString {
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         unsafe { Self::from_vec_unchecked(d.deserialize::<Vec<u8>>()) }
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 impl NonTrivialObject for std::ffi::OsString {
@@ -121,12 +103,6 @@ impl NonTrivialObject for std::ffi::OsString {
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         unsafe { Self::from_encoded_bytes_unchecked(d.deserialize()) }
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 
@@ -157,12 +133,6 @@ macro_rules! impl_serialize_for_tuple {
                     $( let [<x $tail>] = d.deserialize(); )*
                     ($([<x $tail>],)*)
                 }
-                unsafe fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
-                where
-                    $([<T $tail>]: 'a),*
-                {
-                    Box::new(Self::deserialize_self_non_trivial(d))
-                }
             }
             impl<$([<T $tail>]: PlainOldData),*> PlainOldData for ($([<T $tail>],)*) {}
         }
@@ -187,15 +157,6 @@ impl<T: Object> NonTrivialObject for Option<T> {
         } else {
             None
         }
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 impl<T: PlainOldData> PlainOldData for Option<T> {}
@@ -235,15 +196,6 @@ impl<T: ?Sized> NonTrivialObject for DynMetadata<T> {
             metadata.assume_init()
         }
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-    {
-        Box::new(<Self as NonTrivialObject>::deserialize_self_non_trivial(d))
-    }
 }
 
 trait BoxMetadata<T: ?Sized>: Object
@@ -279,19 +231,10 @@ where
 {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         s.serialize(&std::ptr::metadata(self.as_ref()));
-        s.serialize(self.as_ref());
+        self.as_ref().serialize_self(s);
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         <T as Pointee>::Metadata::deserialize(d)
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 
@@ -318,15 +261,6 @@ impl<T: 'static + Object> NonTrivialObject for Rc<T> {
             Some(id) => d.get_cyclic::<Rc<T>>(id).clone(),
         }
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 impl<T: 'static + Object> NonTrivialObject for Arc<T> {
@@ -352,15 +286,6 @@ impl<T: 'static + Object> NonTrivialObject for Arc<T> {
             Some(id) => d.get_cyclic::<Arc<T>>(id).clone(),
         }
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 impl NonTrivialObject for std::path::PathBuf {
@@ -372,12 +297,6 @@ impl NonTrivialObject for std::path::PathBuf {
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         d.deserialize::<std::ffi::OsString>().into()
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 impl<T: Object, const N: usize> NonTrivialObject for [T; N] {
@@ -386,15 +305,6 @@ impl<T: Object, const N: usize> NonTrivialObject for [T; N] {
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         [0; N].map(|_| d.deserialize())
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 impl<T: PlainOldData, const N: usize> PlainOldData for [T; N] {}
@@ -411,15 +321,6 @@ impl<T: Object> NonTrivialObject for Vec<T> {
             seq.push(d.deserialize());
         }
         seq
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 
@@ -447,9 +348,6 @@ macro_rules! impl_serialize_for_sequence {
                     $push(&mut $seq, d.deserialize());
                 }
                 $seq
-            }
-            unsafe fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> where T: 'a $(, $typaram: 'a)* {
-                Box::new(Self::deserialize_self_non_trivial(d))
             }
         }
     }
@@ -486,9 +384,6 @@ macro_rules! impl_serialize_for_map {
                     map.insert(d.deserialize(), d.deserialize());
                 }
                 map
-            }
-            unsafe fn deserialize_on_heap_non_trivial<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a> where K: 'a, V: 'a $(, $typaram: 'a)* {
-                Box::new(Self::deserialize_self_non_trivial(d))
             }
         }
     }
@@ -556,16 +451,6 @@ impl<T: Object, E: Object> NonTrivialObject for Result<T, E> {
             Err(d.deserialize())
         }
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        T: 'a,
-        E: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 impl<T: PlainOldData, E: PlainOldData> PlainOldData for Result<T, E> {}
 
@@ -578,12 +463,6 @@ impl NonTrivialObject for OwnedHandle {
         let handle = d.deserialize();
         d.drain_handle(handle)
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 impl NonTrivialObject for std::fs::File {
@@ -593,12 +472,6 @@ impl NonTrivialObject for std::fs::File {
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         d.deserialize::<OwnedHandle>().into()
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 
@@ -615,12 +488,6 @@ impl NonTrivialObject for tokio::fs::File {
             <Self as FromRawHandle>::from_raw_handle(d.drain_handle(handle).into_raw_handle())
         }
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 #[doc(cfg(feature = "smol"))]
@@ -632,12 +499,6 @@ impl NonTrivialObject for async_fs::File {
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         d.deserialize::<std::fs::File>().into()
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 
@@ -651,12 +512,6 @@ impl NonTrivialObject for std::os::unix::net::UnixStream {
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         d.deserialize::<OwnedHandle>().into()
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 #[doc(cfg(all(unix, feature = "tokio")))]
@@ -669,12 +524,6 @@ impl NonTrivialObject for tokio::net::UnixStream {
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         Self::from_std(d.deserialize()).expect("Failed to deserialize tokio::net::UnixStream")
     }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
 }
 
 #[doc(cfg(all(unix, feature = "smol")))]
@@ -685,12 +534,6 @@ impl<T: 'static + std::os::fd::AsFd + Object> NonTrivialObject for async_io::Asy
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         async_io::Async::new(d.deserialize::<T>()).expect("Failed to deserialize async_io::Async")
-    }
-    unsafe fn deserialize_on_heap_non_trivial<'a>(
-        &self,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a> {
-        Box::new(Self::deserialize_self_non_trivial(d))
     }
 }
 
