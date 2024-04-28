@@ -377,9 +377,12 @@ pub use crate::serde::*;
 mod platform {
     #[cfg(unix)]
     pub mod unix {
+        #[doc(cfg(feature = "async"))]
+        #[cfg(feature = "async")]
+        pub mod asynchronous;
         pub(crate) mod entry;
         pub mod handles;
-        pub mod internals;
+        pub(crate) mod internals;
         pub mod ipc;
         #[doc(cfg(feature = "smol"))]
         #[cfg(feature = "smol")]
