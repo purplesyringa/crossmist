@@ -1,5 +1,8 @@
 pub use crate::pod::PlainOldData;
 
+#[cfg(feature = "smol")]
+pub use async_io;
+
 use crate::entry;
 use std::sync::atomic::{AtomicBool, Ordering};
 

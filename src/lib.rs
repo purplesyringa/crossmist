@@ -1,5 +1,5 @@
 //! Efficient and seamless cross-process communication, providing semantics similar to
-//! [`std::thread::spawn`] and alike, both synchronously and asynchronously (via tokio).
+//! [`std::thread::spawn`] and alike, both synchronously and asynchronously (via tokio or smol).
 //!
 //! This crate allows you to easily perform computations in another process without creating a
 //! separate executable or parsing command line arguments manually. For example, the simplest
@@ -232,9 +232,7 @@ extern crate self as crossmist;
 ///
 /// ## Asynchronous case
 ///
-/// This section applies if the `tokio` feature is enabled.
-///
-/// The following methods are also made available:
+/// If the `tokio` feature is enabled, the following methods are also made available:
 ///
 /// ```ignore
 /// pub async fn spawn_tokio(&self, arg1: Type1, ...) ->
@@ -242,12 +240,18 @@ extern crate self as crossmist;
 /// pub async fn run_tokio(&self, arg1: Type1, ...) -> std::io::Result<Output>;
 /// ```
 ///
+/// If `smol` is enabled, the functions `spawn_smol` and `run_smol` with matching signatures are
+/// generated.
+///
 /// Additionally, the function may be `async`. In this case, you have to indicate which runtime to
 /// use as follows:
 ///
 /// ```ignore
 /// #[crossmist::func(tokio)]
-/// async fn example() {}
+/// async fn example_tokio() {}
+///
+/// #[crossmist::func(smol)]
+/// async fn example_smol() {}
 /// ```
 ///
 /// You may pass operands to forward to `tokio::main` like this:
@@ -257,8 +261,9 @@ extern crate self as crossmist;
 /// async fn example() {}
 /// ```
 ///
-/// Notice that the use of `spawn` vs `spawn_tokio` is orthogonal to whether the function is
-/// `async`: you can start a synchronous function in a child process asynchronously, or vice versa:
+/// Notice that the use of `spawn` vs `spawn_tokio`/`spawn_smol` is orthogonal to whether the
+/// function is `async`: you can start a synchronous function in a child process asynchronously, or
+/// vice versa:
 ///
 /// ```rust
 /// use crossmist::{func, main};
@@ -376,6 +381,9 @@ mod platform {
         pub mod handles;
         pub mod internals;
         pub mod ipc;
+        #[doc(cfg(feature = "smol"))]
+        #[cfg(feature = "smol")]
+        pub mod smol;
         pub mod subprocess;
         #[doc(cfg(feature = "tokio"))]
         #[cfg(feature = "tokio")]
@@ -386,6 +394,9 @@ mod platform {
         pub(crate) mod entry;
         pub mod handles;
         pub mod ipc;
+        #[doc(cfg(feature = "smol"))]
+        #[cfg(feature = "smol")]
+        pub mod smol;
         pub mod subprocess;
         #[doc(cfg(feature = "tokio"))]
         #[cfg(feature = "tokio")]

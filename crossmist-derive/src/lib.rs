@@ -12,11 +12,14 @@ use syn::{DeriveInput, Meta, MetaList};
 #[proc_macro_attribute]
 pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     let mut tokio_argument = None;
+    let mut smol_argument = None;
 
     let args = parse_macro_input!(meta with Punctuated::<Meta, syn::Token![,]>::parse_terminated);
     for arg in args {
         if arg.path().is_ident("tokio") {
             tokio_argument = Some(arg);
+        } else if arg.path().is_ident("smol") {
+            smol_argument = Some(arg);
         } else {
             return quote_spanned! { arg.span() => compile_error!("Unknown attribute argument"); }
                 .into();
@@ -146,10 +149,16 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
     let return_type_wrapped;
     let pin;
-    let body;
-    if let Some(arg) = tokio_argument {
+    if tokio_argument.is_some() || smol_argument.is_some() {
         return_type_wrapped = quote! { ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = #return_type>>> };
         pin = quote! { ::std::boxed::Box::pin };
+    } else {
+        return_type_wrapped = return_type.clone();
+        pin = quote! {};
+    }
+
+    let body;
+    if let Some(arg) = tokio_argument {
         let async_attribute = match arg {
             Meta::Path(_) => quote! { #[tokio::main] },
             Meta::List(MetaList { nested, .. }) => quote! { #[tokio::main(#nested)] },
@@ -163,9 +172,19 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
                 entry.func.deserialize()().await
             }
         };
+    } else if let Some(arg) = smol_argument {
+        match arg {
+            Meta::Path(_) => {}
+            _ => {
+                return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'smol' argument"); }.into();
+            }
+        }
+        body = quote! {
+            fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
+                ::crossmist::imp::async_io::block_on(entry.func.deserialize()())
+            }
+        };
     } else {
-        return_type_wrapped = return_type.clone();
-        pin = quote! {};
         body = quote! {
             fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
                 entry.func.deserialize()()
@@ -188,6 +207,12 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
                 unsafe { ::crossmist::tokio::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
             }
 
+            #[cfg(feature = "smol")]
+            pub async fn spawn_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
+                use ::crossmist::BindValue;
+                unsafe { ::crossmist::smol::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
+            }
+
             pub fn run #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
                 self.spawn(#(#arg_names,)*)?.join()
             }
@@ -195,6 +220,11 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             #[cfg(feature = "tokio")]
             pub async fn run_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
                 self.spawn_tokio(#(#arg_names,)*).await?.join().await
+            }
+
+            #[cfg(feature = "smol")]
+            pub async fn run_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
+                self.spawn_smol(#(#arg_names,)*).await?.join().await
             }
         }
     };

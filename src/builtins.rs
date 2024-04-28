@@ -603,6 +603,24 @@ impl NonTrivialObject for tokio::fs::File {
     }
 }
 
+#[doc(cfg(feature = "smol"))]
+#[cfg(feature = "smol")]
+impl NonTrivialObject for async_fs::File {
+    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+        let handle = s.add_handle(self.as_raw_handle());
+        s.serialize(&handle)
+    }
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+        d.deserialize::<std::fs::File>().into()
+    }
+    unsafe fn deserialize_on_heap_non_trivial<'a>(
+        &self,
+        d: &mut Deserializer,
+    ) -> Box<dyn Object + 'a> {
+        Box::new(Self::deserialize_self_non_trivial(d))
+    }
+}
+
 #[doc(cfg(unix))]
 #[cfg(unix)]
 impl NonTrivialObject for std::os::unix::net::UnixStream {
@@ -630,6 +648,23 @@ impl NonTrivialObject for tokio::net::UnixStream {
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
         Self::from_std(d.deserialize()).expect("Failed to deserialize tokio::net::UnixStream")
+    }
+    unsafe fn deserialize_on_heap_non_trivial<'a>(
+        &self,
+        d: &mut Deserializer,
+    ) -> Box<dyn Object + 'a> {
+        Box::new(Self::deserialize_self_non_trivial(d))
+    }
+}
+
+#[doc(cfg(all(unix, feature = "smol")))]
+#[cfg(all(unix, feature = "smol"))]
+impl<T: 'static + std::os::fd::AsFd + Object> NonTrivialObject for async_io::Async<T> {
+    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+        s.serialize(self.get_ref())
+    }
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+        async_io::Async::new(d.deserialize::<T>()).expect("Failed to deserialize async_io::Async")
     }
     unsafe fn deserialize_on_heap_non_trivial<'a>(
         &self,
