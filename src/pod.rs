@@ -32,16 +32,14 @@ pub trait Object {
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self
     where
         Self: Sized;
-    /// Deserialize a single object onto heap with dynamic typing from a deserializer.
+    /// Deserialize a single object onto heap from a deserializer.
     ///
     /// # Safety
     ///
-    /// This function is safe to call if the order of serialized types during serialization and
-    /// deserialization matches, up to serialization layout. See the documentation of
+    /// The returned function is safe to call if the order of serialized types during serialization
+    /// and deserialization matches, up to serialization layout. See the documentation of
     /// [`Deserializer::deserialize`] for more details.
-    unsafe fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
-    where
-        Self: 'a;
+    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut ();
 }
 
 impl<T: NonTrivialObject> Object for T {
@@ -62,11 +60,8 @@ impl<T: NonTrivialObject> Object for T {
     {
         T::deserialize_self_non_trivial(d)
     }
-    default unsafe fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
-    where
-        Self: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
+    default fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut () {
+        |d| unsafe { Box::into_raw(Box::new(Self::deserialize_self_non_trivial(d))) as *mut () }
     }
 }
 
@@ -94,10 +89,7 @@ impl<T: PlainOldData> Object for T {
             val.assume_init()
         }
     }
-    unsafe fn deserialize_on_heap<'a>(&self, d: &mut Deserializer) -> Box<dyn Object + 'a>
-    where
-        Self: 'a,
-    {
-        Box::new(Self::deserialize_self(d))
+    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut () {
+        |d| unsafe { Box::into_raw(Box::new(Self::deserialize_self(d))) as *mut () }
     }
 }
