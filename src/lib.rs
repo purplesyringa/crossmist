@@ -242,20 +242,18 @@ extern crate self as crossmist;
 /// pub async fn run_tokio(&self, arg1: Type1, ...) -> std::io::Result<Output>;
 /// ```
 ///
-/// Additionally, the function may be `async`. In this case, you have to add the `#[tokio::main]`
-/// attribute *after* `#[func]`. For instance:
+/// Additionally, the function may be `async`. In this case, you have to indicate which runtime to
+/// use as follows:
 ///
 /// ```ignore
-/// #[crossmist::func]
-/// #[tokio::main]
+/// #[crossmist::func(tokio)]
 /// async fn example() {}
 /// ```
 ///
-/// You may pass operands to `tokio::main` just like usual:
+/// You may pass operands to forward to `tokio::main` like this:
 ///
 /// ```rust
-/// #[crossmist::func]
-/// #[tokio::main(flavor = "current_thread")]
+/// #[crossmist::func(tokio(flavor = "current_thread"))]
 /// async fn example() {}
 /// ```
 ///
@@ -281,8 +279,7 @@ extern crate self as crossmist;
 /// ```rust
 /// use crossmist::{func, main};
 ///
-/// #[func]
-/// #[tokio::main(flavor = "current_thread")]
+/// #[func(tokio(flavor = "current_thread"))]
 /// async fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }

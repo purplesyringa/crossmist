@@ -5,17 +5,25 @@ extern crate quote;
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use syn::parse_macro_input;
-use syn::DeriveInput;
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::{DeriveInput, Meta, MetaList};
 
 #[proc_macro_attribute]
-pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
-    let mut input = parse_macro_input!(input as syn::ItemFn);
+pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
+    let mut tokio_argument = None;
 
-    let tokio_attr_index = input.attrs.iter().position(|attr| {
-        let path = &attr.path;
-        (quote! {#path}).to_string().contains("tokio :: main")
-    });
-    let tokio_attr = tokio_attr_index.map(|i| input.attrs.remove(i));
+    let args = parse_macro_input!(meta with Punctuated::<Meta, syn::Token![,]>::parse_terminated);
+    for arg in args {
+        if arg.path().is_ident("tokio") {
+            tokio_argument = Some(arg);
+        } else {
+            return quote_spanned! { arg.span() => compile_error!("Unknown attribute argument"); }
+                .into();
+        }
+    }
+
+    let mut input = parse_macro_input!(input as syn::ItemFn);
 
     let return_type = match input.sig.output {
         syn::ReturnType::Default => quote! { () },
@@ -137,19 +145,32 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let return_type_wrapped;
-    let async_;
     let pin;
-    let dot_await;
-    if tokio_attr.is_some() {
+    let body;
+    if let Some(arg) = tokio_argument {
         return_type_wrapped = quote! { ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = #return_type>>> };
-        async_ = quote! { async };
-        pin = quote! { Box::pin };
-        dot_await = quote! { .await };
+        pin = quote! { ::std::boxed::Box::pin };
+        let async_attribute = match arg {
+            Meta::Path(_) => quote! { #[tokio::main] },
+            Meta::List(MetaList { nested, .. }) => quote! { #[tokio::main(#nested)] },
+            Meta::NameValue(..) => {
+                return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'tokio' argument"); }.into();
+            }
+        };
+        body = quote! {
+            #async_attribute
+            async fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
+                entry.func.deserialize()().await
+            }
+        };
     } else {
         return_type_wrapped = return_type.clone();
-        async_ = quote! {};
         pin = quote! {};
-        dot_await = quote! {};
+        body = quote! {
+            fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
+                entry.func.deserialize()()
+            }
+        };
     }
 
     let impl_code = if has_references {
@@ -196,16 +217,16 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
 
         impl #generic_params ::crossmist::InternalFnOnce<(::crossmist::handles::RawHandle,)> for #entry_ident #generics {
             type Output = i32;
-            #tokio_attr
             #[allow(unreachable_code)] // If func returns !
-            #async_ fn call_once(self, args: (::crossmist::handles::RawHandle,)) -> Self::Output {
-                let output_tx_handle = args.0;
-                use ::crossmist::handles::FromRawHandle;
-                let return_value = self.func.deserialize()() #dot_await;
+            fn call_once(self, args: (::crossmist::handles::RawHandle,)) -> Self::Output {
+                #body
+                let return_value = body(self);
                 // Avoid explicitly sending a () result
                 if ::crossmist::imp::if_void::<#return_type>().is_none() {
-                    // If this function is async, there shouldn't be any tokio task running at this
+                    use ::crossmist::handles::FromRawHandle;
+                    // If this function is async, there shouldn't be any task running at this
                     // moment, so it is fine (and more efficient) to use a sync sender
+                    let output_tx_handle = args.0;
                     let mut output_tx = unsafe {
                         ::crossmist::Sender::<#return_type>::from_raw_handle(output_tx_handle)
                     };

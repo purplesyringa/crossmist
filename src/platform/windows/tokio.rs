@@ -27,8 +27,7 @@
 //! e.g. the following works too:
 //!
 //! ```ignore
-//! #[func]
-//! #[tokio::main]
+//! #[func(tokio)]
 //! async fn my_process() {
 //!     ...
 //! }

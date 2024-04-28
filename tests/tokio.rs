@@ -7,20 +7,17 @@ struct SimplePair {
     y: i32,
 }
 
-#[crossmist::func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn simple() -> i64 {
     0x123456789abcdef
 }
 
-#[crossmist::func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn add_with_arguments(x: i32, y: i32) -> i32 {
     x + y
 }
 
-#[crossmist::func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn swap_complex_argument(pair: SimplePair) -> SimplePair {
     SimplePair {
         x: pair.y,
@@ -28,38 +25,33 @@ async fn swap_complex_argument(pair: SimplePair) -> SimplePair {
     }
 }
 
-#[crossmist::func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn with_passed_rx(mut rx: Receiver<i32>) -> i32 {
     let a = rx.recv().await.unwrap().unwrap();
     let b = rx.recv().await.unwrap().unwrap();
     a - b
 }
 
-#[crossmist::func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn with_passed_tx(mut tx: Sender<i32>) {
     tx.send(&5).await.unwrap();
     tx.send(&7).await.unwrap();
 }
 
-#[crossmist::func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn with_passed_duplex(mut chan: Duplex<i32, (i32, i32)>) {
     while let Some((x, y)) = chan.recv().await.unwrap() {
         chan.send(&(x - y)).await.unwrap();
     }
 }
 
-#[crossmist::func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn with_passed_nested_channel(mut chan: Receiver<Receiver<i32>>) -> i32 {
     let mut chan1 = chan.recv().await.unwrap().unwrap();
     chan1.recv().await.unwrap().unwrap()
 }
 
-#[crossmist::func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn with_async_write(mut tx_data: Sender<i32>, mut tx_signal: Sender<()>) {
     let future = tokio::spawn(async move {
         for i in 0..1000 {
