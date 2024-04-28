@@ -5,6 +5,7 @@ use crate::handles::{FromRawHandle, IntoRawHandle};
 use crate::{
     handles::{AsRawHandle, OwnedHandle},
     pod::PlainOldData,
+    relocation::RelocatablePtr,
     Deserializer, NonTrivialObject, Object, Serializer,
 };
 use paste::paste;
@@ -161,35 +162,17 @@ impl<T: Object> NonTrivialObject for Option<T> {
 }
 impl<T: PlainOldData> PlainOldData for Option<T> {}
 
-trait BaseTrait {}
-
-struct BaseType;
-
-impl BaseTrait for BaseType {}
-
-// This needs to be a singleton to prevent different codegen units from using different copies of a
-// single vtable for BaseType. See also: https://github.com/alecmocatta/relative/pull/2
-static BASE_OBJECT: &(dyn BaseTrait + Sync) = &BaseType;
-
 fn extract_vtable_ptr<T: ?Sized>(metadata: &std::ptr::DynMetadata<T>) -> *const () {
     // Yeah, screw me
     unsafe { *(metadata as *const std::ptr::DynMetadata<T> as *const *const ()) }
 }
 
-fn get_base_vtable_ptr() -> *const () {
-    extract_vtable_ptr(&std::ptr::metadata(BASE_OBJECT))
-}
-
 impl<T: ?Sized> NonTrivialObject for DynMetadata<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        s.serialize(
-            &(extract_vtable_ptr(self) as usize).wrapping_sub(get_base_vtable_ptr() as usize),
-        );
+        s.serialize(&RelocatablePtr(extract_vtable_ptr(self)));
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
-        let vtable_ptr = d
-            .deserialize::<usize>()
-            .wrapping_add(get_base_vtable_ptr() as usize) as *const ();
+        let vtable_ptr = d.deserialize::<RelocatablePtr<()>>().0;
         let mut metadata: std::mem::MaybeUninit<Self> = std::mem::MaybeUninit::uninit();
         unsafe {
             *(metadata.as_mut_ptr() as *mut *const ()) = vtable_ptr;
@@ -215,18 +198,12 @@ impl<T: Object> BoxMetadata<T> for () {
 
 impl<'a, T: Object + Pointee<Metadata = Self> + ?Sized + 'a> BoxMetadata<T> for DynMetadata<T> {
     fn serialize_metadata(&self, value: &T, s: &mut Serializer) {
-        s.serialize(
-            &(value.get_heap_deserializer() as usize).wrapping_sub(get_base_vtable_ptr() as usize),
-        );
+        s.serialize(&RelocatablePtr(value.get_heap_deserializer() as *const ()));
         s.serialize(self);
     }
     unsafe fn deserialize(d: &mut Deserializer) -> Box<T> {
-        let deserializer: unsafe fn(&mut Deserializer) -> *mut () = unsafe {
-            std::mem::transmute(
-                d.deserialize::<usize>()
-                    .wrapping_add(get_base_vtable_ptr() as usize) as *const (),
-            )
-        };
+        let deserializer: unsafe fn(&mut Deserializer) -> *mut () =
+            unsafe { std::mem::transmute(d.deserialize::<RelocatablePtr<()>>()) };
         let metadata: Self = d.deserialize();
         unsafe { Box::from_raw(std::ptr::from_raw_parts_mut(deserializer(d), metadata)) }
     }

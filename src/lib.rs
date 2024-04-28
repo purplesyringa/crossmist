@@ -414,6 +414,8 @@ pub use crate::platform::windows::*;
 
 pub use ipc::{channel, duplex, Duplex, Receiver, Sender};
 
+pub(crate) mod relocation;
+
 pub use subprocess::*;
 
 mod builtins;
