@@ -8,7 +8,7 @@ pub static INITIALIZED: AtomicBool = AtomicBool::new(false);
 pub(crate) fn perform_sanity_checks() {
     assert!(
         INITIALIZED.load(Ordering::Acquire),
-        "#[crossmist::main] is missing"
+        "#[crossmist::main] or a call to crossmist::init() is missing"
     );
 }
 
@@ -99,8 +99,17 @@ pub fn if_void<T>() -> Option<T> {
     T::if_void()
 }
 
-pub fn start() {
-    INITIALIZED.store(true, Ordering::Release);
+/// Initialize the crossmist runtime.
+///
+/// This function should always be called at the beginning of the program. It is automatically
+/// called by `#[crossmist::main]`.
+///
+/// When crossmist spawns child processes, they start executing `main`. Calling [`init`] lets
+/// crossmist passes control to the function that the process is actually supposed to be executing.
+pub fn init() {
+    if INITIALIZED.swap(true, Ordering::AcqRel) {
+        return;
+    }
 
     let mut args = std::env::args();
     if let Some(s) = args.next() {

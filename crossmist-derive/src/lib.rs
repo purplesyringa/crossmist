@@ -261,7 +261,7 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
         #input
 
         fn main() {
-            ::crossmist::imp::start();
+            ::crossmist::init();
             ::std::process::exit(::crossmist::imp::Report::report(crossmist_old_main()));
         }
     };

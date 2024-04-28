@@ -317,6 +317,8 @@ pub use crossmist_derive::func;
 ///     // ...
 /// }
 /// ```
+///
+/// If applying the attribute to `main` is not an option, consider [`init`] instead.
 pub use crossmist_derive::main;
 
 /// Make a structure or a enum serializable.
@@ -365,6 +367,7 @@ pub use crossmist_derive::Object;
 
 #[doc(hidden)]
 pub mod imp;
+pub use imp::init;
 
 pub mod serde;
 pub use crate::serde::*;
