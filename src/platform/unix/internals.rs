@@ -152,8 +152,8 @@ impl<T: Object> SingleObjectReceiver<T> {
             self.buffer_pos += message.bytes - 1;
             if marker[0] == 1 {
                 self.buffer.truncate(self.buffer_pos);
-                let buffer = std::mem::replace(&mut self.buffer, Vec::new());
-                let fds = std::mem::replace(&mut self.fds, Vec::new());
+                let buffer = std::mem::take(&mut self.buffer);
+                let fds = std::mem::take(&mut self.fds);
                 let mut d = Deserializer::new(buffer, fds);
                 return Ok(Some(unsafe { d.deserialize() }));
             }
