@@ -89,7 +89,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     let entry_ident = format_ident!("E_{}", link_name);
 
     let ident = input.sig.ident;
-    input.sig.ident = format_ident!("call");
+    input.sig.ident = format_ident!("invoke");
 
     let vis = input.vis;
     input.vis = syn::Visibility::Public(syn::VisPublic {
@@ -270,17 +270,17 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         impl #generic_params ::crossmist::InternalFnOnce<(#(#fn_types,)*)> for #type_ident {
             type Output = #return_type_wrapped;
             fn call_once(self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::call(#(#args_from_tuple,)*))
+                #pin(#type_ident::invoke(#(#args_from_tuple,)*))
             }
         }
         impl #generic_params ::crossmist::InternalFnMut<(#(#fn_types,)*)> for #type_ident {
             fn call_mut(&mut self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::call(#(#args_from_tuple,)*))
+                #pin(#type_ident::invoke(#(#args_from_tuple,)*))
             }
         }
         impl #generic_params ::crossmist::InternalFn<(#(#fn_types,)*)> for #type_ident {
             fn call(&self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::call(#(#args_from_tuple,)*))
+                #pin(#type_ident::invoke(#(#args_from_tuple,)*))
             }
         }
 
