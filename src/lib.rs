@@ -90,6 +90,7 @@
 #![feature(doc_cfg)]
 #![feature(never_type)]
 #![feature(ptr_metadata)]
+#![feature(set_ptr_value)]
 #![feature(specialization)]
 #![feature(try_blocks)]
 #![feature(unwrap_infallible)]

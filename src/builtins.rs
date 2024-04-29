@@ -186,15 +186,8 @@ impl<T: Object> BoxMetadata<T> for () {
 
 impl<T: Object + Pointee<Metadata = Self> + ?Sized> BoxMetadata<T> for DynMetadata<T> {
     unsafe fn deserialize(d: &mut Deserializer) -> Box<T> {
-        let metadata: Self = d.deserialize();
-        let data_ptr = unsafe {
-            Box::into_raw(
-                std::ptr::from_raw_parts::<T>(std::ptr::null(), metadata).deserialize_on_heap(d),
-            )
-        };
-        // Switch vtable
-        let fat_ptr = std::ptr::from_raw_parts_mut(data_ptr.to_raw_parts().0, metadata);
-        unsafe { Box::from_raw(fat_ptr) }
+        let meta = std::ptr::from_raw_parts::<T>(std::ptr::null(), d.deserialize::<Self>());
+        unsafe { Box::from_raw(Box::into_raw(meta.deserialize_on_heap(d)).with_metadata_of(meta)) }
     }
 }
 
