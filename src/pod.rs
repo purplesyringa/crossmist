@@ -2,6 +2,10 @@ use crate::{imp::implements, Deserializer, NonTrivialObject, Serializer};
 
 pub trait PlainOldData: NonTrivialObject {}
 
+mod private {
+    pub trait Sealed {}
+}
+
 /// A serializable object.
 ///
 /// This trait is already implemented for most types from the standard library for which it can
@@ -15,7 +19,7 @@ pub trait PlainOldData: NonTrivialObject {}
 /// You don't need to call the methods of this trait directly: crossmist does this for you whenever
 /// you pass objects over channels. In case you need to transmit data via other ways of
 /// communication, use [`Serializer`] and [`Deserializer`] APIs.
-pub trait Object {
+pub trait Object: private::Sealed {
     /// Serialize a single object into a serializer.
     fn serialize_self(&self, s: &mut Serializer);
     /// Serialize an array of objects into a serializer.
@@ -47,6 +51,7 @@ pub trait Object {
         Self: 'a;
 }
 
+impl<T: NonTrivialObject> private::Sealed for T {}
 impl<T: NonTrivialObject> Object for T {
     fn serialize_self(&self, s: &mut Serializer) {
         if implements!(T: PlainOldData) {
