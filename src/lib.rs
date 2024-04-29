@@ -86,7 +86,6 @@
 //! implemented and to let us fix bugs quickly when they arise. As channels may only be used between
 //! two processes started from the same executable file, this does not violate semver.
 
-#![feature(try_blocks)]
 #![cfg_attr(
     feature = "nightly",
     feature(
