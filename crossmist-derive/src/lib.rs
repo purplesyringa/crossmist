@@ -244,7 +244,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
         impl #generic_params ::crossmist::InternalFnOnce<(::crossmist::handles::RawHandle,)> for #entry_ident #generics {
             type Output = i32;
-            #[allow(unreachable_code)] // If func returns !
+            #[allow(unreachable_code, clippy::diverging_sub_expression)] // If func returns !
             fn call_object_once(self, args: (::crossmist::handles::RawHandle,)) -> Self::Output {
                 #body
                 let return_value = body(self);
