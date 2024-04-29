@@ -1,4 +1,4 @@
-use crate::{Deserializer, NonTrivialObject, Serializer};
+use crate::{imp::implements, Deserializer, NonTrivialObject, Serializer};
 
 pub trait PlainOldData: NonTrivialObject {}
 
@@ -48,58 +48,50 @@ pub trait Object {
 }
 
 impl<T: NonTrivialObject> Object for T {
-    default fn serialize_self(&self, s: &mut Serializer) {
-        self.serialize_self_non_trivial(s);
-    }
-    default fn serialize_slice(elements: &[Self], s: &mut Serializer)
-    where
-        Self: Sized,
-    {
-        for element in elements {
-            element.serialize_self_non_trivial(s)
+    fn serialize_self(&self, s: &mut Serializer) {
+        if implements!(T: PlainOldData) {
+            s.write(unsafe {
+                std::slice::from_raw_parts(self as *const T as *const u8, std::mem::size_of::<T>())
+            });
+        } else {
+            self.serialize_self_non_trivial(s);
         }
     }
-    default unsafe fn deserialize_self(d: &mut Deserializer) -> Self
+
+    fn serialize_slice(elements: &[Self], s: &mut Serializer)
     where
         Self: Sized,
     {
-        T::deserialize_self_non_trivial(d)
+        if implements!(T: PlainOldData) {
+            s.write(unsafe {
+                std::slice::from_raw_parts(
+                    elements.as_ptr() as *const u8,
+                    std::mem::size_of_val(elements),
+                )
+            });
+        } else {
+            for element in elements {
+                element.serialize_self_non_trivial(s)
+            }
+        }
     }
-    default unsafe fn deserialize_on_heap<'a>(
-        self: *const T,
-        d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
-    where
-        Self: 'a,
-    {
-        Box::new(Self::deserialize_self_non_trivial(d))
-    }
-}
 
-impl<T: PlainOldData> Object for T {
-    fn serialize_self(&self, s: &mut Serializer) {
-        s.write(unsafe {
-            std::slice::from_raw_parts(self as *const T as *const u8, std::mem::size_of::<T>())
-        });
-    }
-    fn serialize_slice(elements: &[T], s: &mut Serializer) {
-        s.write(unsafe {
-            std::slice::from_raw_parts(
-                elements.as_ptr() as *const u8,
-                std::mem::size_of_val(elements),
-            )
-        });
-    }
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-        unsafe {
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self
+    where
+        Self: Sized,
+    {
+        if implements!(T: PlainOldData) {
             let mut val = std::mem::MaybeUninit::<T>::uninit();
             d.read(std::slice::from_raw_parts_mut(
                 val.as_mut_ptr() as *mut u8,
                 std::mem::size_of::<T>(),
             ));
             val.assume_init()
+        } else {
+            T::deserialize_self_non_trivial(d)
         }
     }
+
     unsafe fn deserialize_on_heap<'a>(self: *const T, d: &mut Deserializer) -> Box<dyn Object + 'a>
     where
         Self: 'a,

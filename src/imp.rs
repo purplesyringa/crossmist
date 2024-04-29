@@ -71,6 +71,7 @@ macro_rules! implements {
         cell.get()
     }};
 }
+pub(crate) use implements;
 
 /// Returns Some(()) if T is (), None otherwise
 ///
