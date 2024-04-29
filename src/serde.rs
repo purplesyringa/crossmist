@@ -205,10 +205,7 @@ impl Deserializer {
 ///         s.serialize(&self.first);
 ///         s.serialize(&self.second);
 ///     }
-///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self
-///     where
-///         Self: Sized
-///     {
+///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
 ///         let first = d.deserialize::<T>();
 ///         let second = d.deserialize::<U>();
 ///         Self { first, second }
