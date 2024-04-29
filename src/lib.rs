@@ -89,8 +89,6 @@
 #![feature(arbitrary_self_types)]
 #![feature(doc_cfg)]
 #![feature(never_type)]
-#![feature(ptr_metadata)]
-#![feature(set_ptr_value)]
 #![feature(try_blocks)]
 #![feature(unwrap_infallible)]
 #![cfg_attr(feature = "nightly", feature(fn_traits, tuple_trait, unboxed_closures))]

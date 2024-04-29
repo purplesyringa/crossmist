@@ -1,43 +1,56 @@
-use crate::{relocation::RelocatablePtr, Deserializer, NonTrivialObject, Object, Serializer};
-use std::ptr::{DynMetadata, Pointee};
+use crate::{
+    imp::implements, relocation::RelocatablePtr, Deserializer, NonTrivialObject, Object, Serializer,
+};
 
-trait BoxMetadata<T: ?Sized> {
-    fn serialize_metadata(self, s: &mut Serializer);
-    unsafe fn deserialize(d: &mut Deserializer) -> Box<T>;
+#[repr(C)]
+struct DynFatPtr {
+    data: *const (),
+    vtable: *const (),
 }
 
-impl<T: Object> BoxMetadata<T> for () {
-    fn serialize_metadata(self, _s: &mut Serializer) {}
-    unsafe fn deserialize(d: &mut Deserializer) -> Box<T> {
-        Box::new(d.deserialize())
-    }
-}
-
-impl<T: Object + Pointee<Metadata = Self> + ?Sized> BoxMetadata<T> for DynMetadata<T> {
-    fn serialize_metadata(self, s: &mut Serializer) {
-        s.serialize(&RelocatablePtr(unsafe {
-            std::mem::transmute::<Self, *const ()>(self)
-        }));
-    }
-    unsafe fn deserialize(d: &mut Deserializer) -> Box<T> {
-        let meta = std::ptr::from_raw_parts::<T>(
-            std::ptr::null(),
-            std::mem::transmute::<RelocatablePtr<()>, Self>(d.deserialize()),
-        );
-        unsafe { Box::from_raw(Box::into_raw(meta.deserialize_on_heap(d)).with_metadata_of(meta)) }
-    }
-}
-
-impl<T: Object + ?Sized> NonTrivialObject for Box<T>
-where
-    <T as Pointee>::Metadata: BoxMetadata<T>,
-{
+impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        std::ptr::metadata(self.as_ref()).serialize_metadata(s);
-        self.as_ref().serialize_self(s);
+        if implements!(T: Sized) {
+            self.as_ref().serialize_self(s);
+        } else {
+            // Object is only implemented for types that implement NonTrivialObject, which inherits
+            // Sized, and `dyn Trait` where `Trait: Object`. Therefore, the only possible T here is
+            // `dyn Trait`. Slices are handled in another impl block, custom DSTs are not supported
+            // at all.
+            assert!(
+                std::mem::size_of::<&T>() == std::mem::size_of::<DynFatPtr>(),
+                "Unexpected fat pointer size. You are probably trying to serialize Box<&dyn \
+                 TraitA + TraitB>, which crossmist does not support, because this feature was not \
+                 present in rustc when this crate was published.",
+            );
+            let fat_ptr = unsafe { std::mem::transmute_copy::<&T, DynFatPtr>(&self.as_ref()) };
+            s.serialize(&RelocatablePtr(fat_ptr.vtable));
+            self.as_ref().serialize_self(s);
+        }
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
-        <T as Pointee>::Metadata::deserialize(d)
+        let mut pointer: *mut T = if implements!(T: Sized) {
+            assert!(std::mem::size_of::<&T>() == std::mem::size_of::<usize>());
+            std::mem::transmute_copy::<usize, *mut T>(&0usize)
+        } else {
+            assert!(
+                std::mem::size_of::<&T>() == std::mem::size_of::<DynFatPtr>(),
+                "Unexpected fat pointer size. You are probably trying to serialize Box<&dyn \
+                 TraitA + TraitB>, which crossmist does not support, because this feature was not \
+                 present in rustc when this crate was published.",
+            );
+            std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
+                data: std::ptr::null(),
+                vtable: d.deserialize::<RelocatablePtr<()>>().0,
+            })
+        };
+        std::ptr::copy_nonoverlapping(
+            &Box::into_raw(pointer.deserialize_on_heap(d)) as *const *mut dyn Object
+                as *const *mut (),
+            &mut pointer as *mut *mut T as *mut *mut (),
+            1,
+        );
+        Box::from_raw(pointer)
     }
 }
 

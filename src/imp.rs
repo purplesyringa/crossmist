@@ -58,8 +58,8 @@ macro_rules! implements {
         fn use_trait<T: $($trait)*>(_: T) {}
 
         // https://stackoverflow.com/a/71721609
-        struct Probe<'a, T>(&'a std::cell::Cell<bool>, std::marker::PhantomData<T>);
-        impl<T> Clone for Probe<'_, T> {
+        struct Probe<'a, T: ?Sized>(&'a std::cell::Cell<bool>, std::marker::PhantomData<T>);
+        impl<T: ?Sized> Clone for Probe<'_, T> {
             fn clone(&self) -> Self {
                 self.0.set(false);
                 Self(self.0, self.1)
