@@ -85,6 +85,15 @@
 //! architecture- or build-dependent. This is done to both ensure performance optimizations can be
 //! implemented and to let us fix bugs quickly when they arise. As channels may only be used between
 //! two processes started from the same executable file, this does not violate semver.
+//!
+//!
+//! ## Features
+//!
+//! This crate provides the following features:
+//! - `tokio`: enable [Tokio](https://tokio.rs) async runtime support.
+//! - `smol`: enable [smol](https://crates.io/crates/smol) async runtime support.
+//! - `nightly`: make use of nightly features. This enables crossmist to be more performant and
+//! provide better API, but requires a nightly compiler to be used.
 
 #![cfg_attr(
     feature = "nightly",
