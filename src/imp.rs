@@ -51,20 +51,25 @@ impl<T: ?Sized> IdentityImpl<'_> for T {
     type Type = Self;
 }
 
-trait IfVoid {
-    fn if_void() -> Option<Self>
-    where
-        Self: Sized;
-}
-impl<T> IfVoid for T {
-    default fn if_void() -> Option<Self> {
-        None
-    }
-}
-impl IfVoid for () {
-    fn if_void() -> Option<Self> {
-        Some(())
-    }
+macro_rules! implements {
+    ($type:ty: $($trait:tt)*) => {{
+        // Workaround for a false positive "trait is never used" warning
+        #[allow(dead_code)]
+        fn use_trait<T: $($trait)*>(_: T) {}
+
+        // https://stackoverflow.com/a/71721609
+        struct Probe<'a, T>(&'a std::cell::Cell<bool>, std::marker::PhantomData<T>);
+        impl<T> Clone for Probe<'_, T> {
+            fn clone(&self) -> Self {
+                self.0.set(false);
+                Self(self.0, self.1)
+            }
+        }
+        impl<T: $($trait)*> Copy for Probe<'_, T> {}
+        let cell = std::cell::Cell::new(true);
+        let _ = [Probe(&cell, std::marker::PhantomData::<$type>)].clone();
+        cell.get()
+    }};
 }
 
 /// Returns Some(()) if T is (), None otherwise
@@ -99,8 +104,10 @@ impl IfVoid for () {
 /// }
 /// ```
 pub fn if_void<T>() -> Option<T> {
-    T::if_void()
+    implements!(T: IsVoid).then(|| unsafe { std::ptr::NonNull::<T>::dangling().as_ptr().read() })
 }
+trait IsVoid {}
+impl IsVoid for () {}
 
 /// Initialize the crossmist runtime.
 ///
