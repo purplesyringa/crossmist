@@ -39,6 +39,11 @@ fn inc_with_boxed(item: Box<i32>) -> Box<i32> {
     Box::new(*item + 1)
 }
 
+#[crossmist::func]
+fn inc_with_vec_and_box(vec: Vec<i32>, box_: Box<[i32]>) -> (i32, i32) {
+    (vec.iter().sum(), box_.iter().sum())
+}
+
 trait Trait: Object {
     fn say(&self) -> String;
 }
@@ -181,6 +186,16 @@ fn main() {
         8
     );
     println!("inc_with_boxed OK");
+
+    assert_eq!(
+        inc_with_vec_and_box
+            .spawn(vec![1, 2, 3], Box::new([4, 5, 6]))
+            .unwrap()
+            .join()
+            .expect("inc_with_vec_and_box failed"),
+        (6, 15)
+    );
+    println!("inc_with_vec_and_box OK");
 
     assert_eq!(
         with_passed_trait

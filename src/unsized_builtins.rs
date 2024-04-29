@@ -40,3 +40,13 @@ where
         <T as Pointee>::Metadata::deserialize(d)
     }
 }
+
+impl<T: Object> NonTrivialObject for Box<[T]> {
+    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+        s.serialize(&self.len());
+        s.serialize_slice(self.as_ref());
+    }
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+        d.deserialize::<Vec<T>>().into_boxed_slice()
+    }
+}
