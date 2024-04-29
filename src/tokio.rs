@@ -2,14 +2,20 @@
 //!
 //! Check out the docs at [`asynchronous`] for more information.
 
-use crate::{asynchronous, FnOnceObject, Object};
+use crate::{asynchronous, handles::RawHandle, FnOnceObject, Object};
 use std::io::Result;
-use std::os::unix::io::RawFd;
+#[cfg(windows)]
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncWriteExt},
+};
+#[cfg(unix)]
 use tokio::{io::Interest, net::UnixStream};
 
 /// `tokio` marker struct.
 pub struct Tokio;
 
+#[cfg(unix)]
 unsafe impl asynchronous::AsyncRuntime for Tokio {
     type Stream = UnixStream;
 
@@ -25,6 +31,20 @@ unsafe impl asynchronous::AsyncRuntime for Tokio {
         f: impl FnMut() -> Result<T> + Send,
     ) -> Result<T> {
         stream.async_io(Interest::READABLE, f).await
+    }
+}
+
+#[cfg(windows)]
+unsafe impl asynchronous::AsyncRuntime for Tokio {
+    type Stream = File;
+
+    async fn write(stream: &mut Self::Stream, buf: &[u8]) -> Result<()> {
+        stream.write_all(buf).await
+    }
+
+    async fn read(stream: &mut Self::Stream, buf: &mut [u8]) -> Result<()> {
+        stream.read_exact(buf).await?;
+        Ok(())
     }
 }
 
@@ -59,7 +79,7 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 
 #[doc(hidden)]
 pub async unsafe fn spawn<T: Object>(
-    entry: Box<dyn FnOnceObject<(RawFd,), Output = i32>>,
+    entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
 ) -> Result<Child<T>> {
     asynchronous::spawn::<Tokio, T>(entry).await
 }

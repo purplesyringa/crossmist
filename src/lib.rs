@@ -429,13 +429,7 @@ mod platform {
         pub mod handles;
         pub(crate) mod internals;
         pub mod ipc;
-        #[cfg_attr(feature = "nightly", doc(cfg(feature = "smol")))]
-        #[cfg(feature = "smol")]
-        pub mod smol;
         pub mod subprocess;
-        #[cfg_attr(feature = "nightly", doc(cfg(feature = "tokio")))]
-        #[cfg(feature = "tokio")]
-        pub mod tokio;
     }
     #[cfg(windows)]
     pub mod windows {
@@ -445,13 +439,7 @@ mod platform {
         pub(crate) mod entry;
         pub mod handles;
         pub mod ipc;
-        #[cfg_attr(feature = "nightly", doc(cfg(feature = "smol")))]
-        #[cfg(feature = "smol")]
-        pub mod smol;
         pub mod subprocess;
-        #[cfg_attr(feature = "nightly", doc(cfg(feature = "tokio")))]
-        #[cfg(feature = "tokio")]
-        pub mod tokio;
     }
 }
 
@@ -459,6 +447,11 @@ mod platform {
 pub use crate::platform::unix::*;
 #[cfg(windows)]
 pub use crate::platform::windows::*;
+
+#[cfg(feature = "smol")]
+pub mod smol;
+#[cfg(feature = "tokio")]
+pub mod tokio;
 
 pub use ipc::{channel, duplex, Duplex, Receiver, Sender};
 
