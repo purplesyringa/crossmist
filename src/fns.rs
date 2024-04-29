@@ -93,15 +93,93 @@ use crate::Object;
 use paste::paste;
 use std::ops::Deref;
 
+macro_rules! impl_fn {
+    (
+        impl[$($generic_bounds:tt)*] FnOnce<$args_ty:ty, Output = $output:ty> for $target:ty =
+        $(#[$attr:meta])*
+        |$self:tt, $args:tt| {
+            $($body:tt)*
+        }
+    ) => {
+        #[cfg(feature = "nightly")]
+        impl<$($generic_bounds)*> std::ops::FnOnce<$args_ty> for $target {
+            type Output = $output;
+            $(#[$attr])*
+            #[allow(unused_mut)]
+            extern "rust-call" fn call_once(mut $self, $args: $args_ty) -> Self::Output {
+                $($body)*
+            }
+        }
+        #[cfg(not(feature = "nightly"))]
+        impl<$($generic_bounds)*> FnOnceObject<$args_ty> for $target {
+            type Output = $output;
+            $(#[$attr])*
+            #[allow(unused_mut)]
+            fn call_object_once(mut $self, $args: $args_ty) -> Self::Output {
+                $($body)*
+            }
+            fn call_object_box(self: Box<Self>, args: $args_ty) -> Self::Output {
+                (*self).call_object_once(args)
+            }
+        }
+    };
+
+    (
+        impl[$($generic_bounds:tt)*] FnMut<$args_ty:ty> for $target:ty =
+        $(#[$attr:meta])*
+        |$self:tt, $args:tt| {
+            $($body:tt)*
+        }
+    ) => {
+        #[cfg(feature = "nightly")]
+        impl<$($generic_bounds)*> std::ops::FnMut<$args_ty> for $target {
+            $(#[$attr])*
+            extern "rust-call" fn call_mut(&mut $self, $args: $args_ty) -> Self::Output {
+                $($body)*
+            }
+        }
+        #[cfg(not(feature = "nightly"))]
+        impl<$($generic_bounds)*> FnMutObject<$args_ty> for $target {
+            $(#[$attr])*
+            fn call_object_mut(&mut $self, $args: $args_ty) -> Self::Output {
+                $($body)*
+            }
+        }
+    };
+
+    (
+        impl[$($generic_bounds:tt)*] Fn<$args_ty:ty> for $target:ty =
+        $(#[$attr:meta])*
+        |$self:tt, $args:tt| {
+            $($body:tt)*
+        }
+    ) => {
+        #[cfg(feature = "nightly")]
+        impl<$($generic_bounds)*> std::ops::Fn<$args_ty> for $target {
+            $(#[$attr])*
+            extern "rust-call" fn call(&$self, $args: $args_ty) -> Self::Output {
+                $($body)*
+            }
+        }
+        #[cfg(not(feature = "nightly"))]
+        impl<$($generic_bounds)*> FnObject<$args_ty> for $target {
+            $(#[$attr])*
+            fn call_object(&$self, $args: $args_ty) -> Self::Output {
+                $($body)*
+            }
+        }
+    };
+}
+
 #[doc(hidden)]
 #[derive(Object)]
 pub struct CallWrapper<T: Object>(pub T);
 
-#[cfg(feature = "nightly")]
 /// A tuple.
 ///
 /// Do not rely on the exact definition of this trait, as it may change depending on the enabled
 /// features.
+#[cfg(feature = "nightly")]
 pub trait Tuple: std::marker::Tuple {}
 #[cfg(feature = "nightly")]
 impl<T: std::marker::Tuple> Tuple for T {}
@@ -110,11 +188,11 @@ impl<T: std::marker::Tuple> Tuple for T {}
 mod private {
     pub trait Sealed {}
 }
-#[cfg(not(feature = "nightly"))]
 /// A tuple.
 ///
 /// Do not rely on the exact definition of this trait, as it may change depending on the enabled
 /// features.
+#[cfg(not(feature = "nightly"))]
 pub trait Tuple: private::Sealed {}
 #[cfg(not(feature = "nightly"))]
 macro_rules! decl_tuple {
@@ -140,20 +218,10 @@ pub trait InternalFnOnce<Args>: Object {
     type Output;
     fn call_object_once(self, args: Args) -> Self::Output;
 }
-#[cfg(feature = "nightly")]
-impl<Args: Tuple, T: InternalFnOnce<Args>> std::ops::FnOnce<Args> for CallWrapper<T> {
-    type Output = T::Output;
-    extern "rust-call" fn call_once(self, args: Args) -> Self::Output {
+impl_fn! {
+    impl[Args: Tuple, T: InternalFnOnce<Args>] FnOnce<Args, Output = T::Output> for CallWrapper<T> =
+    |self, args| {
         self.0.call_object_once(args)
-    }
-}
-impl<Args: Tuple, T: InternalFnOnce<Args>> FnOnceObject<Args> for CallWrapper<T> {
-    type Output = T::Output;
-    fn call_object_once(self, args: Args) -> Self::Output {
-        self.0.call_object_once(args)
-    }
-    fn call_object_box(self: Box<Self>, args: Args) -> Self::Output {
-        (*self).call_object_once(args)
     }
 }
 
@@ -161,14 +229,8 @@ impl<Args: Tuple, T: InternalFnOnce<Args>> FnOnceObject<Args> for CallWrapper<T>
 pub trait InternalFnMut<Args>: InternalFnOnce<Args> {
     fn call_object_mut(&mut self, args: Args) -> Self::Output;
 }
-#[cfg(feature = "nightly")]
-impl<Args: Tuple, T: InternalFnMut<Args>> std::ops::FnMut<Args> for CallWrapper<T> {
-    extern "rust-call" fn call_mut(&mut self, args: Args) -> Self::Output {
-        self.0.call_object_mut(args)
-    }
-}
-impl<Args: Tuple, T: InternalFnMut<Args>> FnMutObject<Args> for CallWrapper<T> {
-    fn call_object_mut(&mut self, args: Args) -> Self::Output {
+impl_fn! {
+    impl[Args: Tuple, T: InternalFnMut<Args>] FnMut<Args> for CallWrapper<T> = |self, args| {
         self.0.call_object_mut(args)
     }
 }
@@ -177,14 +239,8 @@ impl<Args: Tuple, T: InternalFnMut<Args>> FnMutObject<Args> for CallWrapper<T> {
 pub trait InternalFn<Args>: InternalFnMut<Args> {
     fn call_object(&self, args: Args) -> Self::Output;
 }
-#[cfg(feature = "nightly")]
-impl<Args: Tuple, T: InternalFn<Args>> std::ops::Fn<Args> for CallWrapper<T> {
-    extern "rust-call" fn call(&self, args: Args) -> Self::Output {
-        self.0.call_object(args)
-    }
-}
-impl<Args: Tuple, T: InternalFn<Args>> FnObject<Args> for CallWrapper<T> {
-    fn call_object(&self, args: Args) -> Self::Output {
+impl_fn! {
+    impl[Args: Tuple, T: InternalFn<Args>] Fn<Args> for CallWrapper<T> = |self, args| {
         self.0.call_object(args)
     }
 }
@@ -193,6 +249,7 @@ impl<Args: Tuple, T: InternalFn<Args>> FnObject<Args> for CallWrapper<T> {
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+#[cfg(not(feature = "nightly"))]
 pub trait FnOnceObject<Args: Tuple>: Object {
     /// Function return type.
     type Output;
@@ -223,6 +280,40 @@ pub trait FnOnceObject<Args: Tuple>: Object {
     /// `Box<dyn FnOnceObject<Args>>`.
     fn call_object_box(self: Box<Self>, args: Args) -> Self::Output;
 }
+/// A callable object that can be called at least once.
+///
+/// Do not implement this trait manually: the library gives no guarantees whether that is possible,
+/// portable, or stable.
+#[cfg(feature = "nightly")]
+pub trait FnOnceObject<Args: Tuple>: Object + std::ops::FnOnce<Args> {
+    /// Invoke the function with the given argument tuple.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use crossmist::{FnOnceObject, lambda};
+    ///
+    /// let s = "Hello, world!".to_string();
+    /// let mut increment = lambda! { move(s: String) || -> String { s } };
+    ///
+    /// assert_eq!(increment.call_object_once(()), "Hello, world!");
+    /// ```
+    fn call_object_once(self, args: Args) -> Self::Output;
+    /// Invoke a boxed function with the given argument tuple.
+    ///
+    /// This method is implemented as follows:
+    ///
+    /// ```ignore
+    /// fn call_object_box(self: Box<Self>, args: Args) -> Self::Output {
+    ///     (*self).call_object_once(args)
+    /// }
+    /// ```
+    ///
+    /// It enables `FnOnceObject<Args>` to be automatically implemented for
+    /// `Box<dyn FnOnceObject<Args>>`.
+    fn call_object_box(self: Box<Self>, args: Args) -> Self::Output;
+}
+#[cfg(not(feature = "nightly"))]
 impl<Args: Tuple, T: FnOnceObject<Args> + ?Sized> FnOnceObject<Args> for Box<T>
 where
     Box<T>: Object,
@@ -235,11 +326,45 @@ where
         (*self).call_object_once(args)
     }
 }
+#[cfg(feature = "nightly")]
+impl<Args: Tuple, T: Object + std::ops::FnOnce<Args>> FnOnceObject<Args> for T {
+    fn call_object_once(self, args: Args) -> Self::Output {
+        self.call_once(args)
+    }
+    fn call_object_box(self: Box<Self>, args: Args) -> Self::Output {
+        self.call_once(args)
+    }
+}
 
 /// A callable object that can be called multiple times and might mutate state.
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+#[cfg(feature = "nightly")]
+pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> + std::ops::FnMut<Args> {
+    /// Invoke the function with the given argument tuple.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use crossmist::{FnMutObject, lambda};
+    ///
+    /// let counter = 0;
+    /// let mut increment = lambda! {
+    ///     move(&mut counter: &mut i32) || -> i32 { *counter += 1; *counter }
+    /// };
+    ///
+    /// assert_eq!(increment.call_object_mut(()), 1);
+    /// assert_eq!(increment.call_object_mut(()), 2);
+    /// assert_eq!(increment.call_object_mut(()), 3);
+    /// ```
+    fn call_object_mut(&mut self, args: Args) -> Self::Output;
+}
+/// A callable object that can be called multiple times and might mutate state.
+///
+/// Do not implement this trait manually: the library gives no guarantees whether that is possible,
+/// portable, or stable.
+#[cfg(not(feature = "nightly"))]
 pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     /// Invoke the function with the given argument tuple.
     ///
@@ -259,11 +384,40 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     /// ```
     fn call_object_mut(&mut self, args: Args) -> Self::Output;
 }
+#[cfg(feature = "nightly")]
+impl<Args: Tuple, T: Object + std::ops::FnMut<Args>> FnMutObject<Args> for T {
+    fn call_object_mut(&mut self, args: Args) -> Self::Output {
+        self.call_mut(args)
+    }
+}
 
 /// A callable object that can be called multiple times without mutating state.
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+#[cfg(feature = "nightly")]
+pub trait FnObject<Args: Tuple>: FnMutObject<Args> + std::ops::Fn<Args> {
+    /// Invoke the function with the given argument tuple.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use crossmist::{FnObject, func};
+    ///
+    /// #[func]
+    /// fn add(a: i32, b: i32) -> i32 {
+    ///     a + b
+    /// }
+    ///
+    /// assert_eq!(add.call_object((5, 7)), 12);
+    /// ```
+    fn call_object(&self, args: Args) -> Self::Output;
+}
+/// A callable object that can be called multiple times without mutating state.
+///
+/// Do not implement this trait manually: the library gives no guarantees whether that is possible,
+/// portable, or stable.
+#[cfg(not(feature = "nightly"))]
 pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     /// Invoke the function with the given argument tuple.
     ///
@@ -280,6 +434,12 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     /// assert_eq!(add.call_object((5, 7)), 12);
     /// ```
     fn call_object(&self, args: Args) -> Self::Output;
+}
+#[cfg(feature = "nightly")]
+impl<Args: Tuple, T: Object + std::ops::Fn<Args>> FnObject<Args> for T {
+    fn call_object(&self, args: Args) -> Self::Output {
+        self.call(args)
+    }
 }
 
 #[doc(hidden)]
@@ -352,71 +512,61 @@ macro_rules! decl_fn {
                 }
             }
 
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Func: FnOnceObject<([<T $head>], $([<T $tail>]),*)>> FnOnceObject<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
-                type Output = Func::Output;
-
+            impl_fn! {
+                impl[[<T $head>]: Object $(, [<T $tail>])*, Func: FnOnceObject<([<T $head>], $([<T $tail>]),*)>] FnOnce<($([<T $tail>],)*), Output = Func::Output> for BoundValue<Func, [<T $head>]> =
                 #[allow(unused_variables)]
-                fn call_object_once(self, args: ($([<T $tail>],)*)) -> Self::Output {
+                |self, args| {
                     self.func.call_object_once(reverse!([] $((args.$tail),)* (self.head)))
                 }
-
-                fn call_object_box(self: Box<Self>, args: ($([<T $tail>],)*)) -> Self::Output {
-                    (*self).call_object_once(args)
-                }
             }
-            impl<[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: FnMutObject<([<T $head>], $([<T $tail>]),*)>> FnMutObject<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
+            impl_fn! {
+                impl[[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: FnMutObject<([<T $head>], $([<T $tail>]),*)>] FnMut<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> =
                 #[allow(unused_variables)]
-                fn call_object_mut(&mut self, args: ($([<T $tail>],)*)) -> Self::Output {
+                |self, args| {
                     self.func.call_object_mut(reverse!([] $((args.$tail),)* (self.head)))
                 }
             }
-            impl<[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: FnObject<([<T $head>], $([<T $tail>]),*)>> FnObject<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> {
+            impl_fn! {
+                impl[[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: FnObject<([<T $head>], $([<T $tail>]),*)>] Fn<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> =
                 #[allow(unused_variables)]
-                fn call_object(&self, args: ($([<T $tail>],)*)) -> Self::Output {
+                |self, args| {
                     self.func.call_object(reverse!([] $((args.$tail),)* (self.head)))
                 }
             }
 
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output>> FnOnceObject<($([<T $tail>],)*)> for BoundMut<Func, [<T $head>]> {
-                type Output = Output;
-
+            impl_fn! {
+                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output>] FnOnce<($([<T $tail>],)*), Output = Output> for BoundMut<Func, [<T $head>]> =
                 #[allow(unused_variables)]
-                fn call_object_once(mut self, args: ($([<T $tail>],)*)) -> Self::Output {
+                |self, args| {
                     self.func.call_object_once(reverse!([] $((args.$tail),)* (&mut self.head)))
                 }
-
-                fn call_object_box(self: Box<Self>, args: ($([<T $tail>],)*)) -> Self::Output {
-                    (*self).call_object_once(args)
-                }
             }
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output>> FnMutObject<($([<T $tail>],)*)> for BoundMut<Func, [<T $head>]> {
+            impl_fn! {
+                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output>] FnMut<($([<T $tail>],)*)> for BoundMut<Func, [<T $head>]> =
                 #[allow(unused_variables)]
-                fn call_object_mut(&mut self, args: ($([<T $tail>],)*)) -> Self::Output {
+                |self, args| {
                     self.func.call_object_mut(reverse!([] $((args.$tail),)* (&mut self.head)))
                 }
             }
 
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>> FnOnceObject<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
-                type Output = Output;
-
+            impl_fn! {
+                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>] FnOnce<($([<T $tail>],)*), Output = Output> for BoundRef<Func, [<T $head>]> =
                 #[allow(unused_variables)]
-                fn call_object_once(self, args: ($([<T $tail>],)*)) -> Self::Output {
+                |self, args| {
                     self.func.call_object_once(reverse!([] $((args.$tail),)* (&self.head)))
                 }
-
-                fn call_object_box(self: Box<Self>, args: ($([<T $tail>],)*)) -> Self::Output {
-                    (*self).call_object_once(args)
-                }
             }
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>> FnMutObject<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
+            impl_fn! {
+                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>] FnMut<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> =
                 #[allow(unused_variables)]
-                fn call_object_mut(&mut self, args: ($([<T $tail>],)*)) -> Self::Output {
+                |self, args| {
                     self.func.call_object_mut(reverse!([] $((args.$tail),)* (&self.head)))
                 }
             }
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>> FnObject<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> {
+            impl_fn! {
+                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>] Fn<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> =
                 #[allow(unused_variables)]
-                fn call_object(&self, args: ($([<T $tail>],)*)) -> Self::Output {
+                |self, args| {
                     self.func.call_object(reverse!([] $((args.$tail),)* (&self.head)))
                 }
             }
@@ -462,6 +612,8 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 ///     f.call_object_once((arg,))
 /// }
 /// ```
+///
+/// `f.call_object_once((arg,))` can be replaced with `f(arg)` if the `nightly` feature is enabled.
 ///
 /// Captuing more complex objects (type annotations are provided for completeness and are
 /// unnecessary):
