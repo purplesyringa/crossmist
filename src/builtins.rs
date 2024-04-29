@@ -397,7 +397,6 @@ impl NonTrivialObject for std::fs::File {
     }
 }
 
-#[doc(cfg(feature = "tokio"))]
 #[cfg(feature = "tokio")]
 impl NonTrivialObject for tokio::fs::File {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
@@ -412,7 +411,6 @@ impl NonTrivialObject for tokio::fs::File {
     }
 }
 
-#[doc(cfg(feature = "smol"))]
 #[cfg(feature = "smol")]
 impl NonTrivialObject for async_fs::File {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
@@ -424,7 +422,6 @@ impl NonTrivialObject for async_fs::File {
     }
 }
 
-#[doc(cfg(unix))]
 #[cfg(unix)]
 impl NonTrivialObject for std::os::unix::net::UnixStream {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
@@ -436,7 +433,6 @@ impl NonTrivialObject for std::os::unix::net::UnixStream {
     }
 }
 
-#[doc(cfg(all(unix, feature = "tokio")))]
 #[cfg(all(unix, feature = "tokio"))]
 impl NonTrivialObject for tokio::net::UnixStream {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
@@ -448,7 +444,6 @@ impl NonTrivialObject for tokio::net::UnixStream {
     }
 }
 
-#[doc(cfg(all(unix, feature = "smol")))]
 #[cfg(all(unix, feature = "smol"))]
 impl<T: 'static + std::os::fd::AsFd + Object> NonTrivialObject for async_io::Async<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {

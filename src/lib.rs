@@ -86,13 +86,19 @@
 //! implemented and to let us fix bugs quickly when they arise. As channels may only be used between
 //! two processes started from the same executable file, this does not violate semver.
 
-#![feature(doc_cfg)]
 #![feature(never_type)]
 #![feature(try_blocks)]
 #![feature(unwrap_infallible)]
 #![cfg_attr(
     feature = "nightly",
-    feature(arbitrary_self_types, fn_traits, tuple_trait, unboxed_closures)
+    feature(
+        arbitrary_self_types,
+        doc_cfg,
+        doc_auto_cfg,
+        fn_traits,
+        tuple_trait,
+        unboxed_closures,
+    )
 )]
 
 extern crate self as crossmist;
@@ -406,20 +412,21 @@ pub mod serde;
 pub use crate::serde::*;
 
 mod platform {
+    #[cfg_attr(feature = "nightly", doc(cfg(all())))]
     #[cfg(unix)]
     pub mod unix {
-        #[doc(cfg(feature = "async"))]
+        #[cfg_attr(feature = "nightly", doc(cfg(feature = "async")))]
         #[cfg(feature = "async")]
         pub mod asynchronous;
         pub(crate) mod entry;
         pub mod handles;
         pub(crate) mod internals;
         pub mod ipc;
-        #[doc(cfg(feature = "smol"))]
+        #[cfg_attr(feature = "nightly", doc(cfg(feature = "smol")))]
         #[cfg(feature = "smol")]
         pub mod smol;
         pub mod subprocess;
-        #[doc(cfg(feature = "tokio"))]
+        #[cfg_attr(feature = "nightly", doc(cfg(feature = "tokio")))]
         #[cfg(feature = "tokio")]
         pub mod tokio;
     }
@@ -428,11 +435,11 @@ mod platform {
         pub(crate) mod entry;
         pub mod handles;
         pub mod ipc;
-        #[doc(cfg(feature = "smol"))]
+        #[cfg_attr(feature = "nightly", doc(cfg(feature = "smol")))]
         #[cfg(feature = "smol")]
         pub mod smol;
         pub mod subprocess;
-        #[doc(cfg(feature = "tokio"))]
+        #[cfg_attr(feature = "nightly", doc(cfg(feature = "tokio")))]
         #[cfg(feature = "tokio")]
         pub mod tokio;
     }
