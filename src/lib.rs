@@ -439,6 +439,9 @@ mod platform {
     }
     #[cfg(windows)]
     pub mod windows {
+        #[cfg_attr(feature = "nightly", doc(cfg(feature = "async")))]
+        #[cfg(feature = "async")]
+        pub mod asynchronous;
         pub(crate) mod entry;
         pub mod handles;
         pub mod ipc;

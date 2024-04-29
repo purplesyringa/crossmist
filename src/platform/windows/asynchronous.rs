@@ -42,41 +42,29 @@
 //! ```
 
 use crate::{
-    entry, imp,
-    internals::{socketpair, SingleObjectReceiver, SingleObjectSender},
-    subprocess, FnOnceObject, Object, Serializer,
+    handles, handles::OwnedHandle, imp, ipc, subprocess, FnOnceObject, Object, Serializer,
 };
-use nix::libc::{pid_t, SOCK_NONBLOCK};
+use std::ffi::c_void;
+use std::fs::File;
 use std::future::Future;
-use std::io::{Error, Result};
+use std::io::{Error, ErrorKind, Result};
 use std::marker::PhantomData;
-use std::os::unix::{
-    io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
-    net::UnixStream,
+use std::os::windows::{
+    io,
+    io::{FromRawHandle, IntoRawHandle, RawHandle},
 };
+use windows::Win32::System::{Pipes, Threading, WindowsProgramming};
 
 /// Runtime-dependent parameters.
 pub unsafe trait AsyncRuntime {
-    /// A readable and writable Unix socket.
-    type Stream: TryFrom<UnixStream, Error = Error> + Object + AsRawFd;
+    /// A readable and writable pipe.
+    type Stream: From<File> + Object + handles::AsRawHandle;
 
-    /// Perform a blocking write.
-    ///
-    /// Calls `f`. If it returns `Err(WouldBlock)`, waits until the file descriptor is writable and
-    /// retries. When the function returns anything other than `Err(WouldBlock)`, returns.
-    fn blocking_write<T>(
-        stream: &Self::Stream,
-        f: impl FnMut() -> Result<T> + Send,
-    ) -> impl Future<Output = Result<T>> + Send;
+    /// Perform a write.
+    fn write(stream: &mut Self::Stream, buf: &[u8]) -> impl Future<Output = Result<()>> + Send;
 
-    /// Perform a blocking read.
-    ///
-    /// Calls `f`. If it returns `Err(WouldBlock)`, waits until the file descriptor is readable and
-    /// retries. When the function returns anything other than `Err(WouldBlock)`, returns.
-    fn blocking_read<T>(
-        stream: &Self::Stream,
-        f: impl FnMut() -> Result<T> + Send,
-    ) -> impl Future<Output = Result<T>> + Send;
+    /// Perform a read.
+    fn read(stream: &mut Self::Stream, buf: &mut [u8]) -> impl Future<Output = Result<()>> + Send;
 }
 
 /// The transmitting side of a unidirectional channel.
@@ -103,27 +91,49 @@ pub struct Receiver<Runtime: AsyncRuntime, T: Object> {
 /// is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
 pub struct Duplex<Runtime: AsyncRuntime, S: Object, R: Object> {
-    fd: Runtime::Stream,
-    marker: PhantomData<fn(S) -> R>,
+    sender: Sender<Runtime, S>,
+    receiver: Receiver<Runtime, R>,
 }
 
 /// Create a unidirectional channel.
 pub fn channel<Runtime: AsyncRuntime, T: Object>(
 ) -> Result<(Sender<Runtime, T>, Receiver<Runtime, T>)> {
-    let (tx, rx) = duplex::<Runtime, T, T>()?;
-    Ok((tx.into_sender(), rx.into_receiver()))
+    let mut tx: handles::RawHandle = Default::default();
+    let mut rx: handles::RawHandle = Default::default();
+    unsafe {
+        Pipes::CreatePipe(
+            &mut rx as *mut handles::RawHandle,
+            &mut tx as *mut handles::RawHandle,
+            std::ptr::null(),
+            0,
+        )
+        .ok()?;
+    }
+    let tx = Sender {
+        fd: unsafe { File::from_raw_handle(tx.0 as *mut c_void) }.into(),
+        marker: PhantomData,
+    };
+    let rx = Receiver {
+        fd: unsafe { File::from_raw_handle(rx.0 as *mut c_void) }.into(),
+        marker: PhantomData,
+    };
+    Ok((tx, rx))
 }
 
 /// Create a bidirectional channel.
 pub fn duplex<Runtime: AsyncRuntime, A: Object, B: Object>(
 ) -> Result<(Duplex<Runtime, A, B>, Duplex<Runtime, B, A>)> {
-    let (tx, rx) = socketpair(SOCK_NONBLOCK)?;
-    unsafe {
-        Ok((
-            Duplex::from_stream(tx.try_into()?),
-            Duplex::from_stream(rx.try_into()?),
-        ))
-    }
+    let (tx_a, rx_a) = channel::<Runtime, A>()?;
+    let (tx_b, rx_b) = channel::<Runtime, B>()?;
+    let ours = Duplex {
+        sender: tx_a,
+        receiver: rx_b,
+    };
+    let theirs = Duplex {
+        sender: tx_b,
+        receiver: rx_a,
+    };
+    Ok((ours, theirs))
 }
 
 impl<Runtime: AsyncRuntime, T: Object> Sender<Runtime, T> {
@@ -136,8 +146,9 @@ impl<Runtime: AsyncRuntime, T: Object> Sender<Runtime, T> {
 
     /// Send a value to the other side.
     pub async fn send(&mut self, value: &T) -> Result<()> {
-        let mut sender = SingleObjectSender::new(self.fd.as_raw_fd(), value);
-        Runtime::blocking_write(&self.fd, || sender.send_next()).await
+        let serialized = ipc::serialize_with_handles(value)?;
+        Runtime::write(&mut self.fd, &serialized.len().to_ne_bytes()).await?;
+        Runtime::write(&mut self.fd, &serialized).await
     }
 }
 
@@ -145,33 +156,28 @@ impl<Runtime: AsyncRuntime, T: Object> TryFrom<crate::Sender<T>> for Sender<Runt
     type Error = std::io::Error;
     fn try_from(value: crate::Sender<T>) -> Result<Self> {
         unsafe {
-            let fd = value.into_raw_fd();
-            entry::enable_nonblock(fd)?;
             Ok(Self::from_stream(
-                std::os::unix::net::UnixStream::from_raw_fd(fd).try_into()?,
+                File::from_raw_handle(value.into_raw_handle()).into(),
             ))
         }
     }
 }
 impl<Runtime: AsyncRuntime, T: Object> From<Sender<Runtime, T>> for crate::Sender<T> {
     fn from(value: Sender<Runtime, T>) -> Self {
-        unsafe {
-            let fd = value.into_raw_fd();
-            entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
-            Self::from_raw_fd(fd)
-        }
+        unsafe { Self::from_raw_handle(value.into_raw_handle()) }
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> AsRawFd for Sender<Runtime, T> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
+impl<Runtime: AsyncRuntime, T: Object> io::AsRawHandle for Sender<Runtime, T> {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.fd.as_raw_handle()
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> IntoRawFd for Sender<Runtime, T> {
-    fn into_raw_fd(self) -> RawFd {
-        let fd = self.as_raw_fd();
+impl<Runtime: AsyncRuntime, T: Object> IntoRawHandle for Sender<Runtime, T> {
+    fn into_raw_handle(self) -> RawHandle {
+        use io::AsRawHandle;
+        let fd = self.as_raw_handle();
         std::mem::forget(self);
         fd
     }
@@ -189,8 +195,19 @@ impl<Runtime: AsyncRuntime, T: Object> Receiver<Runtime, T> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub async fn recv(&mut self) -> Result<Option<T>> {
-        let mut receiver = unsafe { SingleObjectReceiver::new(self.fd.as_raw_fd()) };
-        Runtime::blocking_read(&self.fd, || receiver.recv_next()).await
+        let mut len = [0u8; std::mem::size_of::<usize>()];
+        if let Err(e) = Runtime::read(&mut self.fd, &mut len).await {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                return Ok(None);
+            }
+            return Err(e);
+        }
+        let len = usize::from_ne_bytes(len);
+
+        let mut serialized = vec![0u8; len];
+        Runtime::read(&mut self.fd, &mut serialized).await?;
+
+        unsafe { ipc::deserialize_with_handles(serialized).map(Some) }
     }
 }
 
@@ -198,58 +215,44 @@ impl<Runtime: AsyncRuntime, T: Object> TryFrom<crate::Receiver<T>> for Receiver<
     type Error = std::io::Error;
     fn try_from(value: crate::Receiver<T>) -> Result<Self> {
         unsafe {
-            let fd = value.into_raw_fd();
-            entry::enable_nonblock(fd)?;
             Ok(Self::from_stream(
-                std::os::unix::net::UnixStream::from_raw_fd(fd).try_into()?,
+                File::from_raw_handle(value.into_raw_handle()).into(),
             ))
         }
     }
 }
 impl<Runtime: AsyncRuntime, T: Object> From<Receiver<Runtime, T>> for crate::Receiver<T> {
     fn from(value: Receiver<Runtime, T>) -> Self {
-        unsafe {
-            let fd = value.into_raw_fd();
-            entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
-            Self::from_raw_fd(fd)
-        }
+        unsafe { Self::from_raw_handle(value.into_raw_handle()) }
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> AsRawFd for Receiver<Runtime, T> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
+impl<Runtime: AsyncRuntime, T: Object> io::AsRawHandle for Receiver<Runtime, T> {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.fd.as_raw_handle()
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> IntoRawFd for Receiver<Runtime, T> {
-    fn into_raw_fd(self) -> RawFd {
-        let fd = self.as_raw_fd();
+impl<Runtime: AsyncRuntime, T: Object> IntoRawHandle for Receiver<Runtime, T> {
+    fn into_raw_handle(self) -> RawHandle {
+        use io::AsRawHandle;
+        let fd = self.as_raw_handle();
         std::mem::forget(self);
         fd
     }
 }
 
 impl<Runtime: AsyncRuntime, S: Object, R: Object> Duplex<Runtime, S, R> {
-    unsafe fn from_stream(fd: Runtime::Stream) -> Self {
-        Duplex {
-            fd,
-            marker: PhantomData,
-        }
-    }
-
     /// Send a value to the other side.
     pub async fn send(&mut self, value: &S) -> Result<()> {
-        let mut sender = SingleObjectSender::new(self.fd.as_raw_fd(), value);
-        Runtime::blocking_write(&self.fd, || sender.send_next()).await
+        self.sender.send(value).await
     }
 
     /// Receive a value from the other side.
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub async fn recv(&mut self) -> Result<Option<R>> {
-        let mut receiver = unsafe { SingleObjectReceiver::new(self.fd.as_raw_fd()) };
-        Runtime::blocking_read(&self.fd, || receiver.recv_next()).await
+        self.receiver.recv().await
     }
 
     /// Send a value from the other side and wait for a response immediately.
@@ -265,12 +268,12 @@ impl<Runtime: AsyncRuntime, S: Object, R: Object> Duplex<Runtime, S, R> {
         })
     }
 
-    fn into_sender(self) -> Sender<Runtime, R> {
-        unsafe { Sender::from_stream(self.fd) }
+    fn join(sender: Sender<Runtime, S>, receiver: Receiver<Runtime, R>) -> Self {
+        Self { sender, receiver }
     }
 
-    fn into_receiver(self) -> Receiver<Runtime, R> {
-        unsafe { Receiver::from_stream(self.fd) }
+    fn split(self) -> (Sender<Runtime, S>, Receiver<Runtime, R>) {
+        (self.sender, self.receiver)
     }
 }
 
@@ -279,64 +282,46 @@ impl<Runtime: AsyncRuntime, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
 {
     type Error = std::io::Error;
     fn try_from(value: crate::Duplex<S, R>) -> Result<Self> {
-        unsafe {
-            let fd = value.into_raw_fd();
-            entry::enable_nonblock(fd)?;
-            Ok(Self::from_stream(
-                std::os::unix::net::UnixStream::from_raw_fd(fd).try_into()?,
-            ))
-        }
+        let (sender, receiver) = value.split();
+        Ok(Self::join(sender.try_into()?, receiver.try_into()?))
     }
 }
 impl<Runtime: AsyncRuntime, S: Object, R: Object> From<Duplex<Runtime, S, R>>
     for crate::Duplex<S, R>
 {
     fn from(value: Duplex<Runtime, S, R>) -> Self {
-        unsafe {
-            let fd = value.into_raw_fd();
-            entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
-            Self::from_raw_fd(fd)
-        }
-    }
-}
-
-impl<Runtime: AsyncRuntime, S: Object, R: Object> AsRawFd for Duplex<Runtime, S, R> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
-    }
-}
-
-impl<Runtime: AsyncRuntime, S: Object, R: Object> IntoRawFd for Duplex<Runtime, S, R> {
-    fn into_raw_fd(self) -> RawFd {
-        let fd = self.as_raw_fd();
-        std::mem::forget(self);
-        fd
+        let (sender, receiver) = value.split();
+        Self::join(sender.into(), receiver.into())
     }
 }
 
 /// A subprocess.
 pub struct Child<Runtime: AsyncRuntime, T: Object> {
-    proc_pid: nix::unistd::Pid,
+    proc_handle: OwnedHandle,
     output_rx: Receiver<Runtime, T>,
 }
 
 impl<Runtime: AsyncRuntime, T: Object> Child<Runtime, T> {
-    fn new(proc_pid: nix::unistd::Pid, output_rx: Receiver<Runtime, T>) -> Self {
+    fn new(proc_handle: OwnedHandle, output_rx: Receiver<Runtime, T>) -> Child<Runtime, T> {
         Child {
-            proc_pid,
+            proc_handle,
             output_rx,
         }
     }
 
     /// Terminate the process immediately.
     pub fn kill(&mut self) -> Result<()> {
-        nix::sys::signal::kill(self.proc_pid, nix::sys::signal::Signal::SIGKILL)?;
+        use handles::AsRawHandle;
+        unsafe {
+            Threading::TerminateProcess(self.proc_handle.as_raw_handle(), 1).ok()?;
+        }
         Ok(())
     }
 
     /// Get ID of the process.
-    pub fn id(&self) -> pid_t {
-        self.proc_pid.as_raw()
+    pub fn id(&self) -> handles::RawHandle {
+        use handles::AsRawHandle;
+        self.proc_handle.as_raw_handle()
     }
 
     /// Wait for the process to finish and obtain the value it returns.
@@ -345,46 +330,61 @@ impl<Runtime: AsyncRuntime, T: Object> Child<Runtime, T> {
     /// it exits via [`std::process::exit`] or alike instead of returning a value, unless the return
     /// type is `()`. In that case, `Ok(())` is returned.
     pub async fn join(mut self) -> Result<T> {
+        use handles::AsRawHandle;
         let mut value = self.output_rx.recv().await?;
-        // Avoid receiving a void result -- merely dropping the channel on the other side suffices
         if let Some(void) = imp::if_void::<T>() {
             // The value should be None at this moment
             value = Some(void);
         }
         // This is synchronous, but should be really fast
-        let status = nix::sys::wait::waitpid(self.proc_pid, None)?;
-        if let nix::sys::wait::WaitStatus::Exited(_, 0) = status {
+        if unsafe {
+            Threading::WaitForSingleObject(
+                self.proc_handle.as_raw_handle(),
+                WindowsProgramming::INFINITE,
+            )
+        } == u32::MAX
+        {
+            return Err(Error::last_os_error());
+        }
+        let mut code: u32 = 0;
+        unsafe {
+            Threading::GetExitCodeProcess(self.proc_handle.as_raw_handle(), &mut code as *mut u32)
+                .ok()?;
+        }
+        if code == 0 {
             value.ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Error::new(
+                    ErrorKind::Other,
                     "The subprocess terminated without returning a value",
                 )
             })
         } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!(
-                    "The subprocess did not terminate successfully: {:?}",
-                    status
-                ),
+            Err(Error::new(
+                ErrorKind::Other,
+                format!("The subprocess terminated with exit code {code}"),
             ))
         }
     }
 }
 
 pub(crate) async unsafe fn spawn<Runtime: AsyncRuntime, T: Object>(
-    entry: Box<dyn FnOnceObject<(RawFd,), Output = i32>>,
+    entry: Box<dyn FnOnceObject<(handles::RawHandle,), Output = i32>>,
 ) -> Result<Child<Runtime, T>> {
+    use handles::AsRawHandle;
+
     imp::perform_sanity_checks();
 
     let mut s = Serializer::new();
     s.serialize(&entry);
 
-    let fds = s.drain_handles();
+    let handles = s.drain_handles();
 
-    let (mut local, child) = duplex::<Runtime, (Vec<u8>, Vec<RawFd>), T>()?;
-    let pid = subprocess::_spawn_child(crate::Duplex::from(child), &fds)?;
-    local.send(&(s.into_vec(), fds)).await?;
+    let (mut local, child) = duplex::<Runtime, (Vec<u8>, Vec<handles::RawHandle>), T>()?;
+    let (child_tx, child_rx) = child.split();
+    let handle =
+        subprocess::_spawn_child(child_tx.as_raw_handle(), child_rx.as_raw_handle(), &handles)?;
+    local.send(&(s.into_vec(), handles)).await?;
 
-    Ok(Child::new(pid, local.into_receiver()))
+    let (_, receiver) = local.split();
+    Ok(Child::new(handle, receiver))
 }
