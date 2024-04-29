@@ -42,6 +42,7 @@ smol-macros = "0.1"
 async = []
 tokio = ["async", "dep:tokio"]
 smol = ["async", "dep:async-fs", "dep:async-io"]
+nightly = []
 
 [[test]]
 name = "sync-main"
@@ -59,4 +60,4 @@ path = "tests/smol.rs"
 harness = false
 
 [package.metadata.docs.rs]
-features = ["async", "tokio", "smol"]
+features = ["async", "tokio", "smol", "nightly"]

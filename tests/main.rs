@@ -1,4 +1,4 @@
-use crossmist::{channel, duplex, BindValue, Duplex, Object, Receiver, Sender};
+use crossmist::{channel, duplex, BindValue, Duplex, FnOnceObject, Object, Receiver, Sender};
 
 #[derive(Debug, PartialEq, Object)]
 struct SimplePair {
@@ -74,17 +74,17 @@ fn with_passed_trait(arg: Box<dyn Trait>) -> String {
 
 #[crossmist::func]
 fn with_passed_fn(func: Box<dyn crossmist::FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
-    func(5, 7)
+    func.call_object_once((5, 7))
 }
 
 #[crossmist::func]
 fn with_passed_bound_fn(func: Box<dyn crossmist::FnOnceObject<(i32,), Output = i32>>) -> i32 {
-    func(7)
+    func.call_object_once((7,))
 }
 
 #[crossmist::func]
 fn with_passed_double_bound_fn(func: Box<dyn crossmist::FnOnceObject<(), Output = i32>>) -> i32 {
-    func()
+    func.call_object_once(())
 }
 
 #[crossmist::func]

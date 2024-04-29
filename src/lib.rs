@@ -88,23 +88,20 @@
 
 #![feature(arbitrary_self_types)]
 #![feature(doc_cfg)]
-#![feature(fn_traits)]
 #![feature(never_type)]
 #![feature(ptr_metadata)]
 #![feature(specialization)]
 #![feature(try_blocks)]
-#![feature(tuple_trait)]
-#![feature(unboxed_closures)]
 #![feature(unwrap_infallible)]
+#![cfg_attr(feature = "nightly", feature(fn_traits, tuple_trait, unboxed_closures))]
 
 extern crate self as crossmist;
 
 /// Enable a function to be used as an entrypoint of a child process, and turn it into an
 /// [`Object`].
 ///
-/// This macro applies to `fn` functions, including generic ones. It turns the function into an
-/// object that can be called (providing the same behavior as if `#[func]` was not used), but also
-/// adds various methods for spawning a child process from this function.
+/// This macro applies to `fn` functions, including generic ones. It adds various methods for
+/// spawning a child process from this function.
 ///
 /// For a function declared as
 ///
@@ -137,9 +134,43 @@ extern crate self as crossmist;
 ///
 /// #[main]
 /// fn main() {
-///     assert_eq!(example(5, 7), 12);
 ///     assert_eq!(example.spawn(5, 7).unwrap().join().unwrap(), 12);
 ///     assert_eq!(example.run(5, 7).unwrap(), 12);
+/// }
+/// ```
+///
+/// The function can also be invoked in *the same* process via the [`FnOnceObject`],
+/// [`FnMutObject`], and [`FnObject`] traits, which are similar to [`std::ops::FnOnce`],
+/// [`std::ops::FnMut`], and [`std::ops::Fn`], respectively:
+///
+/// ```rust
+/// use crossmist::{FnObject, func, main};
+///
+/// #[func]
+/// fn example(a: i32, b: i32) -> i32 {
+///     a + b
+/// }
+///
+/// #[main]
+/// fn main() {
+///     assert_eq!(example.call_object((5, 7)), 12);
+/// }
+/// ```
+///
+/// If the `nightly` feature is enabled, the function can also directly be called, providing the
+/// same behavior as if `#[func]` was not used:
+///
+/// ```ignore
+/// use crossmist::{FnObject, func, main};
+///
+/// #[func]
+/// fn example(a: i32, b: i32) -> i32 {
+///     a + b
+/// }
+///
+/// #[main]
+/// fn main() {
+///     assert_eq!(example(5, 7), 12);
 /// }
 /// ```
 ///
@@ -277,7 +308,6 @@ extern crate self as crossmist;
 /// #[main]
 /// #[tokio::main(flavor = "current_thread")]
 /// async fn main() {
-///     assert_eq!(example(5, 7), 12);
 ///     assert_eq!(example.run_tokio(5, 7).await.unwrap(), 12);
 /// }
 /// ```

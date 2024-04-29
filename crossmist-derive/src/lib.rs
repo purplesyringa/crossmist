@@ -169,7 +169,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         body = quote! {
             #async_attribute
             async fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                entry.func.deserialize()().await
+                entry.func.deserialize().call_object_box(()).await
             }
         };
     } else if let Some(arg) = smol_argument {
@@ -181,13 +181,13 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         }
         body = quote! {
             fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                ::crossmist::imp::async_io::block_on(entry.func.deserialize()())
+                ::crossmist::imp::async_io::block_on(entry.func.deserialize().call_object_box(()))
             }
         };
     } else {
         body = quote! {
             fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                entry.func.deserialize()()
+                entry.func.deserialize().call_object_box(())
             }
         };
     }
@@ -248,7 +248,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         impl #generic_params ::crossmist::InternalFnOnce<(::crossmist::handles::RawHandle,)> for #entry_ident #generics {
             type Output = i32;
             #[allow(unreachable_code)] // If func returns !
-            fn call_once(self, args: (::crossmist::handles::RawHandle,)) -> Self::Output {
+            fn call_object_once(self, args: (::crossmist::handles::RawHandle,)) -> Self::Output {
                 #body
                 let return_value = body(self);
                 // Avoid explicitly sending a () result
@@ -269,17 +269,17 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
         impl #generic_params ::crossmist::InternalFnOnce<(#(#fn_types,)*)> for #type_ident {
             type Output = #return_type_wrapped;
-            fn call_once(self, args: (#(#fn_types,)*)) -> Self::Output {
+            fn call_object_once(self, args: (#(#fn_types,)*)) -> Self::Output {
                 #pin(#type_ident::invoke(#(#args_from_tuple,)*))
             }
         }
         impl #generic_params ::crossmist::InternalFnMut<(#(#fn_types,)*)> for #type_ident {
-            fn call_mut(&mut self, args: (#(#fn_types,)*)) -> Self::Output {
+            fn call_object_mut(&mut self, args: (#(#fn_types,)*)) -> Self::Output {
                 #pin(#type_ident::invoke(#(#args_from_tuple,)*))
             }
         }
         impl #generic_params ::crossmist::InternalFn<(#(#fn_types,)*)> for #type_ident {
-            fn call(&self, args: (#(#fn_types,)*)) -> Self::Output {
+            fn call_object(&self, args: (#(#fn_types,)*)) -> Self::Output {
                 #pin(#type_ident::invoke(#(#args_from_tuple,)*))
             }
         }

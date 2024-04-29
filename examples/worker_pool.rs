@@ -96,7 +96,7 @@ fn _wrapped_function<
 >(
     func: Func,
 ) -> TypeErased {
-    Box::new(func())
+    Box::new(func.call_object_once(()))
 }
 
 #[func]
@@ -108,7 +108,7 @@ async fn worker(
     >,
 ) {
     while let Some(func) = channel.recv().await.unwrap() {
-        channel.send(&func()).await.unwrap();
+        channel.send(&func.call_object_once(())).await.unwrap();
     }
 }
 
