@@ -97,6 +97,37 @@ use std::ops::Deref;
 #[derive(Object)]
 pub struct CallWrapper<T: Object>(pub T);
 
+#[cfg(feature = "nightly")]
+/// A tuple.
+///
+/// Do not rely on the exact definition of this trait, as it may change depending on the enabled
+/// features.
+pub trait Tuple: std::marker::Tuple {}
+#[cfg(feature = "nightly")]
+impl<T: std::marker::Tuple> Tuple for T {}
+
+#[cfg(not(feature = "nightly"))]
+mod private {
+    pub trait Sealed {}
+}
+#[cfg(not(feature = "nightly"))]
+/// A tuple.
+///
+/// Do not rely on the exact definition of this trait, as it may change depending on the enabled
+/// features.
+pub trait Tuple: private::Sealed {}
+#[cfg(not(feature = "nightly"))]
+macro_rules! decl_tuple {
+    () => {};
+    ($head:tt $($tail:tt)*) => {
+        impl<$($tail),*> private::Sealed for ($($tail,)*) {}
+        impl<$($tail),*> Tuple for ($($tail,)*) {}
+        decl_tuple!($($tail)*);
+    };
+}
+#[cfg(not(feature = "nightly"))]
+decl_tuple!(x T20 T19 T18 T17 T16 T15 T14 T13 T12 T11 T10 T9 T8 T7 T6 T5 T4 T3 T2 T1 T0);
+
 impl<T: Object> Deref for CallWrapper<T> {
     type Target = T;
     fn deref(&self) -> &T {
@@ -110,13 +141,13 @@ pub trait InternalFnOnce<Args>: Object {
     fn call_object_once(self, args: Args) -> Self::Output;
 }
 #[cfg(feature = "nightly")]
-impl<Args: std::marker::Tuple, T: InternalFnOnce<Args>> std::ops::FnOnce<Args> for CallWrapper<T> {
+impl<Args: Tuple, T: InternalFnOnce<Args>> std::ops::FnOnce<Args> for CallWrapper<T> {
     type Output = T::Output;
     extern "rust-call" fn call_once(self, args: Args) -> Self::Output {
         self.0.call_object_once(args)
     }
 }
-impl<Args, T: InternalFnOnce<Args>> FnOnceObject<Args> for CallWrapper<T> {
+impl<Args: Tuple, T: InternalFnOnce<Args>> FnOnceObject<Args> for CallWrapper<T> {
     type Output = T::Output;
     fn call_object_once(self, args: Args) -> Self::Output {
         self.0.call_object_once(args)
@@ -131,12 +162,12 @@ pub trait InternalFnMut<Args>: InternalFnOnce<Args> {
     fn call_object_mut(&mut self, args: Args) -> Self::Output;
 }
 #[cfg(feature = "nightly")]
-impl<Args: std::marker::Tuple, T: InternalFnMut<Args>> std::ops::FnMut<Args> for CallWrapper<T> {
+impl<Args: Tuple, T: InternalFnMut<Args>> std::ops::FnMut<Args> for CallWrapper<T> {
     extern "rust-call" fn call_mut(&mut self, args: Args) -> Self::Output {
         self.0.call_object_mut(args)
     }
 }
-impl<Args, T: InternalFnMut<Args>> FnMutObject<Args> for CallWrapper<T> {
+impl<Args: Tuple, T: InternalFnMut<Args>> FnMutObject<Args> for CallWrapper<T> {
     fn call_object_mut(&mut self, args: Args) -> Self::Output {
         self.0.call_object_mut(args)
     }
@@ -147,12 +178,12 @@ pub trait InternalFn<Args>: InternalFnMut<Args> {
     fn call_object(&self, args: Args) -> Self::Output;
 }
 #[cfg(feature = "nightly")]
-impl<Args: std::marker::Tuple, T: InternalFn<Args>> std::ops::Fn<Args> for CallWrapper<T> {
+impl<Args: Tuple, T: InternalFn<Args>> std::ops::Fn<Args> for CallWrapper<T> {
     extern "rust-call" fn call(&self, args: Args) -> Self::Output {
         self.0.call_object(args)
     }
 }
-impl<Args, T: InternalFn<Args>> FnObject<Args> for CallWrapper<T> {
+impl<Args: Tuple, T: InternalFn<Args>> FnObject<Args> for CallWrapper<T> {
     fn call_object(&self, args: Args) -> Self::Output {
         self.0.call_object(args)
     }
@@ -162,7 +193,7 @@ impl<Args, T: InternalFn<Args>> FnObject<Args> for CallWrapper<T> {
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
-pub trait FnOnceObject<Args>: Object {
+pub trait FnOnceObject<Args: Tuple>: Object {
     /// Function return type.
     type Output;
     /// Invoke the function with the given argument tuple.
@@ -192,7 +223,7 @@ pub trait FnOnceObject<Args>: Object {
     /// `Box<dyn FnOnceObject<Args>>`.
     fn call_object_box(self: Box<Self>, args: Args) -> Self::Output;
 }
-impl<Args, T: FnOnceObject<Args> + ?Sized> FnOnceObject<Args> for Box<T>
+impl<Args: Tuple, T: FnOnceObject<Args> + ?Sized> FnOnceObject<Args> for Box<T>
 where
     Box<T>: Object,
 {
@@ -209,7 +240,7 @@ where
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
-pub trait FnMutObject<Args>: FnOnceObject<Args> {
+pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     /// Invoke the function with the given argument tuple.
     ///
     /// # Example
@@ -233,7 +264,7 @@ pub trait FnMutObject<Args>: FnOnceObject<Args> {
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
-pub trait FnObject<Args>: FnMutObject<Args> {
+pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     /// Invoke the function with the given argument tuple.
     ///
     /// # Example
