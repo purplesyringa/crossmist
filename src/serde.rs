@@ -213,6 +213,8 @@ impl Deserializer {
 /// }
 /// ```
 ///
+/// Note that only DSTs cannot be objects (but `Box<dyn Trait>` is fine).
+///
 ///
 /// ## Cyclic structures
 ///
@@ -303,7 +305,7 @@ impl Deserializer {
 ///     }
 /// }
 /// ```
-pub trait NonTrivialObject {
+pub trait NonTrivialObject: Sized {
     /// Serialize a single object into a serializer.
     fn serialize_self_non_trivial(&self, s: &mut Serializer);
     /// Deserialize a single object from a deserializer.
