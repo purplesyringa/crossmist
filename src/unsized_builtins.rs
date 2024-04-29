@@ -1,6 +1,7 @@
 use crate::{
     imp::implements, relocation::RelocatablePtr, Deserializer, NonTrivialObject, Object, Serializer,
 };
+use std::io::Result;
 
 #[repr(C)]
 struct DynFatPtr {
@@ -32,12 +33,12 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
         }
     }
 
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
         #[cfg(not(feature = "nightly"))]
         let heap_deserializer = std::mem::transmute::<
             RelocatablePtr<()>,
-            unsafe fn(&mut Deserializer) -> *mut (),
-        >(d.deserialize::<RelocatablePtr<()>>());
+            unsafe fn(&mut Deserializer) -> Result<*mut ()>,
+        >(d.deserialize::<RelocatablePtr<()>>()?);
 
         let mut pointer: *mut T = if implements!(T: Sized) {
             assert!(std::mem::size_of::<&T>() == std::mem::size_of::<usize>());
@@ -51,21 +52,21 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
             );
             std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
                 data: std::ptr::null(),
-                vtable: d.deserialize::<RelocatablePtr<()>>().0,
+                vtable: d.deserialize::<RelocatablePtr<()>>()?.0,
             })
         };
 
         #[cfg(feature = "nightly")]
         std::ptr::copy_nonoverlapping(
-            &Box::into_raw(pointer.deserialize_on_heap(d)) as *const *mut dyn Object
+            &Box::into_raw(pointer.deserialize_on_heap(d)?) as *const *mut dyn Object
                 as *const *mut (),
             &mut pointer as *mut *mut T as *mut *mut (),
             1,
         );
         #[cfg(not(feature = "nightly"))]
-        (&mut pointer as *mut *mut T as *mut *mut ()).write(heap_deserializer(d));
+        (&mut pointer as *mut *mut T as *mut *mut ()).write(heap_deserializer(d)?);
 
-        Box::from_raw(pointer)
+        Ok(Box::from_raw(pointer))
     }
 }
 
@@ -74,7 +75,7 @@ unsafe impl<T: Object> NonTrivialObject for Box<[T]> {
         s.serialize(&self.len());
         s.serialize_slice(self.as_ref());
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
-        d.deserialize::<Vec<T>>().into_boxed_slice()
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        Ok(d.deserialize::<Vec<T>>()?.into_boxed_slice())
     }
 }

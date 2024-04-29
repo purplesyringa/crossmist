@@ -9,6 +9,7 @@ use crate::{
 };
 use std::any::Any;
 use std::collections::{hash_map, HashMap};
+use std::io::Result;
 use std::num::NonZeroUsize;
 use std::os::raw::c_void;
 
@@ -121,6 +122,10 @@ impl Deserializer {
 
     /// Deserialize an object of a given type from `self`.
     ///
+    /// Note that the deserializer is not safe to call on untrusted or corrupted data. This function
+    /// returns an error if converting parsed data to Rust data structures fails, e.g. on allocation
+    /// failures or when OS limits are exceeded.
+    ///
     /// # Safety
     ///
     /// This function is safe to call if the order of serialized types during serialization and
@@ -136,8 +141,8 @@ impl Deserializer {
     /// serializer.serialize(&2u16);
     /// let mut deserializer = Deserializer::new(serializer.into_vec(), Vec::new());
     /// unsafe {
-    ///     assert_eq!(deserializer.deserialize::<u8>(), 1);
-    ///     assert_eq!(deserializer.deserialize::<u16>(), 2);
+    ///     assert_eq!(deserializer.deserialize::<u8>().unwrap(), 1);
+    ///     assert_eq!(deserializer.deserialize::<u16>().unwrap(), 2);
     /// }
     /// ```
     ///
@@ -151,15 +156,15 @@ impl Deserializer {
     /// serializer.serialize(&2u16);
     /// let mut deserializer = Deserializer::new(serializer.into_vec(), Vec::new());
     /// unsafe {
-    ///     deserializer.deserialize::<u16>();
-    ///     deserializer.deserialize::<u8>();
+    ///     deserializer.deserialize::<u16>().unwrap();
+    ///     deserializer.deserialize::<u8>().unwrap();
     /// }
     /// ```
     ///
     /// It is also sometimes safe to invoke deserialize with mismatched types if the two types have
     /// the exact same layout in crossmist's serde (not in Rust memory model!). For example,
     /// [`std::fs::File`] and [`crossmist::handles::OwnedHandle`] are compatible.
-    pub unsafe fn deserialize<T: Object>(&mut self) -> T {
+    pub unsafe fn deserialize<T: Object>(&mut self) -> Result<T> {
         T::deserialize_self(self)
     }
 
@@ -194,6 +199,7 @@ impl Deserializer {
 ///
 /// ```rust
 /// use crossmist::{Deserializer, NonTrivialObject, Object, Serializer};
+/// use std::io::Result;
 ///
 /// struct SimplePair<T: Object, U: Object> {
 ///     first: T,
@@ -205,10 +211,10 @@ impl Deserializer {
 ///         s.serialize(&self.first);
 ///         s.serialize(&self.second);
 ///     }
-///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
-///         let first = d.deserialize::<T>();
-///         let second = d.deserialize::<U>();
-///         Self { first, second }
+///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+///         let first = d.deserialize::<T>()?;
+///         let second = d.deserialize::<U>()?;
+///         Ok(Self { first, second })
 ///     }
 /// }
 /// ```
@@ -224,6 +230,7 @@ impl Deserializer {
 ///
 /// ```rust
 /// # use crossmist::{Deserializer, NonTrivialObject, Object, Serializer};
+/// # use std::io::Result;
 /// # use std::os::raw::c_void;
 /// # use std::rc::Rc;
 /// struct CustomRc<T: 'static>(Rc<T>);
@@ -245,13 +252,13 @@ impl Deserializer {
 ///             }
 ///         }
 ///     }
-///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
-///         let id = d.deserialize::<usize>();
+///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+///         let id = d.deserialize::<usize>()?;
 ///         match std::num::NonZeroUsize::new(id) {
 ///             None => {
 ///                 // If 0 is stored, this is the first time we see this object -- decode its
 ///                 // contents
-///                 let rc = Rc::<T>::new(d.deserialize());
+///                 let rc = Rc::<T>::new(d.deserialize()?);
 ///                 // Tell the deserializer about this object. Note that you don't specify the ID:
 ///                 // learn_cyclic infers it automatically. To make sure numeration is consistent
 ///                 // with the serializer, call learn_cyclic in the same order in both. For
@@ -261,14 +268,14 @@ impl Deserializer {
 ///                 // have to store the exact object you are deserializing in: in this case, we
 ///                 // store the Rc itself, not CustomRc.
 ///                 d.learn_cyclic(rc.clone());
-///                 Self(rc)
+///                 Ok(Self(rc))
 ///             }
 ///             Some(id) => {
 ///                 // If a non-zero value is stored, this is an ID of an already existing object.
 ///                 // Notice that you must specify the type of the object you expect to be stored.
 ///                 // get_cyclic returns a reference to the object. In case of Rc, cloning it is
 ///                 // sufficient.
-///                 Self(d.get_cyclic::<Rc<T>>(id).clone())
+///                 Ok(Self(d.get_cyclic::<Rc<T>>(id).clone()))
 ///             }
 ///         }
 ///     }
@@ -290,6 +297,7 @@ impl Deserializer {
 /// #     Deserializer, NonTrivialObject, Object, Serializer,
 /// # };
 /// # use std::fs::File;
+/// # use std::io::Result;
 /// struct CustomFile(std::fs::File);
 ///
 /// unsafe impl NonTrivialObject for CustomFile {
@@ -298,10 +306,10 @@ impl Deserializer {
 ///         let handle = s.add_handle(self.0.as_raw_handle());
 ///         s.serialize(&handle)
 ///     }
-///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
 ///         // Deserializing OwnedHandle results in the ID being resolved into the handle, which can
 ///         // then be used to create the instance of the object we are deserializing
-///         Self(d.deserialize::<OwnedHandle>().into())
+///         Ok(Self(d.deserialize::<OwnedHandle>()?.into()))
 ///     }
 /// }
 /// ```
@@ -317,10 +325,15 @@ pub unsafe trait NonTrivialObject: Sized {
     fn serialize_self_non_trivial(&self, s: &mut Serializer);
     /// Deserialize a single object from a deserializer.
     ///
+    /// This function may assume the input data is produced by [`Self::serialize_self_non_trivial`].
+    /// You are supposed to return `Err(_)` to indicate that converting parsed data to Rust data
+    /// structures failed, e.g. on allocation failures or when OS limits are exceeded, not to
+    /// indicate the data is corrupted.
+    ///
     /// # Safety
     ///
     /// This function is safe to call if the order of serialized types during serialization and
     /// deserialization matches, up to serialization layout. See the documentation of
     /// [`Deserializer::deserialize`] for more details.
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self;
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self>;
 }

@@ -1,4 +1,5 @@
 use crate::{imp::implements, Deserializer, NonTrivialObject, Serializer};
+use std::io::Result;
 
 pub trait PlainOldData: NonTrivialObject {}
 
@@ -33,7 +34,7 @@ pub trait Object: private::Sealed {
     /// This function is safe to call if the order of serialized types during serialization and
     /// deserialization matches, up to serialization layout. See the documentation of
     /// [`Deserializer::deserialize`] for more details.
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Self
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self>
     where
         Self: Sized;
     #[doc(hidden)]
@@ -41,12 +42,12 @@ pub trait Object: private::Sealed {
     unsafe fn deserialize_on_heap<'a>(
         self: *const Self,
         d: &mut Deserializer,
-    ) -> Box<dyn Object + 'a>
+    ) -> Result<Box<dyn Object + 'a>>
     where
         Self: 'a;
     #[doc(hidden)]
     #[cfg(not(feature = "nightly"))]
-    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut ();
+    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()>;
 }
 
 impl<T: NonTrivialObject> private::Sealed for T {}
@@ -79,7 +80,7 @@ impl<T: NonTrivialObject> Object for T {
         }
     }
 
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Self
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self>
     where
         Self: Sized,
     {
@@ -89,22 +90,27 @@ impl<T: NonTrivialObject> Object for T {
                 val.as_mut_ptr() as *mut u8,
                 std::mem::size_of::<T>(),
             ));
-            val.assume_init()
+            Ok(val.assume_init())
         } else {
             T::deserialize_self_non_trivial(d)
         }
     }
 
     #[cfg(feature = "nightly")]
-    unsafe fn deserialize_on_heap<'a>(self: *const T, d: &mut Deserializer) -> Box<dyn Object + 'a>
+    unsafe fn deserialize_on_heap<'a>(
+        self: *const T,
+        d: &mut Deserializer,
+    ) -> Result<Box<dyn Object + 'a>>
     where
         Self: 'a,
     {
-        Box::new(Self::deserialize_self(d))
+        Ok(Box::new(Self::deserialize_self(d)?))
     }
 
     #[cfg(not(feature = "nightly"))]
-    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut () {
-        |d| unsafe { Box::into_raw(Box::new(Self::deserialize_self_non_trivial(d))) as *mut () }
+    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
+        |d| unsafe {
+            Ok(Box::into_raw(Box::new(Self::deserialize_self_non_trivial(d)?)) as *mut ())
+        }
     }
 }

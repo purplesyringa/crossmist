@@ -34,7 +34,7 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
 
     let mut deserializer = Deserializer::new(entry_data, entry_handles);
     let entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>> =
-        unsafe { deserializer.deserialize() };
+        unsafe { deserializer.deserialize() }.expect("Failed to deserialize entry");
     std::process::exit(entry.call_object_once((handle,)))
 }
 

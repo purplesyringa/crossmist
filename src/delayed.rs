@@ -28,6 +28,7 @@
 //! ```
 
 use crate::{handles::OwnedHandle, Deserializer, NonTrivialObject, Object, Serializer};
+use std::io::Result;
 
 /// A wrapper for objects that require global state to be configured before deserialization.
 pub struct Delayed<T: Object> {
@@ -49,7 +50,7 @@ impl<T: Object> Delayed<T> {
     }
 
     /// Unwrap an object. Use this in the child process after initialization.
-    pub fn deserialize(self) -> T {
+    pub fn deserialize(self) -> Result<T> {
         match self.inner {
             DelayedInner::Serialized(data, handles) => unsafe {
                 Deserializer::new(data, handles).deserialize()
@@ -78,14 +79,14 @@ unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
             }
         }
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
         let handles = d
-            .deserialize::<Vec<usize>>()
+            .deserialize::<Vec<usize>>()?
             .into_iter()
             .map(|handle| d.drain_handle(handle))
             .collect();
-        Delayed {
-            inner: DelayedInner::Serialized(d.deserialize(), handles),
-        }
+        Ok(Delayed {
+            inner: DelayedInner::Serialized(d.deserialize()?, handles),
+        })
     }
 }

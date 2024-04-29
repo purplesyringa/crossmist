@@ -152,8 +152,8 @@ fn send_on_handle<T: Object>(file: &mut File, value: &T) -> Result<()> {
 
 pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result<T> {
     let mut d = Deserializer::new(serialized, Vec::new());
-    let handles: Vec<handles::RawHandle> = d.deserialize();
-    let serialized_contents: Vec<u8> = d.deserialize();
+    let handles: Vec<handles::RawHandle> = d.deserialize()?;
+    let serialized_contents: Vec<u8> = d.deserialize()?;
 
     let mut dup_handles = Vec::new();
     if !handles.is_empty() {
@@ -182,8 +182,7 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
         }
     }
 
-    let mut d1 = Deserializer::new(serialized_contents, dup_handles);
-    Ok(d1.deserialize())
+    Deserializer::new(serialized_contents, dup_handles).deserialize()
 }
 
 unsafe fn recv_on_handle<T: Object>(file: &mut File) -> Result<Option<T>> {
