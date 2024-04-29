@@ -113,6 +113,11 @@ fn with_passed_nested_channel(mut chan: Receiver<Receiver<i32>>) -> i32 {
     chan1.recv().unwrap().unwrap()
 }
 
+#[crossmist::func]
+fn exitting() {
+    std::process::exit(0);
+}
+
 #[crossmist::main]
 fn main() {
     assert_eq!(simple.run().expect("simple run failed"), 0x123456789abcdef);
@@ -272,5 +277,10 @@ fn main() {
         tx1.send(&rx).unwrap();
         assert_eq!(with_passed_nested_channel.run(rx1).unwrap(), 5);
         println!("with_passed_nested_channel OK");
+    }
+
+    {
+        assert_eq!(exitting.run().unwrap(), ());
+        println!("exitting OK");
     }
 }

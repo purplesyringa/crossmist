@@ -62,6 +62,11 @@ async fn with_async_write(mut tx_data: Sender<i32>, mut tx_signal: Sender<()>) {
     future.await.unwrap();
 }
 
+#[crossmist::func(tokio(flavor = "current_thread"))]
+async fn exitting() {
+    std::process::exit(0);
+}
+
 #[crossmist::main]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -164,5 +169,10 @@ async fn main() {
         }
         child.join().await.unwrap();
         println!("with_async_write OK");
+    }
+
+    {
+        assert_eq!(exitting.run_tokio().await.unwrap(), ());
+        println!("exitting OK");
     }
 }

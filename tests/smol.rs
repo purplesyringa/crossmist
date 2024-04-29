@@ -62,6 +62,11 @@ async fn with_async_write(mut tx_data: Sender<i32>, mut tx_signal: Sender<()>) {
     future.await;
 }
 
+#[crossmist::func(smol)]
+async fn exitting() {
+    std::process::exit(0);
+}
+
 #[crossmist::main]
 #[macro_rules_attribute::apply(smol_macros::main!)]
 async fn main() {
@@ -164,5 +169,10 @@ async fn main() {
         }
         child.join().await.unwrap();
         println!("with_async_write OK");
+    }
+
+    {
+        assert_eq!(exitting.run_smol().await.unwrap(), ());
+        println!("exitting OK");
     }
 }
