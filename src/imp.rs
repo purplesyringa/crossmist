@@ -123,3 +123,29 @@ pub fn init() {
 
     entry::start_root();
 }
+
+#[cfg(feature = "tokio")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! if_tokio {
+    ($($a:tt)*) => { $($a)* };
+}
+#[cfg(not(feature = "tokio"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! if_tokio {
+    ($($a:tt)*) => {};
+}
+
+#[cfg(feature = "smol")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! if_smol {
+    ($($a:tt)*) => { $($a)* };
+}
+#[cfg(not(feature = "smol"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! if_smol {
+    ($($a:tt)*) => {};
+}

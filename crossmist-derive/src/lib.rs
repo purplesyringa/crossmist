@@ -200,31 +200,28 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
                 use ::crossmist::BindValue;
                 unsafe { ::crossmist::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))) }
             }
-
-            #[cfg(feature = "tokio")]
-            pub async fn spawn_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
-                use ::crossmist::BindValue;
-                unsafe { ::crossmist::tokio::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
-            }
-
-            #[cfg(feature = "smol")]
-            pub async fn spawn_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
-                use ::crossmist::BindValue;
-                unsafe { ::crossmist::smol::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
-            }
-
             pub fn run #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
                 self.spawn(#(#arg_names,)*)?.join()
             }
 
-            #[cfg(feature = "tokio")]
-            pub async fn run_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
-                self.spawn_tokio(#(#arg_names,)*).await?.join().await
+            ::crossmist::if_tokio! {
+                pub async fn spawn_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
+                    use ::crossmist::BindValue;
+                    unsafe { ::crossmist::tokio::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
+                }
+                pub async fn run_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
+                    self.spawn_tokio(#(#arg_names,)*).await?.join().await
+                }
             }
 
-            #[cfg(feature = "smol")]
-            pub async fn run_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
-                self.spawn_smol(#(#arg_names,)*).await?.join().await
+            ::crossmist::if_smol! {
+                pub async fn spawn_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
+                    use ::crossmist::BindValue;
+                    unsafe { ::crossmist::smol::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
+                }
+                pub async fn run_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
+                    self.spawn_smol(#(#arg_names,)*).await?.join().await
+                }
             }
         }
     };
