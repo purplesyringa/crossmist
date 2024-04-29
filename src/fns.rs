@@ -89,8 +89,9 @@
 //! }
 //! ```
 
-use crate::Object;
+use crate::{relocation::RelocatablePtr, Object};
 use paste::paste;
+use std::marker::PhantomData;
 use std::ops::Deref;
 
 macro_rules! impl_fn {
@@ -785,3 +786,100 @@ macro_rules! lambda_bind {
         $($acc)*.bind_value($name)
     };
 }
+
+/// Metaprogramming on `fn(...) -> ...` types.
+///
+/// This trait is not part of the stable API provided by crossmist.
+pub trait FnPtr {
+    /// Function arguments as a tuple.
+    type Args: Tuple;
+    /// Function output type.
+    type Output;
+    /// Convert the function pointer to a type-erased pointer.
+    fn addr(self) -> *const ();
+}
+
+/// A wrapper for `fn(...) -> ...` implementing `FnObject`.
+///
+/// This comes in handy when you have a captureless closure or a function you are too lazy to wrap
+/// in [`lambda`] or [`crossmist::func`]. Creating the wrapper from a function pointer requires
+/// unsafety, however, as there are no guarantees, generally speaking, that the function will be
+/// available in the child process, which can happen if it was created in runtime by JIT
+/// compilation.
+///
+/// # Example
+///
+/// ```rust
+/// # use crossmist::fns::{FnObject, StaticFn};
+/// fn add(a: i32, b: i32) -> i32 {
+///     a + b
+/// }
+/// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new(add) };
+/// let add: Box<dyn FnObject<(i32, i32), Output = i32>> = Box::new(add);
+/// assert_eq!(add(5, 7), 12);
+/// ```
+///
+/// ```rust
+/// # use crossmist::fns::{FnObject, StaticFn};
+/// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new(|a, b| a + b) };
+/// let add: Box<dyn FnObject<(i32, i32), Output = i32>> = Box::new(add);
+/// assert_eq!(add(5, 7), 12);
+/// ```
+#[derive(Clone, Copy, Object)]
+pub struct StaticFn<F: FnPtr> {
+    ptr: RelocatablePtr<()>,
+    phantom: PhantomData<F>,
+}
+
+impl<F: FnPtr> StaticFn<F> {
+    /// Create a [`StaticFn`] from a function pointer.
+    ///
+    /// # Safety
+    ///
+    /// This is safe to call if the function pointer is obtained from an `fn` item or a closure
+    /// without captures.
+    pub unsafe fn new(f: F) -> Self {
+        Self {
+            ptr: RelocatablePtr(f.addr()),
+            phantom: PhantomData,
+        }
+    }
+}
+
+macro_rules! impl_fn_pointer {
+    () => {};
+    ($head:tt $($tail:tt)*) => {
+        paste! {
+            impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {
+                type Args = ($([<T $tail>],)*);
+                type Output = Output;
+                fn addr(self) -> *const () {
+                    self as *const ()
+                }
+            }
+            impl_fn! {
+                impl[Output, $([<T $tail>]),*] FnOnce<($([<T $tail>],)*), Output = Output> for StaticFn<fn($([<T $tail>]),*) -> Output> =
+                |self, args| {
+                    let ($([<a $tail>],)*) = args;
+                    let func = unsafe { std::mem::transmute::<*const (), fn($([<T $tail>]),*) -> Output>(self.ptr.0) };
+                    func($([<a $tail>]),*)
+                }
+            }
+            impl_fn! {
+                impl[Output, $([<T $tail>]),*] FnMut<($([<T $tail>],)*)> for StaticFn<fn($([<T $tail>]),*) -> Output> =
+                |self, args| {
+                    self.call_object_once(args)
+                }
+            }
+            impl_fn! {
+                impl[Output, $([<T $tail>]),*] Fn<($([<T $tail>],)*)> for StaticFn<fn($([<T $tail>]),*) -> Output> =
+                |self, args| {
+                    self.call_object_once(args)
+                }
+            }
+        }
+
+        impl_fn_pointer!($($tail)*);
+    };
+}
+impl_fn_pointer!(x 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);

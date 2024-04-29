@@ -6,6 +6,7 @@ use crate::{Deserializer, NonTrivialObject, Serializer};
 static BASE_ADDRESS: fn(()) = std::mem::drop::<()>;
 
 #[repr(transparent)]
+#[derive(Clone, Copy)]
 pub(crate) struct RelocatablePtr<T>(pub(crate) *const T);
 
 impl<T> NonTrivialObject for RelocatablePtr<T> {
