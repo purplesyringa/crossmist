@@ -9,7 +9,7 @@ static BASE_ADDRESS: fn(()) = std::mem::drop::<()>;
 #[derive(Clone, Copy)]
 pub(crate) struct RelocatablePtr<T>(pub(crate) *const T);
 
-impl<T> NonTrivialObject for RelocatablePtr<T> {
+unsafe impl<T> NonTrivialObject for RelocatablePtr<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         s.serialize(&(self.0 as usize).wrapping_sub(BASE_ADDRESS as usize));
     }

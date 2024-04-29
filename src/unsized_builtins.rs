@@ -8,7 +8,7 @@ struct DynFatPtr {
     vtable: *const (),
 }
 
-impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
+unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         #[cfg(not(feature = "nightly"))]
         s.serialize(&RelocatablePtr(self.get_heap_deserializer() as *const ()));
@@ -69,7 +69,7 @@ impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
     }
 }
 
-impl<T: Object> NonTrivialObject for Box<[T]> {
+unsafe impl<T: Object> NonTrivialObject for Box<[T]> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         s.serialize(&self.len());
         s.serialize_slice(self.as_ref());

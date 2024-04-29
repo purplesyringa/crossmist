@@ -61,7 +61,7 @@ impl<T: Object> Delayed<T> {
     }
 }
 
-impl<T: Object> NonTrivialObject for Delayed<T> {
+unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         match self.inner {
             DelayedInner::Serialized(_, _) => panic!("Cannot serialize a serialized Delayed value"),

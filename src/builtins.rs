@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 macro_rules! impl_pod {
     ([$($generics:tt)*] for $t:ty) => {
-        impl<$($generics)*> NonTrivialObject for $t {
+        unsafe impl<$($generics)*> NonTrivialObject for $t {
             fn serialize_self_non_trivial(&self, _s: &mut Serializer) {
                 unreachable!()
             }
@@ -27,7 +27,7 @@ macro_rules! impl_pod {
         impl<$($generics)*> PlainOldData for $t {}
     };
     (for $t:ty) => {
-        impl NonTrivialObject for $t {
+        unsafe impl NonTrivialObject for $t {
             fn serialize_self_non_trivial(&self, _s: &mut Serializer) {
                 unreachable!()
             }
@@ -75,7 +75,7 @@ impl_pod!(for std::time::Duration);
 impl_pod!(for std::time::Instant);
 impl_pod!(for std::time::SystemTime);
 
-impl NonTrivialObject for String {
+unsafe impl NonTrivialObject for String {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         s.serialize(&self.len());
         s.serialize_slice(self.as_bytes());
@@ -85,7 +85,7 @@ impl NonTrivialObject for String {
     }
 }
 
-impl NonTrivialObject for std::ffi::CString {
+unsafe impl NonTrivialObject for std::ffi::CString {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let bytes = self.as_bytes();
         s.serialize(&bytes.len());
@@ -96,7 +96,7 @@ impl NonTrivialObject for std::ffi::CString {
     }
 }
 
-impl NonTrivialObject for std::ffi::OsString {
+unsafe impl NonTrivialObject for std::ffi::OsString {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let bytes = self.as_encoded_bytes();
         s.serialize(&bytes.len());
@@ -123,7 +123,7 @@ macro_rules! impl_serialize_for_tuple {
         impl_serialize_for_tuple!($($tail)*);
 
         paste! {
-            impl<$([<T $tail>]: Object),*> NonTrivialObject for ($([<T $tail>],)*) {
+            unsafe impl<$([<T $tail>]: Object),*> NonTrivialObject for ($([<T $tail>],)*) {
                 #[allow(unused_variables)]
                 fn serialize_self_non_trivial(&self, s: &mut Serializer) {
                     serialize_rev!(s, self, $($tail)*);
@@ -142,7 +142,7 @@ macro_rules! impl_serialize_for_tuple {
 
 impl_serialize_for_tuple!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 
-impl<T: Object> NonTrivialObject for Option<T> {
+unsafe impl<T: Object> NonTrivialObject for Option<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         match self {
             None => s.serialize(&false),
@@ -162,7 +162,7 @@ impl<T: Object> NonTrivialObject for Option<T> {
 }
 impl<T: PlainOldData> PlainOldData for Option<T> {}
 
-impl<T: 'static + Object> NonTrivialObject for Rc<T> {
+unsafe impl<T: 'static + Object> NonTrivialObject for Rc<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         match s.learn_cyclic(Rc::as_ptr(self) as *const c_void) {
             None => {
@@ -187,7 +187,7 @@ impl<T: 'static + Object> NonTrivialObject for Rc<T> {
     }
 }
 
-impl<T: 'static + Object> NonTrivialObject for Arc<T> {
+unsafe impl<T: 'static + Object> NonTrivialObject for Arc<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         match s.learn_cyclic(Arc::as_ptr(self) as *const c_void) {
             None => {
@@ -212,7 +212,7 @@ impl<T: 'static + Object> NonTrivialObject for Arc<T> {
     }
 }
 
-impl NonTrivialObject for std::path::PathBuf {
+unsafe impl NonTrivialObject for std::path::PathBuf {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let bytes = self.as_os_str().as_encoded_bytes();
         s.serialize(&bytes.len());
@@ -223,7 +223,7 @@ impl NonTrivialObject for std::path::PathBuf {
     }
 }
 
-impl<T: Object, const N: usize> NonTrivialObject for [T; N] {
+unsafe impl<T: Object, const N: usize> NonTrivialObject for [T; N] {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         s.serialize_slice(self);
     }
@@ -233,7 +233,7 @@ impl<T: Object, const N: usize> NonTrivialObject for [T; N] {
 }
 impl<T: PlainOldData, const N: usize> PlainOldData for [T; N] {}
 
-impl<T: Object> NonTrivialObject for Vec<T> {
+unsafe impl<T: Object> NonTrivialObject for Vec<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         s.serialize(&self.len());
         s.serialize_slice(self.as_slice())
@@ -256,7 +256,7 @@ macro_rules! impl_serialize_for_sequence {
         $with_capacity:expr,
         $push:expr
     ) => {
-        impl<T: Object $(+ $tbound1 $(+ $tbound2)*)* $(, $typaram: $bound1 $(+ $bound2)*,)*> NonTrivialObject
+        unsafe impl<T: Object $(+ $tbound1 $(+ $tbound2)*)* $(, $typaram: $bound1 $(+ $bound2)*,)*> NonTrivialObject
             for $ty<T $(, $typaram)*>
         {
             fn serialize_self_non_trivial(&self, s: &mut Serializer) {
@@ -287,7 +287,7 @@ macro_rules! impl_serialize_for_map {
         $size:ident,
         $with_capacity:expr
     ) => {
-        impl<
+        unsafe impl<
             K: Object $(+ $kbound1 $(+ $kbound2)*)*,
             V: Object
             $(, $typaram: $bound1 $(+ $bound2)*,)*
@@ -355,7 +355,7 @@ impl_serialize_for_map!(
     HashMap::with_capacity_and_hasher(size, S::default())
 );
 
-impl<T: Object, E: Object> NonTrivialObject for Result<T, E> {
+unsafe impl<T: Object, E: Object> NonTrivialObject for Result<T, E> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         match self {
             Ok(ref ok) => {
@@ -378,7 +378,7 @@ impl<T: Object, E: Object> NonTrivialObject for Result<T, E> {
 }
 impl<T: PlainOldData, E: PlainOldData> PlainOldData for Result<T, E> {}
 
-impl NonTrivialObject for OwnedHandle {
+unsafe impl NonTrivialObject for OwnedHandle {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let handle = s.add_handle(self.as_raw_handle());
         s.serialize(&handle)
@@ -389,7 +389,7 @@ impl NonTrivialObject for OwnedHandle {
     }
 }
 
-impl NonTrivialObject for std::fs::File {
+unsafe impl NonTrivialObject for std::fs::File {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let handle = s.add_handle(self.as_raw_handle());
         s.serialize(&handle)
@@ -400,7 +400,7 @@ impl NonTrivialObject for std::fs::File {
 }
 
 #[cfg(feature = "tokio")]
-impl NonTrivialObject for tokio::fs::File {
+unsafe impl NonTrivialObject for tokio::fs::File {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let handle = s.add_handle(self.as_raw_handle());
         s.serialize(&handle)
@@ -414,7 +414,7 @@ impl NonTrivialObject for tokio::fs::File {
 }
 
 #[cfg(feature = "smol")]
-impl NonTrivialObject for async_fs::File {
+unsafe impl NonTrivialObject for async_fs::File {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let handle = s.add_handle(self.as_raw_handle());
         s.serialize(&handle)
@@ -425,7 +425,7 @@ impl NonTrivialObject for async_fs::File {
 }
 
 #[cfg(unix)]
-impl NonTrivialObject for std::os::unix::net::UnixStream {
+unsafe impl NonTrivialObject for std::os::unix::net::UnixStream {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let handle = s.add_handle(self.as_raw_handle());
         s.serialize(&handle)
@@ -436,7 +436,7 @@ impl NonTrivialObject for std::os::unix::net::UnixStream {
 }
 
 #[cfg(all(unix, feature = "tokio"))]
-impl NonTrivialObject for tokio::net::UnixStream {
+unsafe impl NonTrivialObject for tokio::net::UnixStream {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         let handle = s.add_handle(self.as_raw_handle());
         s.serialize(&handle)
@@ -447,7 +447,7 @@ impl NonTrivialObject for tokio::net::UnixStream {
 }
 
 #[cfg(all(unix, feature = "smol"))]
-impl<T: 'static + std::os::fd::AsFd + Object> NonTrivialObject for async_io::Async<T> {
+unsafe impl<T: 'static + std::os::fd::AsFd + Object> NonTrivialObject for async_io::Async<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         s.serialize(self.get_ref())
     }

@@ -200,7 +200,7 @@ impl Deserializer {
 ///     second: U,
 /// }
 ///
-/// impl<T: Object, U: Object> NonTrivialObject for SimplePair<T, U> {
+/// unsafe impl<T: Object, U: Object> NonTrivialObject for SimplePair<T, U> {
 ///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
 ///         s.serialize(&self.first);
 ///         s.serialize(&self.second);
@@ -216,7 +216,7 @@ impl Deserializer {
 /// Note that only DSTs cannot be objects (but `Box<dyn Trait>` is fine).
 ///
 ///
-/// ## Cyclic structures
+/// # Cyclic structures
 ///
 /// Occasionally, you might need to serialize recursive structures that might contain loops. You're
 /// probably better of using [`std::rc::Rc`] or [`std::sync::Arc`] or rewriting your structures, but
@@ -228,7 +228,7 @@ impl Deserializer {
 /// # use std::rc::Rc;
 /// struct CustomRc<T: 'static>(Rc<T>);
 ///
-/// impl<T: 'static + Object> NonTrivialObject for CustomRc<T> {
+/// unsafe impl<T: 'static + Object> NonTrivialObject for CustomRc<T> {
 ///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
 ///         // Any unique identifier works, but it must be *globally* unique, not just for objects
 ///         // of the same type.
@@ -276,7 +276,7 @@ impl Deserializer {
 /// ```
 ///
 ///
-/// ## File descriptors
+/// # File descriptors
 ///
 /// Sometimes, you might need to serialize objects that store references to files. This is done
 /// automatically for [`std::fs::File`], [`OwnedHandle`] and related types, but if you have a
@@ -292,7 +292,7 @@ impl Deserializer {
 /// # use std::fs::File;
 /// struct CustomFile(std::fs::File);
 ///
-/// impl NonTrivialObject for CustomFile {
+/// unsafe impl NonTrivialObject for CustomFile {
 ///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
 ///         // add_handle memorizes the handle (fd) and returns its ID
 ///         let handle = s.add_handle(self.0.as_raw_handle());
@@ -305,7 +305,14 @@ impl Deserializer {
 ///     }
 /// }
 /// ```
-pub trait NonTrivialObject: Sized {
+///
+///
+/// # Safety
+///
+/// An implementation of this trait function is safe if the order of serialized types during
+/// serialization and deserialization matches, up to serialization layout. See the documentation of
+/// [`Deserializer::deserialize`] for more details.
+pub unsafe trait NonTrivialObject: Sized {
     /// Serialize a single object into a serializer.
     fn serialize_self_non_trivial(&self, s: &mut Serializer);
     /// Deserialize a single object from a deserializer.
