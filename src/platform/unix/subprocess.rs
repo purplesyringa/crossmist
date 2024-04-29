@@ -88,7 +88,7 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
 
     let spawn_cb = || {
         // No heap allocations are allowed from now on
-        let res: Result<!> = try {
+        let res: Result<()> = try {
             for i in 1..32 {
                 if i != nix::libc::SIGKILL && i != nix::libc::SIGSTOP {
                     signal::sigaction(
@@ -129,8 +129,13 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
 
         // Use abort() instead of panic!() to prevent stack unwinding, as unwinding in the fork
         // child may free resources that would later be freed in the original process
-        eprintln!("{}", res.into_err());
-        std::process::abort();
+        match res {
+            Ok(()) => unreachable!(),
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::abort();
+            }
+        }
     };
 
     let mut stack = [0u8; 4096];

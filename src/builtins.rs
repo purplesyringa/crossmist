@@ -42,7 +42,9 @@ macro_rules! impl_pod {
 impl_pod!(for bool);
 impl_pod!(for char);
 impl_pod!([T] for std::marker::PhantomData<T>);
+#[cfg(feature = "nightly")]
 impl_pod!(for !);
+impl_pod!(for std::convert::Infallible);
 impl_pod!(for i8);
 impl_pod!(for i16);
 impl_pod!(for i32);

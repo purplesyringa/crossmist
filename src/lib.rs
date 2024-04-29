@@ -86,9 +86,7 @@
 //! implemented and to let us fix bugs quickly when they arise. As channels may only be used between
 //! two processes started from the same executable file, this does not violate semver.
 
-#![feature(never_type)]
 #![feature(try_blocks)]
-#![feature(unwrap_infallible)]
 #![cfg_attr(
     feature = "nightly",
     feature(
@@ -96,6 +94,7 @@
         doc_cfg,
         doc_auto_cfg,
         fn_traits,
+        never_type,
         tuple_trait,
         unboxed_closures,
     )
