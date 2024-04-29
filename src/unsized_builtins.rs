@@ -10,6 +10,9 @@ struct DynFatPtr {
 
 impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+        #[cfg(not(feature = "nightly"))]
+        s.serialize(&RelocatablePtr(self.get_heap_deserializer() as *const ()));
+
         if implements!(T: Sized) {
             self.as_ref().serialize_self(s);
         } else {
@@ -28,7 +31,14 @@ impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
             self.as_ref().serialize_self(s);
         }
     }
+
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Self {
+        #[cfg(not(feature = "nightly"))]
+        let heap_deserializer = std::mem::transmute::<
+            RelocatablePtr<()>,
+            unsafe fn(&mut Deserializer) -> *mut (),
+        >(d.deserialize::<RelocatablePtr<()>>());
+
         let mut pointer: *mut T = if implements!(T: Sized) {
             assert!(std::mem::size_of::<&T>() == std::mem::size_of::<usize>());
             std::mem::transmute_copy::<usize, *mut T>(&0usize)
@@ -44,12 +54,17 @@ impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
                 vtable: d.deserialize::<RelocatablePtr<()>>().0,
             })
         };
+
+        #[cfg(feature = "nightly")]
         std::ptr::copy_nonoverlapping(
             &Box::into_raw(pointer.deserialize_on_heap(d)) as *const *mut dyn Object
                 as *const *mut (),
             &mut pointer as *mut *mut T as *mut *mut (),
             1,
         );
+        #[cfg(not(feature = "nightly"))]
+        (&mut pointer as *mut *mut T as *mut *mut ()).write(heap_deserializer(d));
+
         Box::from_raw(pointer)
     }
 }

@@ -36,19 +36,17 @@ pub trait Object: private::Sealed {
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self
     where
         Self: Sized;
-    /// Deserialize a single object onto heap with dynamic typing from a deserializer.
-    ///
-    /// # Safety
-    ///
-    /// This function is safe to call if the order of serialized types during serialization and
-    /// deserialization matches, up to serialization layout. See the documentation of
-    /// [`Deserializer::deserialize`] for more details.
+    #[doc(hidden)]
+    #[cfg(feature = "nightly")]
     unsafe fn deserialize_on_heap<'a>(
         self: *const Self,
         d: &mut Deserializer,
     ) -> Box<dyn Object + 'a>
     where
         Self: 'a;
+    #[doc(hidden)]
+    #[cfg(not(feature = "nightly"))]
+    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut ();
 }
 
 impl<T: NonTrivialObject> private::Sealed for T {}
@@ -97,10 +95,16 @@ impl<T: NonTrivialObject> Object for T {
         }
     }
 
+    #[cfg(feature = "nightly")]
     unsafe fn deserialize_on_heap<'a>(self: *const T, d: &mut Deserializer) -> Box<dyn Object + 'a>
     where
         Self: 'a,
     {
         Box::new(Self::deserialize_self(d))
+    }
+
+    #[cfg(not(feature = "nightly"))]
+    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> *mut () {
+        |d| unsafe { Box::into_raw(Box::new(Self::deserialize_self_non_trivial(d))) as *mut () }
     }
 }

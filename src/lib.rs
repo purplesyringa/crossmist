@@ -86,12 +86,14 @@
 //! implemented and to let us fix bugs quickly when they arise. As channels may only be used between
 //! two processes started from the same executable file, this does not violate semver.
 
-#![feature(arbitrary_self_types)]
 #![feature(doc_cfg)]
 #![feature(never_type)]
 #![feature(try_blocks)]
 #![feature(unwrap_infallible)]
-#![cfg_attr(feature = "nightly", feature(fn_traits, tuple_trait, unboxed_closures))]
+#![cfg_attr(
+    feature = "nightly",
+    feature(arbitrary_self_types, fn_traits, tuple_trait, unboxed_closures)
+)]
 
 extern crate self as crossmist;
 
