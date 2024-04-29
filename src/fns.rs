@@ -283,22 +283,16 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
 }
 
 #[doc(hidden)]
-pub trait BindValue<Head: Object, Tail> {
-    fn bind_value(self, head: Head) -> BoundValue<Self, Head>
-    where
-        Self: Sized + Object;
+pub trait BindValue<Head: Object, Tail>: Object + Sized {
+    fn bind_value(self, head: Head) -> BoundValue<Self, Head>;
 }
 #[doc(hidden)]
-pub trait BindMut<Head: Object, Tail> {
-    fn bind_mut(self, head: Head) -> BoundMut<Self, Head>
-    where
-        Self: Sized + Object;
+pub trait BindMut<Head: Object, Tail>: Object + Sized {
+    fn bind_mut(self, head: Head) -> BoundMut<Self, Head>;
 }
 #[doc(hidden)]
-pub trait BindRef<Head: Object, Tail> {
-    fn bind_ref(self, head: Head) -> BoundRef<Self, Head>
-    where
-        Self: Sized + Object;
+pub trait BindRef<Head: Object, Tail>: Object + Sized {
+    fn bind_ref(self, head: Head) -> BoundRef<Self, Head>;
 }
 
 #[doc(hidden)]
