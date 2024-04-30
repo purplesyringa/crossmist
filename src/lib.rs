@@ -442,6 +442,7 @@ pub use crate::platform::unix::*;
 #[cfg(windows)]
 pub use crate::platform::windows::*;
 
+#[cfg(feature = "async")]
 pub mod asynchronous;
 #[cfg(feature = "smol")]
 pub mod smol;
