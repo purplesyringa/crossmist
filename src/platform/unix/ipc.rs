@@ -87,7 +87,7 @@ impl<T: Object> Sender<T> {
 
     /// Send a value to the other side.
     pub fn send(&mut self, value: &T) -> Result<()> {
-        SingleObjectSender::new(self.fd.as_raw_fd(), value).send_next()
+        SingleObjectSender::new(self.fd.as_raw_fd(), value, true).send_next()
     }
 }
 
@@ -121,7 +121,7 @@ impl<T: Object> Receiver<T> {
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<T>> {
-        unsafe { SingleObjectReceiver::new(self.fd.as_raw_fd()).recv_next() }
+        unsafe { SingleObjectReceiver::new(self.fd.as_raw_fd(), true).recv_next() }
     }
 }
 
@@ -153,14 +153,14 @@ impl<S: Object, R: Object> Duplex<S, R> {
 
     /// Send a value to the other side.
     pub fn send(&mut self, value: &S) -> Result<()> {
-        SingleObjectSender::new(self.fd.as_raw_fd(), value).send_next()
+        SingleObjectSender::new(self.fd.as_raw_fd(), value, true).send_next()
     }
 
     /// Receive a value from the other side.
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub fn recv(&mut self) -> Result<Option<R>> {
-        unsafe { SingleObjectReceiver::new(self.fd.as_raw_fd()).recv_next() }
+        unsafe { SingleObjectReceiver::new(self.fd.as_raw_fd(), true).recv_next() }
     }
 
     /// Send a value from the other side and wait for a response immediately.

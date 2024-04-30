@@ -56,11 +56,8 @@ use {
 };
 #[cfg(unix)]
 use {
-    crate::{
-        entry,
-        internals::{socketpair, SingleObjectReceiver, SingleObjectSender},
-    },
-    nix::libc::{pid_t, SOCK_NONBLOCK},
+    crate::internals::{socketpair, SingleObjectReceiver, SingleObjectSender},
+    nix::libc::pid_t,
     std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
 };
 
@@ -178,7 +175,7 @@ pub fn duplex<Stream: AsyncStream, A: Object, B: Object>(
 ) -> Result<(Duplex<Stream, A, B>, Duplex<Stream, B, A>)> {
     #[cfg(unix)]
     {
-        let (tx, rx) = socketpair(SOCK_NONBLOCK)?;
+        let (tx, rx) = socketpair(0)?;
         unsafe {
             Ok((
                 Duplex::from_stream(Stream::try_new(tx)?),
@@ -214,7 +211,7 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
     pub async fn send(&mut self, value: &T) -> Result<()> {
         #[cfg(unix)]
         {
-            let mut sender = SingleObjectSender::new(self.fd.as_raw_handle(), value);
+            let mut sender = SingleObjectSender::new(self.fd.as_raw_handle(), value, false);
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
@@ -229,22 +226,16 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
 impl<Stream: AsyncStream, T: Object> TryFrom<crate::Sender<T>> for Sender<Stream, T> {
     type Error = Error;
     fn try_from(value: crate::Sender<T>) -> Result<Self> {
-        let fd = value.into_raw_handle();
-        #[cfg(unix)]
-        entry::enable_nonblock(fd)?;
         unsafe {
             Ok(Self::from_stream(Stream::try_new(
-                SyncStream::from_raw_handle(fd),
+                SyncStream::from_raw_handle(value.into_raw_handle()),
             )?))
         }
     }
 }
 impl<Stream: AsyncStream, T: Object> From<Sender<Stream, T>> for crate::Sender<T> {
     fn from(value: Sender<Stream, T>) -> Self {
-        let fd = value.into_raw_handle();
-        #[cfg(unix)]
-        entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
-        unsafe { Self::from_raw_handle(fd) }
+        unsafe { Self::from_raw_handle(value.into_raw_handle()) }
     }
 }
 
@@ -294,7 +285,7 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
     pub async fn recv(&mut self) -> Result<Option<T>> {
         #[cfg(unix)]
         {
-            let mut receiver = unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle()) };
+            let mut receiver = unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle(), false) };
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]
@@ -319,24 +310,16 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
 impl<Stream: AsyncStream, T: Object> TryFrom<crate::Receiver<T>> for Receiver<Stream, T> {
     type Error = Error;
     fn try_from(value: crate::Receiver<T>) -> Result<Self> {
-        let fd = value.into_raw_handle();
-        #[cfg(unix)]
-        entry::enable_nonblock(fd)?;
         unsafe {
             Ok(Self::from_stream(Stream::try_new(
-                SyncStream::from_raw_handle(fd),
+                SyncStream::from_raw_handle(value.into_raw_handle()),
             )?))
         }
     }
 }
 impl<Stream: AsyncStream, T: Object> From<Receiver<Stream, T>> for crate::Receiver<T> {
     fn from(value: Receiver<Stream, T>) -> Self {
-        let fd = value.into_raw_handle();
-        unsafe {
-            #[cfg(unix)]
-            entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
-            Self::from_raw_handle(fd)
-        }
+        unsafe { Self::from_raw_handle(value.into_raw_handle()) }
     }
 }
 
@@ -385,7 +368,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     pub async fn send(&mut self, value: &S) -> Result<()> {
         #[cfg(unix)]
         {
-            let mut sender = SingleObjectSender::new(self.fd.as_raw_handle(), value);
+            let mut sender = SingleObjectSender::new(self.fd.as_raw_handle(), value, false);
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
@@ -398,7 +381,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     pub async fn recv(&mut self) -> Result<Option<R>> {
         #[cfg(unix)]
         {
-            let mut receiver = unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle()) };
+            let mut receiver = unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle(), false) };
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]
@@ -426,10 +409,8 @@ impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
     fn try_from(value: crate::Duplex<S, R>) -> Result<Self> {
         #[cfg(unix)]
         unsafe {
-            let fd = value.into_raw_fd();
-            entry::enable_nonblock(fd)?;
             Ok(Self::from_stream(Stream::try_new(
-                SyncStream::from_raw_fd(fd),
+                SyncStream::from_raw_fd(value.into_raw_fd()),
             )?))
         }
         #[cfg(windows)]
@@ -446,9 +427,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> From<Duplex<Stream, S, R>> for c
     fn from(value: Duplex<Stream, S, R>) -> Self {
         #[cfg(unix)]
         unsafe {
-            let fd = value.into_raw_handle();
-            entry::disable_nonblock(fd).expect("Failed to reset O_NONBLOCK");
-            Self::from_raw_handle(fd)
+            Self::from_raw_handle(value.into_raw_handle())
         }
         #[cfg(windows)]
         Self::join(value.sender.into(), value.receiver.into())

@@ -40,10 +40,11 @@ pub(crate) struct SingleObjectSender {
     buffer: Vec<u8>,
     buffer_pos: usize,
     fds_pos: usize,
+    flags: MsgFlags,
 }
 
 impl SingleObjectSender {
-    pub(crate) fn new<T: Object>(socket_fd: RawFd, value: &T) -> Self {
+    pub(crate) fn new<T: Object>(socket_fd: RawFd, value: &T, blocking: bool) -> Self {
         let mut s = Serializer::new();
         s.serialize(value);
         Self {
@@ -52,6 +53,11 @@ impl SingleObjectSender {
             buffer: s.into_vec(),
             buffer_pos: 0,
             fds_pos: 0,
+            flags: if blocking {
+                MsgFlags::empty()
+            } else {
+                MsgFlags::MSG_DONTWAIT
+            },
         }
     }
 
@@ -69,7 +75,7 @@ impl SingleObjectSender {
                     IoSlice::new(&self.buffer[self.buffer_pos..buffer_end]),
                 ],
                 &[ControlMessage::ScmRights(&self.fds[self.fds_pos..fds_end])],
-                MsgFlags::empty(),
+                self.flags,
                 None,
             )?;
 
@@ -88,16 +94,22 @@ pub(crate) struct SingleObjectReceiver<T: Object> {
     buffer: Vec<u8>,
     buffer_pos: usize,
     fds: Vec<OwnedFd>,
+    flags: MsgFlags,
     marker: PhantomData<fn() -> T>,
 }
 
 impl<T: Object> SingleObjectReceiver<T> {
-    pub(crate) unsafe fn new(socket_fd: RawFd) -> Self {
+    pub(crate) unsafe fn new(socket_fd: RawFd, blocking: bool) -> Self {
         Self {
             socket_fd,
             buffer: Vec::new(),
             buffer_pos: 0,
             fds: Vec::new(),
+            flags: if blocking {
+                MsgFlags::empty()
+            } else {
+                MsgFlags::MSG_DONTWAIT
+            },
             marker: PhantomData,
         }
     }
@@ -118,7 +130,7 @@ impl<T: Object> SingleObjectReceiver<T> {
                 self.socket_fd,
                 &mut iovecs,
                 Some(&mut ancillary),
-                MsgFlags::MSG_CMSG_CLOEXEC,
+                self.flags | MsgFlags::MSG_CMSG_CLOEXEC,
             )?;
 
             for cmsg in message.cmsgs() {

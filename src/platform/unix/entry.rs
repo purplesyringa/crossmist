@@ -56,17 +56,3 @@ pub(crate) fn enable_cloexec(fd: RawHandle) -> std::io::Result<()> {
     )?;
     Ok(())
 }
-pub(crate) fn disable_nonblock(fd: RawHandle) -> std::io::Result<()> {
-    nix::fcntl::fcntl(
-        fd,
-        nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::empty()),
-    )?;
-    Ok(())
-}
-pub(crate) fn enable_nonblock(fd: RawHandle) -> std::io::Result<()> {
-    nix::fcntl::fcntl(
-        fd,
-        nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
-    )?;
-    Ok(())
-}
