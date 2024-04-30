@@ -422,9 +422,6 @@ mod platform {
     #[cfg_attr(feature = "nightly", doc(cfg(all())))]
     #[cfg(unix)]
     pub mod unix {
-        #[cfg_attr(feature = "nightly", doc(cfg(feature = "async")))]
-        #[cfg(feature = "async")]
-        pub mod asynchronous;
         pub(crate) mod entry;
         pub mod handles;
         pub(crate) mod internals;
@@ -433,9 +430,6 @@ mod platform {
     }
     #[cfg(windows)]
     pub mod windows {
-        #[cfg_attr(feature = "nightly", doc(cfg(feature = "async")))]
-        #[cfg(feature = "async")]
-        pub mod asynchronous;
         pub(crate) mod entry;
         pub mod handles;
         pub mod ipc;
@@ -448,6 +442,7 @@ pub use crate::platform::unix::*;
 #[cfg(windows)]
 pub use crate::platform::windows::*;
 
+pub mod asynchronous;
 #[cfg(feature = "smol")]
 pub mod smol;
 #[cfg(feature = "tokio")]
