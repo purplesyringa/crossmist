@@ -55,24 +55,27 @@ use std::os::windows::{
 };
 use windows::Win32::System::{Pipes, Threading, WindowsProgramming};
 
-/// Runtime-dependent parameters.
-pub unsafe trait AsyncRuntime {
-    /// A readable and writable pipe.
-    type Stream: From<File> + Object + handles::AsRawHandle;
+/// Runtime-dependent stream implementation.
+pub unsafe trait AsyncStream: Object + Sized {
+    /// Create the stream from a sync stream.
+    fn try_new(file: File) -> Result<Self>;
+
+    /// Get a raw handle to the underlying stream.
+    fn as_raw_handle(&self) -> handles::RawHandle;
 
     /// Perform a write.
-    fn write(stream: &mut Self::Stream, buf: &[u8]) -> impl Future<Output = Result<()>> + Send;
+    fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<()>> + Send;
 
     /// Perform a read.
-    fn read(stream: &mut Self::Stream, buf: &mut [u8]) -> impl Future<Output = Result<()>> + Send;
+    fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<()>> + Send;
 }
 
 /// The transmitting side of a unidirectional channel.
 ///
 /// `T` is the type of the objects this side sends via the channel and the other side receives.
 #[derive(Object)]
-pub struct Sender<Runtime: AsyncRuntime, T: Object> {
-    fd: Runtime::Stream,
+pub struct Sender<Stream: AsyncStream, T: Object> {
+    fd: Stream,
     marker: PhantomData<fn(T)>,
 }
 
@@ -80,8 +83,8 @@ pub struct Sender<Runtime: AsyncRuntime, T: Object> {
 ///
 /// `T` is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
-pub struct Receiver<Runtime: AsyncRuntime, T: Object> {
-    fd: Runtime::Stream,
+pub struct Receiver<Stream: AsyncStream, T: Object> {
+    fd: Stream,
     marker: PhantomData<fn() -> T>,
 }
 
@@ -90,14 +93,14 @@ pub struct Receiver<Runtime: AsyncRuntime, T: Object> {
 /// `S` is the type of the objects this side sends via the channel and the other side receives, `R`
 /// is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
-pub struct Duplex<Runtime: AsyncRuntime, S: Object, R: Object> {
-    sender: Sender<Runtime, S>,
-    receiver: Receiver<Runtime, R>,
+pub struct Duplex<Stream: AsyncStream, S: Object, R: Object> {
+    sender: Sender<Stream, S>,
+    receiver: Receiver<Stream, R>,
 }
 
 /// Create a unidirectional channel.
-pub fn channel<Runtime: AsyncRuntime, T: Object>(
-) -> Result<(Sender<Runtime, T>, Receiver<Runtime, T>)> {
+pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, Receiver<Stream, T>)>
+{
     let mut tx: handles::RawHandle = Default::default();
     let mut rx: handles::RawHandle = Default::default();
     unsafe {
@@ -109,22 +112,24 @@ pub fn channel<Runtime: AsyncRuntime, T: Object>(
         )
         .ok()?;
     }
+    let tx = unsafe { File::from_raw_handle(tx.0 as *mut c_void) };
+    let rx = unsafe { File::from_raw_handle(rx.0 as *mut c_void) };
     let tx = Sender {
-        fd: unsafe { File::from_raw_handle(tx.0 as *mut c_void) }.into(),
+        fd: Stream::try_new(tx)?,
         marker: PhantomData,
     };
     let rx = Receiver {
-        fd: unsafe { File::from_raw_handle(rx.0 as *mut c_void) }.into(),
+        fd: Stream::try_new(rx)?,
         marker: PhantomData,
     };
     Ok((tx, rx))
 }
 
 /// Create a bidirectional channel.
-pub fn duplex<Runtime: AsyncRuntime, A: Object, B: Object>(
-) -> Result<(Duplex<Runtime, A, B>, Duplex<Runtime, B, A>)> {
-    let (tx_a, rx_a) = channel::<Runtime, A>()?;
-    let (tx_b, rx_b) = channel::<Runtime, B>()?;
+pub fn duplex<Stream: AsyncStream, A: Object, B: Object>(
+) -> Result<(Duplex<Stream, A, B>, Duplex<Stream, B, A>)> {
+    let (tx_a, rx_a) = channel::<Stream, A>()?;
+    let (tx_b, rx_b) = channel::<Stream, B>()?;
     let ours = Duplex {
         sender: tx_a,
         receiver: rx_b,
@@ -136,8 +141,8 @@ pub fn duplex<Runtime: AsyncRuntime, A: Object, B: Object>(
     Ok((ours, theirs))
 }
 
-impl<Runtime: AsyncRuntime, T: Object> Sender<Runtime, T> {
-    unsafe fn from_stream(fd: Runtime::Stream) -> Self {
+impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
+    unsafe fn from_stream(fd: Stream) -> Self {
         Sender {
             fd,
             marker: PhantomData,
@@ -147,34 +152,34 @@ impl<Runtime: AsyncRuntime, T: Object> Sender<Runtime, T> {
     /// Send a value to the other side.
     pub async fn send(&mut self, value: &T) -> Result<()> {
         let serialized = ipc::serialize_with_handles(value)?;
-        Runtime::write(&mut self.fd, &serialized.len().to_ne_bytes()).await?;
-        Runtime::write(&mut self.fd, &serialized).await
+        self.fd.write(&serialized.len().to_ne_bytes()).await?;
+        self.fd.write(&serialized).await
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> TryFrom<crate::Sender<T>> for Sender<Runtime, T> {
+impl<Stream: AsyncStream, T: Object> TryFrom<crate::Sender<T>> for Sender<Stream, T> {
     type Error = std::io::Error;
     fn try_from(value: crate::Sender<T>) -> Result<Self> {
         unsafe {
-            Ok(Self::from_stream(
-                File::from_raw_handle(value.into_raw_handle()).into(),
-            ))
+            Ok(Self::from_stream(Stream::try_new(File::from_raw_handle(
+                value.into_raw_handle(),
+            ))?))
         }
     }
 }
-impl<Runtime: AsyncRuntime, T: Object> From<Sender<Runtime, T>> for crate::Sender<T> {
-    fn from(value: Sender<Runtime, T>) -> Self {
+impl<Stream: AsyncStream, T: Object> From<Sender<Stream, T>> for crate::Sender<T> {
+    fn from(value: Sender<Stream, T>) -> Self {
         unsafe { Self::from_raw_handle(value.into_raw_handle()) }
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> io::AsRawHandle for Sender<Runtime, T> {
+impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Sender<Stream, T> {
     fn as_raw_handle(&self) -> RawHandle {
-        self.fd.as_raw_handle()
+        self.fd.as_raw_handle().0 as RawHandle
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> IntoRawHandle for Sender<Runtime, T> {
+impl<Stream: AsyncStream, T: Object> IntoRawHandle for Sender<Stream, T> {
     fn into_raw_handle(self) -> RawHandle {
         use io::AsRawHandle;
         let fd = self.as_raw_handle();
@@ -183,8 +188,8 @@ impl<Runtime: AsyncRuntime, T: Object> IntoRawHandle for Sender<Runtime, T> {
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> Receiver<Runtime, T> {
-    unsafe fn from_stream(fd: Runtime::Stream) -> Self {
+impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
+    unsafe fn from_stream(fd: Stream) -> Self {
         Receiver {
             fd,
             marker: PhantomData,
@@ -196,7 +201,7 @@ impl<Runtime: AsyncRuntime, T: Object> Receiver<Runtime, T> {
     /// Returns `Ok(None)` if the other side has dropped the channel.
     pub async fn recv(&mut self) -> Result<Option<T>> {
         let mut len = [0u8; std::mem::size_of::<usize>()];
-        if let Err(e) = Runtime::read(&mut self.fd, &mut len).await {
+        if let Err(e) = self.fd.read(&mut len).await {
             if e.kind() == ErrorKind::UnexpectedEof {
                 return Ok(None);
             }
@@ -205,35 +210,35 @@ impl<Runtime: AsyncRuntime, T: Object> Receiver<Runtime, T> {
         let len = usize::from_ne_bytes(len);
 
         let mut serialized = vec![0u8; len];
-        Runtime::read(&mut self.fd, &mut serialized).await?;
+        self.fd.read(&mut serialized).await?;
 
         unsafe { ipc::deserialize_with_handles(serialized).map(Some) }
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> TryFrom<crate::Receiver<T>> for Receiver<Runtime, T> {
+impl<Stream: AsyncStream, T: Object> TryFrom<crate::Receiver<T>> for Receiver<Stream, T> {
     type Error = std::io::Error;
     fn try_from(value: crate::Receiver<T>) -> Result<Self> {
         unsafe {
-            Ok(Self::from_stream(
-                File::from_raw_handle(value.into_raw_handle()).into(),
-            ))
+            Ok(Self::from_stream(Stream::try_new(File::from_raw_handle(
+                value.into_raw_handle(),
+            ))?))
         }
     }
 }
-impl<Runtime: AsyncRuntime, T: Object> From<Receiver<Runtime, T>> for crate::Receiver<T> {
-    fn from(value: Receiver<Runtime, T>) -> Self {
+impl<Stream: AsyncStream, T: Object> From<Receiver<Stream, T>> for crate::Receiver<T> {
+    fn from(value: Receiver<Stream, T>) -> Self {
         unsafe { Self::from_raw_handle(value.into_raw_handle()) }
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> io::AsRawHandle for Receiver<Runtime, T> {
+impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Receiver<Stream, T> {
     fn as_raw_handle(&self) -> RawHandle {
-        self.fd.as_raw_handle()
+        self.fd.as_raw_handle().0 as RawHandle
     }
 }
 
-impl<Runtime: AsyncRuntime, T: Object> IntoRawHandle for Receiver<Runtime, T> {
+impl<Stream: AsyncStream, T: Object> IntoRawHandle for Receiver<Stream, T> {
     fn into_raw_handle(self) -> RawHandle {
         use io::AsRawHandle;
         let fd = self.as_raw_handle();
@@ -242,7 +247,7 @@ impl<Runtime: AsyncRuntime, T: Object> IntoRawHandle for Receiver<Runtime, T> {
     }
 }
 
-impl<Runtime: AsyncRuntime, S: Object, R: Object> Duplex<Runtime, S, R> {
+impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     /// Send a value to the other side.
     pub async fn send(&mut self, value: &S) -> Result<()> {
         self.sender.send(value).await
@@ -268,17 +273,17 @@ impl<Runtime: AsyncRuntime, S: Object, R: Object> Duplex<Runtime, S, R> {
         })
     }
 
-    fn join(sender: Sender<Runtime, S>, receiver: Receiver<Runtime, R>) -> Self {
+    fn join(sender: Sender<Stream, S>, receiver: Receiver<Stream, R>) -> Self {
         Self { sender, receiver }
     }
 
-    fn split(self) -> (Sender<Runtime, S>, Receiver<Runtime, R>) {
+    fn split(self) -> (Sender<Stream, S>, Receiver<Stream, R>) {
         (self.sender, self.receiver)
     }
 }
 
-impl<Runtime: AsyncRuntime, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
-    for Duplex<Runtime, S, R>
+impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
+    for Duplex<Stream, S, R>
 {
     type Error = std::io::Error;
     fn try_from(value: crate::Duplex<S, R>) -> Result<Self> {
@@ -286,23 +291,21 @@ impl<Runtime: AsyncRuntime, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
         Ok(Self::join(sender.try_into()?, receiver.try_into()?))
     }
 }
-impl<Runtime: AsyncRuntime, S: Object, R: Object> From<Duplex<Runtime, S, R>>
-    for crate::Duplex<S, R>
-{
-    fn from(value: Duplex<Runtime, S, R>) -> Self {
+impl<Stream: AsyncStream, S: Object, R: Object> From<Duplex<Stream, S, R>> for crate::Duplex<S, R> {
+    fn from(value: Duplex<Stream, S, R>) -> Self {
         let (sender, receiver) = value.split();
         Self::join(sender.into(), receiver.into())
     }
 }
 
 /// A subprocess.
-pub struct Child<Runtime: AsyncRuntime, T: Object> {
+pub struct Child<Stream: AsyncStream, T: Object> {
     proc_handle: OwnedHandle,
-    output_rx: Receiver<Runtime, T>,
+    output_rx: Receiver<Stream, T>,
 }
 
-impl<Runtime: AsyncRuntime, T: Object> Child<Runtime, T> {
-    fn new(proc_handle: OwnedHandle, output_rx: Receiver<Runtime, T>) -> Child<Runtime, T> {
+impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
+    fn new(proc_handle: OwnedHandle, output_rx: Receiver<Stream, T>) -> Child<Stream, T> {
         Child {
             proc_handle,
             output_rx,
@@ -367,9 +370,9 @@ impl<Runtime: AsyncRuntime, T: Object> Child<Runtime, T> {
     }
 }
 
-pub(crate) async unsafe fn spawn<Runtime: AsyncRuntime, T: Object>(
+pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     entry: Box<dyn FnOnceObject<(handles::RawHandle,), Output = i32>>,
-) -> Result<Child<Runtime, T>> {
+) -> Result<Child<Stream, T>> {
     use handles::AsRawHandle;
 
     imp::perform_sanity_checks();
@@ -379,7 +382,7 @@ pub(crate) async unsafe fn spawn<Runtime: AsyncRuntime, T: Object>(
 
     let handles = s.drain_handles();
 
-    let (mut local, child) = duplex::<Runtime, (Vec<u8>, Vec<handles::RawHandle>), T>()?;
+    let (mut local, child) = duplex::<Stream, (Vec<u8>, Vec<handles::RawHandle>), T>()?;
     let (child_tx, child_rx) = child.split();
     let handle =
         subprocess::_spawn_child(child_tx.as_raw_handle(), child_rx.as_raw_handle(), &handles)?;

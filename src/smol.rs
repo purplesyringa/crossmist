@@ -2,50 +2,53 @@
 //!
 //! Check out the docs at [`asynchronous`] for more information.
 
-use crate::{asynchronous, handles::RawHandle, FnOnceObject, Object};
-use std::io::Result;
-#[cfg(windows)]
-use {
-    async_fs::File,
-    futures_lite::io::{AsyncReadExt, AsyncWriteExt},
+use crate::{
+    asynchronous,
+    handles::{AsRawHandle, RawHandle},
+    FnOnceObject, Object,
 };
-#[cfg(unix)]
-use {async_io::Async, std::os::unix::net::UnixStream};
+use std::io::Result;
 
-/// `smol` marker struct.
-pub struct Smol;
+/// `smol` marker type.
+#[derive(Object)]
+pub struct Smol(
+    #[cfg(unix)] async_io::Async<std::os::unix::net::UnixStream>,
+    #[cfg(windows)] async_fs::File,
+);
 
-#[cfg(unix)]
-unsafe impl asynchronous::AsyncRuntime for Smol {
-    type Stream = Async<UnixStream>;
-
-    async fn blocking_write<T>(
-        stream: &Self::Stream,
-        mut f: impl FnMut() -> Result<T> + Send,
-    ) -> Result<T> {
-        stream.write_with(|_| f()).await
+unsafe impl asynchronous::AsyncStream for Smol {
+    #[cfg(unix)]
+    fn try_new(stream: std::os::unix::net::UnixStream) -> Result<Self> {
+        stream.try_into().map(Self)
+    }
+    #[cfg(windows)]
+    fn try_new(stream: std::fs::File) -> Result<Self> {
+        Ok(Self(stream.into()))
     }
 
-    async fn blocking_read<T>(
-        stream: &Self::Stream,
-        mut f: impl FnMut() -> Result<T> + Send,
-    ) -> Result<T> {
-        stream.read_with(|_| f()).await
-    }
-}
-
-#[cfg(windows)]
-unsafe impl asynchronous::AsyncRuntime for Smol {
-    type Stream = File;
-
-    async fn write(stream: &mut Self::Stream, buf: &[u8]) -> Result<()> {
-        stream.write_all(buf).await?;
-        stream.flush().await?;
-        Ok(())
+    fn as_raw_handle(&self) -> RawHandle {
+        self.0.as_raw_handle()
     }
 
-    async fn read(stream: &mut Self::Stream, buf: &mut [u8]) -> Result<()> {
-        stream.read_exact(buf).await?;
+    #[cfg(unix)]
+    async fn blocking_write<T>(&self, mut f: impl FnMut() -> Result<T> + Send) -> Result<T> {
+        self.0.write_with(|_| f()).await
+    }
+    #[cfg(windows)]
+    async fn write(&mut self, buf: &[u8]) -> Result<()> {
+        use futures_lite::io::AsyncWriteExt;
+        self.0.write_all(buf).await?;
+        self.0.flush().await
+    }
+
+    #[cfg(unix)]
+    async fn blocking_read<T>(&self, mut f: impl FnMut() -> Result<T> + Send) -> Result<T> {
+        self.0.read_with(|_| f()).await
+    }
+    #[cfg(windows)]
+    async fn read(&mut self, buf: &mut [u8]) -> Result<()> {
+        use futures_lite::io::AsyncReadExt;
+        self.0.read_exact(buf).await?;
         Ok(())
     }
 }

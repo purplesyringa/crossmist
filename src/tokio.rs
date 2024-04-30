@@ -2,48 +2,52 @@
 //!
 //! Check out the docs at [`asynchronous`] for more information.
 
-use crate::{asynchronous, handles::RawHandle, FnOnceObject, Object};
-use std::io::Result;
-#[cfg(windows)]
-use tokio::{
-    fs::File,
-    io::{AsyncReadExt, AsyncWriteExt},
+use crate::{
+    asynchronous,
+    handles::{AsRawHandle, RawHandle},
+    FnOnceObject, Object,
 };
-#[cfg(unix)]
-use tokio::{io::Interest, net::UnixStream};
+use std::io::Result;
 
 /// `tokio` marker struct.
-pub struct Tokio;
+#[derive(Object)]
+pub struct Tokio(
+    #[cfg(unix)] tokio::net::UnixStream,
+    #[cfg(windows)] tokio::fs::File,
+);
 
-#[cfg(unix)]
-unsafe impl asynchronous::AsyncRuntime for Tokio {
-    type Stream = UnixStream;
-
-    async fn blocking_write<T>(
-        stream: &Self::Stream,
-        f: impl FnMut() -> Result<T> + Send,
-    ) -> Result<T> {
-        stream.async_io(Interest::WRITABLE, f).await
+unsafe impl asynchronous::AsyncStream for Tokio {
+    #[cfg(unix)]
+    fn try_new(stream: std::os::unix::net::UnixStream) -> Result<Self> {
+        stream.try_into().map(Self)
+    }
+    #[cfg(windows)]
+    fn try_new(stream: std::fs::File) -> Result<Self> {
+        Ok(Self(stream.into()))
     }
 
-    async fn blocking_read<T>(
-        stream: &Self::Stream,
-        f: impl FnMut() -> Result<T> + Send,
-    ) -> Result<T> {
-        stream.async_io(Interest::READABLE, f).await
-    }
-}
-
-#[cfg(windows)]
-unsafe impl asynchronous::AsyncRuntime for Tokio {
-    type Stream = File;
-
-    async fn write(stream: &mut Self::Stream, buf: &[u8]) -> Result<()> {
-        stream.write_all(buf).await
+    fn as_raw_handle(&self) -> RawHandle {
+        self.0.as_raw_handle()
     }
 
-    async fn read(stream: &mut Self::Stream, buf: &mut [u8]) -> Result<()> {
-        stream.read_exact(buf).await?;
+    #[cfg(unix)]
+    async fn blocking_write<T>(&self, f: impl FnMut() -> Result<T> + Send) -> Result<T> {
+        self.0.async_io(tokio::io::Interest::WRITABLE, f).await
+    }
+    #[cfg(windows)]
+    async fn write(&mut self, buf: &[u8]) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+        self.0.write_all(buf).await
+    }
+
+    #[cfg(unix)]
+    async fn blocking_read<T>(&self, f: impl FnMut() -> Result<T> + Send) -> Result<T> {
+        self.0.async_io(tokio::io::Interest::READABLE, f).await
+    }
+    #[cfg(windows)]
+    async fn read(&mut self, buf: &mut [u8]) -> Result<()> {
+        use tokio::io::AsyncReadExt;
+        self.0.read_exact(buf).await?;
         Ok(())
     }
 }
