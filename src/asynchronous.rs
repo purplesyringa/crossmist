@@ -51,7 +51,7 @@ use std::marker::PhantomData;
 #[cfg(windows)]
 use {
     crate::handles::AsRawHandle,
-    std::{fs::File, os::windows::io},
+    std::os::windows::io,
     windows::Win32::System::{Pipes, Threading, WindowsProgramming},
 };
 #[cfg(unix)]
@@ -61,20 +61,18 @@ use {
         internals::{socketpair, SingleObjectReceiver, SingleObjectSender},
     },
     nix::libc::{pid_t, SOCK_NONBLOCK},
-    std::os::unix::{
-        io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
-        net::UnixStream,
-    },
+    std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
 };
+
+#[cfg(unix)]
+type SyncStream = std::os::unix::net::UnixStream;
+#[cfg(windows)]
+type SyncStream = std::fs::File;
 
 /// Runtime-dependent stream implementation.
 pub unsafe trait AsyncStream: Object + Sized {
     /// Create the stream from a sync stream.
-    #[cfg(unix)]
-    fn try_new(stream: UnixStream) -> Result<Self>;
-    /// Create the stream from a sync stream.
-    #[cfg(windows)]
-    fn try_new(stream: File) -> Result<Self>;
+    fn try_new(stream: SyncStream) -> Result<Self>;
 
     /// Get a raw handle to the underlying stream.
     fn as_raw_handle(&self) -> RawHandle;
@@ -146,7 +144,7 @@ pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, R
     #[cfg(unix)]
     {
         let (tx, rx) = duplex::<Stream, T, T>()?;
-        Ok((tx.into_sender(), rx.into_receiver()))
+        unsafe { Ok((Sender::from_stream(tx.fd), Receiver::from_stream(rx.fd))) }
     }
     #[cfg(windows)]
     {
@@ -161,8 +159,8 @@ pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, R
             )
             .ok()?;
         }
-        let tx = unsafe { File::from_raw_handle(tx) };
-        let rx = unsafe { File::from_raw_handle(rx) };
+        let tx = unsafe { SyncStream::from_raw_handle(tx) };
+        let rx = unsafe { SyncStream::from_raw_handle(rx) };
         let tx = Sender {
             fd: Stream::try_new(tx)?,
             marker: PhantomData,
@@ -233,13 +231,12 @@ impl<Stream: AsyncStream, T: Object> TryFrom<crate::Sender<T>> for Sender<Stream
     fn try_from(value: crate::Sender<T>) -> Result<Self> {
         let fd = value.into_raw_handle();
         #[cfg(unix)]
-        let stream = unsafe {
-            entry::enable_nonblock(fd)?;
-            UnixStream::from_raw_handle(fd)
-        };
-        #[cfg(windows)]
-        let stream = unsafe { File::from_raw_handle(fd) };
-        unsafe { Ok(Self::from_stream(Stream::try_new(stream)?)) }
+        entry::enable_nonblock(fd)?;
+        unsafe {
+            Ok(Self::from_stream(Stream::try_new(
+                SyncStream::from_raw_handle(fd),
+            )?))
+        }
     }
 }
 impl<Stream: AsyncStream, T: Object> From<Sender<Stream, T>> for crate::Sender<T> {
@@ -324,13 +321,12 @@ impl<Stream: AsyncStream, T: Object> TryFrom<crate::Receiver<T>> for Receiver<St
     fn try_from(value: crate::Receiver<T>) -> Result<Self> {
         let fd = value.into_raw_handle();
         #[cfg(unix)]
-        let stream = unsafe {
-            entry::enable_nonblock(fd)?;
-            std::os::unix::net::UnixStream::from_raw_handle(fd)
-        };
-        #[cfg(windows)]
-        let stream = unsafe { File::from_raw_handle(fd) };
-        unsafe { Ok(Self::from_stream(Stream::try_new(stream)?)) }
+        entry::enable_nonblock(fd)?;
+        unsafe {
+            Ok(Self::from_stream(Stream::try_new(
+                SyncStream::from_raw_handle(fd),
+            )?))
+        }
     }
 }
 impl<Stream: AsyncStream, T: Object> From<Receiver<Stream, T>> for crate::Receiver<T> {
@@ -421,26 +417,6 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
             )
         })
     }
-
-    #[cfg(unix)]
-    fn into_sender(self) -> Sender<Stream, R> {
-        unsafe { Sender::from_stream(self.fd) }
-    }
-
-    #[cfg(unix)]
-    fn into_receiver(self) -> Receiver<Stream, R> {
-        unsafe { Receiver::from_stream(self.fd) }
-    }
-
-    #[cfg(windows)]
-    fn join(sender: Sender<Stream, S>, receiver: Receiver<Stream, R>) -> Self {
-        Self { sender, receiver }
-    }
-
-    #[cfg(windows)]
-    fn split(self) -> (Sender<Stream, S>, Receiver<Stream, R>) {
-        (self.sender, self.receiver)
-    }
 }
 
 impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
@@ -453,13 +429,16 @@ impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
             let fd = value.into_raw_fd();
             entry::enable_nonblock(fd)?;
             Ok(Self::from_stream(Stream::try_new(
-                std::os::unix::net::UnixStream::from_raw_fd(fd),
+                SyncStream::from_raw_fd(fd),
             )?))
         }
         #[cfg(windows)]
         {
             let (sender, receiver) = value.split();
-            Ok(Self::join(sender.try_into()?, receiver.try_into()?))
+            Ok(Self {
+                sender: sender.try_into()?,
+                receiver: receiver.try_into()?,
+            })
         }
     }
 }
@@ -472,10 +451,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> From<Duplex<Stream, S, R>> for c
             Self::from_raw_handle(fd)
         }
         #[cfg(windows)]
-        {
-            let (sender, receiver) = value.split();
-            Self::join(sender.into(), receiver.into())
-        }
+        Self::join(value.sender.into(), value.receiver.into())
     }
 }
 
@@ -494,28 +470,19 @@ impl<Stream: AsyncStream, S: Object, R: Object> IntoRawFd for Duplex<Stream, S, 
     }
 }
 
+#[cfg(unix)]
+type ProcHandle = nix::unistd::Pid;
+#[cfg(windows)]
+type ProcHandle = crate::handles::OwnedHandle;
+
 /// A subprocess.
 pub struct Child<Stream: AsyncStream, T: Object> {
-    #[cfg(unix)]
-    proc_pid: nix::unistd::Pid,
-    #[cfg(windows)]
-    proc_handle: crate::handles::OwnedHandle,
+    proc_handle: ProcHandle,
     output_rx: Receiver<Stream, T>,
 }
 
 impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
-    #[cfg(unix)]
-    fn new(proc_pid: nix::unistd::Pid, output_rx: Receiver<Stream, T>) -> Self {
-        Child {
-            proc_pid,
-            output_rx,
-        }
-    }
-    #[cfg(windows)]
-    fn new(
-        proc_handle: crate::handles::OwnedHandle,
-        output_rx: Receiver<Stream, T>,
-    ) -> Child<Stream, T> {
+    fn new(proc_handle: ProcHandle, output_rx: Receiver<Stream, T>) -> Child<Stream, T> {
         Child {
             proc_handle,
             output_rx,
@@ -525,7 +492,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     /// Terminate the process immediately.
     pub fn kill(&mut self) -> Result<()> {
         #[cfg(unix)]
-        nix::sys::signal::kill(self.proc_pid, nix::sys::signal::Signal::SIGKILL)?;
+        nix::sys::signal::kill(self.proc_handle, nix::sys::signal::Signal::SIGKILL)?;
         #[cfg(windows)]
         unsafe {
             Threading::TerminateProcess(self.proc_handle.as_raw_handle(), 1).ok()?;
@@ -536,7 +503,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     /// Get ID of the process.
     #[cfg(unix)]
     pub fn id(&self) -> pid_t {
-        self.proc_pid.as_raw()
+        self.proc_handle.as_raw()
     }
     /// Get ID of the process.
     #[cfg(windows)]
@@ -558,7 +525,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
         // This is synchronous, but should be really fast
         #[cfg(unix)]
         {
-            let status = nix::sys::wait::waitpid(self.proc_pid, None)?;
+            let status = nix::sys::wait::waitpid(self.proc_handle, None)?;
             if let nix::sys::wait::WaitStatus::Exited(_, 0) = status {
                 value.ok_or_else(|| {
                     Error::new(
@@ -631,16 +598,18 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     {
         process_handle = subprocess::_spawn_child(crate::Duplex::from(child), &handles)?;
         local.send(&(s.into_vec(), handles)).await?;
-        receiver = local.into_receiver();
+        receiver = Receiver::from_stream(local.fd);
     }
 
     #[cfg(windows)]
     {
-        let (child_tx, child_rx) = child.split();
-        process_handle =
-            subprocess::_spawn_child(child_tx.as_raw_handle(), child_rx.as_raw_handle(), &handles)?;
+        process_handle = subprocess::_spawn_child(
+            child.sender.as_raw_handle(),
+            child.receiver.as_raw_handle(),
+            &handles,
+        )?;
         local.send(&(s.into_vec(), handles)).await?;
-        receiver = local.split().1;
+        receiver = local.receiver;
     }
 
     Ok(Child::new(process_handle, receiver))
