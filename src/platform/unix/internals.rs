@@ -121,6 +121,7 @@ pub(crate) struct SingleObjectReceiver<T: Object> {
     value: MaybeUninit<T>,
     fds: Vec<OwnedFd>,
     flags: MsgFlags,
+    terminated: bool,
     marker: PhantomData<fn() -> T>,
 }
 
@@ -139,11 +140,17 @@ impl<T: Object> SingleObjectReceiver<T> {
             } else {
                 MsgFlags::MSG_DONTWAIT
             },
+            terminated: false,
             marker: PhantomData,
         }
     }
 
     pub(crate) fn recv_next(&mut self) -> Result<Option<T>> {
+        assert!(
+            !self.terminated,
+            "Calling recv_next after it returned Ok(Some(...)) or Err(...) is undefined behavior",
+        );
+
         loop {
             if !implements!(T: PlainOldData) {
                 self.buffer.resize(self.data_pos + MAX_PACKET_SIZE - 1, 0);
@@ -207,6 +214,8 @@ impl<T: Object> SingleObjectReceiver<T> {
             if marker[0] != 1 {
                 continue;
             }
+
+            self.terminated = true;
 
             if implements!(T: PlainOldData) {
                 return Ok(Some(unsafe { self.value.assume_init_read() }));
