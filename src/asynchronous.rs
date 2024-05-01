@@ -41,6 +41,8 @@
 //! let child = my_process.spawn_tokio().await?;
 //! ```
 
+#[cfg(unix)]
+use crate::internals::{socketpair, SingleObjectReceiver, SingleObjectSender};
 use crate::{
     handles::{FromRawHandle, IntoRawHandle, RawHandle},
     imp, subprocess, FnOnceObject, Object, Serializer,
@@ -48,11 +50,6 @@ use crate::{
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::marker::PhantomData;
-#[cfg(unix)]
-use {
-    crate::internals::{socketpair, SingleObjectReceiver, SingleObjectSender},
-    nix::libc::pid_t,
-};
 #[cfg(windows)]
 use {
     crate::{
@@ -490,6 +487,11 @@ type ProcHandle = nix::unistd::Pid;
 #[cfg(windows)]
 type ProcHandle = crate::handles::OwnedHandle;
 
+#[cfg(unix)]
+pub(crate) type ProcID = nix::libc::pid_t;
+#[cfg(windows)]
+pub(crate) type ProcID = RawHandle;
+
 /// A subprocess.
 pub struct Child<Stream: AsyncStream, T: Object> {
     proc_handle: ProcHandle,
@@ -516,14 +518,15 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     }
 
     /// Get ID of the process.
-    #[cfg(unix)]
-    pub fn id(&self) -> pid_t {
-        self.proc_handle.as_raw()
-    }
-    /// Get ID of the process.
-    #[cfg(windows)]
-    pub fn id(&self) -> RawHandle {
-        self.proc_handle.as_raw_handle()
+    pub fn id(&self) -> ProcID {
+        #[cfg(unix)]
+        {
+            self.proc_handle.as_raw()
+        }
+        #[cfg(windows)]
+        {
+            self.proc_handle.as_raw_handle()
+        }
     }
 
     /// Wait for the process to finish and obtain the value it returns.

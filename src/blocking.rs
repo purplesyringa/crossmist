@@ -47,14 +47,12 @@
 use crate::{
     asynchronous,
     handles::{AsRawHandle, RawHandle},
-    Object,
+    FnOnceObject, Object,
 };
 use std::future::Future;
 use std::io::Result;
 use std::pin::pin;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-
-pub use crate::subprocess::Child;
 
 fn block_on<F: Future>(f: F) -> F::Output {
     // https://github.com/rust-lang/rust/issues/98286
@@ -288,4 +286,35 @@ impl<S: Object, R: Object> std::os::unix::io::FromRawFd for Duplex<S, R> {
             asynchronous::SyncStream::from_raw_fd(fd),
         )))
     }
+}
+
+/// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
+pub struct Child<T: Object>(asynchronous::Child<Blocking, T>);
+
+impl<T: Object> Child<T> {
+    /// Terminate the process immediately.
+    pub fn kill(&mut self) -> Result<()> {
+        self.0.kill()
+    }
+
+    /// Get ID of the process.
+    pub fn id(&self) -> asynchronous::ProcID {
+        self.0.id()
+    }
+
+    /// Wait for the process to finish and obtain the value it returns.
+    ///
+    /// An error is returned if the process panics or is terminated. An error is also delivered if
+    /// it exits via [`std::process::exit`] or alike instead of returning a value, unless the return
+    /// type is `()`. In that case, `Ok(())` is returned.
+    pub fn join(self) -> Result<T> {
+        block_on(self.0.join())
+    }
+}
+
+#[doc(hidden)]
+pub unsafe fn spawn<T: Object>(
+    entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
+) -> Result<Child<T>> {
+    block_on(asynchronous::spawn::<Blocking, T>(entry)).map(Child)
 }

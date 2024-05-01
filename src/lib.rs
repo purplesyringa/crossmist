@@ -450,9 +450,6 @@ pub mod tokio;
 
 pub use blocking::{channel, duplex, Child, Duplex, Receiver, Sender};
 
-#[doc(hidden)]
-pub use subprocess::spawn;
-
 pub(crate) mod relocation;
 
 mod builtins;

@@ -198,7 +198,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         quote! {
             pub fn spawn #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::Child<#return_type>> {
                 use ::crossmist::BindValue;
-                unsafe { ::crossmist::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))) }
+                unsafe { ::crossmist::blocking::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))) }
             }
             pub fn run #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
                 self.spawn(#(#arg_names,)*)?.join()

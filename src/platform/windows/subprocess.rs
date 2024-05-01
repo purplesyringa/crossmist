@@ -1,7 +1,6 @@
 use crate::{
-    duplex, entry,
+    entry,
     handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
-    imp, FnOnceObject, Object, Receiver, Serializer,
 };
 use std::ffi::c_void;
 use std::io::Result;
@@ -9,77 +8,9 @@ use windows::{
     core::{PCWSTR, PWSTR},
     Win32::{
         Foundation,
-        System::{LibraryLoader, Threading, WindowsProgramming},
+        System::{LibraryLoader, Threading},
     },
 };
-
-/// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
-pub struct Child<T: Object> {
-    proc_handle: OwnedHandle,
-    output_rx: Receiver<T>,
-}
-
-impl<T: Object> Child<T> {
-    pub(crate) fn new(proc_handle: OwnedHandle, output_rx: Receiver<T>) -> Child<T> {
-        Child {
-            proc_handle,
-            output_rx,
-        }
-    }
-
-    /// Terminate the process immediately.
-    pub fn kill(&mut self) -> Result<()> {
-        unsafe {
-            Threading::TerminateProcess(self.proc_handle.as_raw_handle(), 1).ok()?;
-        }
-        Ok(())
-    }
-
-    /// Get ID of the process.
-    pub fn id(&self) -> RawHandle {
-        self.proc_handle.as_raw_handle()
-    }
-
-    /// Wait for the process to finish and obtain the value it returns.
-    ///
-    /// An error is returned if the process panics or is terminated. An error is also delivered if
-    /// it exits via [`std::process::exit`] or alike instead of returning a value, unless the return
-    /// type is `()`. In that case, `Ok(())` is returned.
-    pub fn join(mut self) -> Result<T> {
-        let mut value = self.output_rx.recv()?;
-        if let Some(void) = imp::if_void::<T>() {
-            // The value should be None at this moment
-            value = Some(void);
-        }
-        if unsafe {
-            Threading::WaitForSingleObject(
-                self.proc_handle.as_raw_handle(),
-                WindowsProgramming::INFINITE,
-            )
-        } == u32::MAX
-        {
-            return Err(std::io::Error::last_os_error());
-        }
-        let mut code: u32 = 0;
-        unsafe {
-            Threading::GetExitCodeProcess(self.proc_handle.as_raw_handle(), &mut code as *mut u32)
-                .ok()?;
-        }
-        if code == 0 {
-            value.ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "The subprocess terminated without returning a value",
-                )
-            })
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("The subprocess terminated with exit code {code}"),
-            ))
-        }
-    }
-}
 
 pub(crate) unsafe fn _spawn_child(
     child_tx: RawHandle,
@@ -194,25 +125,4 @@ pub(crate) unsafe fn _spawn_child(
 
     Foundation::CloseHandle(process_info.hThread);
     Ok(OwnedHandle::from_raw_handle(process_info.hProcess))
-}
-
-pub unsafe fn spawn<T: Object>(
-    entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
-) -> Result<Child<T>> {
-    imp::perform_sanity_checks();
-
-    let mut s = Serializer::new();
-    s.serialize(&entry);
-
-    let handles = s.drain_handles();
-
-    let (mut local, child) = duplex::<(Vec<u8>, Vec<RawHandle>), T>()?;
-    let handle = _spawn_child(
-        child.0.sender.as_raw_handle(),
-        child.0.receiver.as_raw_handle(),
-        &handles,
-    )?;
-    local.send(&(s.into_vec(), handles))?;
-
-    Ok(Child::new(handle, local.0.receiver.into()))
 }
