@@ -1,4 +1,4 @@
-use crate::{Deserializer, Object, Serializer};
+use crate::{imp::implements, pod::PlainOldData, Deserializer, Object, Serializer};
 use nix::libc::{AF_UNIX, SOCK_CLOEXEC, SOCK_SEQPACKET};
 use nix::{
     cmsg_space,
@@ -6,6 +6,7 @@ use nix::{
 };
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 use std::os::unix::{
     io::{FromRawFd, OwnedFd, RawFd},
     net::UnixStream,
@@ -34,24 +35,40 @@ pub(crate) fn socketpair(flags: i32) -> Result<(UnixStream, UnixStream)> {
     }
 }
 
-pub(crate) struct SingleObjectSender {
+pub(crate) struct SingleObjectSender<'a> {
     socket_fd: RawFd,
+    bytes: &'a [u8],
     fds: Vec<RawFd>,
     buffer: Vec<u8>,
-    buffer_pos: usize,
+    data_pos: usize,
     fds_pos: usize,
     flags: MsgFlags,
 }
 
-impl SingleObjectSender {
-    pub(crate) fn new<T: Object>(socket_fd: RawFd, value: &T, blocking: bool) -> Self {
-        let mut s = Serializer::new();
-        s.serialize(value);
+impl<'a> SingleObjectSender<'a> {
+    pub(crate) fn new<T: Object>(socket_fd: RawFd, value: &'a T, blocking: bool) -> Self {
+        let bytes;
+        let fds;
+        let buffer;
+        if implements!(T: PlainOldData) {
+            bytes = unsafe {
+                std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>())
+            };
+            fds = Vec::new();
+            buffer = Vec::new();
+        } else {
+            bytes = &[];
+            let mut s = Serializer::new();
+            s.serialize(value);
+            fds = s.drain_handles();
+            buffer = s.into_vec();
+        }
         Self {
             socket_fd,
-            fds: s.drain_handles(),
-            buffer: s.into_vec(),
-            buffer_pos: 0,
+            bytes,
+            fds,
+            buffer,
+            data_pos: 0,
             fds_pos: 0,
             flags: if blocking {
                 MsgFlags::empty()
@@ -63,23 +80,23 @@ impl SingleObjectSender {
 
     pub(crate) fn send_next(&mut self) -> Result<()> {
         loop {
-            let buffer_end = self.buffer.len().min(self.buffer_pos + MAX_PACKET_SIZE - 1);
+            let buffer_end = self.data().len().min(self.data_pos + MAX_PACKET_SIZE - 1);
             let fds_end = self.fds.len().min(self.fds_pos + MAX_PACKET_FDS);
 
-            let is_last = buffer_end == self.buffer.len() && fds_end == self.fds.len();
+            let is_last = buffer_end == self.data().len() && fds_end == self.fds.len();
 
             let n_written = sendmsg::<()>(
                 self.socket_fd,
                 &[
                     IoSlice::new(&[is_last as u8]),
-                    IoSlice::new(&self.buffer[self.buffer_pos..buffer_end]),
+                    IoSlice::new(&self.data()[self.data_pos..buffer_end]),
                 ],
                 &[ControlMessage::ScmRights(&self.fds[self.fds_pos..fds_end])],
                 self.flags,
                 None,
             )?;
 
-            self.buffer_pos += n_written - 1;
+            self.data_pos += n_written - 1;
             self.fds_pos = fds_end;
 
             if is_last {
@@ -87,23 +104,35 @@ impl SingleObjectSender {
             }
         }
     }
+
+    fn data(&self) -> &[u8] {
+        if self.bytes.is_empty() {
+            &self.buffer
+        } else {
+            self.bytes
+        }
+    }
 }
 
 pub(crate) struct SingleObjectReceiver<T: Object> {
     socket_fd: RawFd,
     buffer: Vec<u8>,
-    buffer_pos: usize,
+    data_pos: usize,
+    value: MaybeUninit<T>,
     fds: Vec<OwnedFd>,
     flags: MsgFlags,
     marker: PhantomData<fn() -> T>,
 }
+
+unsafe impl<T: Object> Send for SingleObjectReceiver<T> {}
 
 impl<T: Object> SingleObjectReceiver<T> {
     pub(crate) unsafe fn new(socket_fd: RawFd, blocking: bool) -> Self {
         Self {
             socket_fd,
             buffer: Vec::new(),
-            buffer_pos: 0,
+            data_pos: 0,
+            value: MaybeUninit::zeroed(),
             fds: Vec::new(),
             flags: if blocking {
                 MsgFlags::empty()
@@ -116,12 +145,25 @@ impl<T: Object> SingleObjectReceiver<T> {
 
     pub(crate) fn recv_next(&mut self) -> Result<Option<T>> {
         loop {
-            self.buffer.resize(self.buffer_pos + MAX_PACKET_SIZE - 1, 0);
+            if !implements!(T: PlainOldData) {
+                self.buffer.resize(self.data_pos + MAX_PACKET_SIZE - 1, 0);
+            }
+
+            let data = if implements!(T: PlainOldData) {
+                unsafe {
+                    std::slice::from_raw_parts_mut(
+                        self.value.as_mut_ptr() as *mut u8,
+                        std::mem::size_of::<T>(),
+                    )
+                }
+            } else {
+                &mut self.buffer
+            };
 
             let mut marker = [0];
             let mut iovecs = [
                 IoSliceMut::new(&mut marker),
-                IoSliceMut::new(&mut self.buffer[self.buffer_pos..]),
+                IoSliceMut::new(&mut data[self.data_pos..]),
             ];
 
             let mut ancillary = cmsg_space!([RawFd; MAX_PACKET_FDS]);
@@ -147,7 +189,7 @@ impl<T: Object> SingleObjectReceiver<T> {
             }
 
             if message.cmsgs().next().is_none() && message.bytes == 0 {
-                if self.buffer_pos == 0 && self.fds.is_empty() {
+                if self.data_pos == 0 && self.fds.is_empty() {
                     return Ok(None);
                 } else {
                     return Err(Error::new(ErrorKind::Other, "Unterminated data on stream"));
@@ -161,21 +203,27 @@ impl<T: Object> SingleObjectReceiver<T> {
                 ));
             }
 
-            self.buffer_pos += message.bytes - 1;
-            if marker[0] == 1 {
-                self.buffer.truncate(self.buffer_pos);
-                let buffer = std::mem::take(&mut self.buffer);
-                let fds = std::mem::take(&mut self.fds);
-                let mut d = Deserializer::new(buffer, fds);
-                return match unsafe { d.deserialize() } {
-                    Ok(value) => Ok(Some(value)),
-                    Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                        // Prevent this error from being interpreted as a "wait for socket" signal
-                        Err(std::io::Error::other("Unexpected blocking event"))
-                    }
-                    Err(e) => Err(e),
-                };
+            self.data_pos += message.bytes - 1;
+            if marker[0] != 1 {
+                continue;
             }
+
+            if implements!(T: PlainOldData) {
+                return Ok(Some(unsafe { self.value.assume_init_read() }));
+            }
+
+            self.buffer.truncate(self.data_pos);
+            let buffer = std::mem::take(&mut self.buffer);
+            let fds = std::mem::take(&mut self.fds);
+            let mut d = Deserializer::new(buffer, fds);
+            return match unsafe { d.deserialize() } {
+                Ok(value) => Ok(Some(value)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                    // Prevent this error from being interpreted as a "wait for socket" signal
+                    Err(std::io::Error::other("Unexpected blocking event"))
+                }
+                Err(e) => Err(e),
+            };
         }
     }
 }

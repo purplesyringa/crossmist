@@ -55,9 +55,11 @@ use std::sync::{Arc, Mutex};
 use {
     crate::{
         handles::AsRawHandle,
+        imp::implements,
         internals::{deserialize_with_handles, serialize_with_handles},
+        pod::PlainOldData,
     },
-    std::os::windows::io,
+    std::{mem::MaybeUninit, os::windows::io},
     windows::Win32::System::{Pipes, Threading, WindowsProgramming},
 };
 
@@ -220,7 +222,13 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
-        {
+        if implements!(T: PlainOldData) {
+            let serialized = unsafe {
+                std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>())
+            };
+            self.fd.write(&serialized.len().to_ne_bytes()).await?;
+            self.fd.write(serialized).await
+        } else {
             let serialized = serialize_with_handles(value)?;
             self.fd.write(&serialized.len().to_ne_bytes()).await?;
             self.fd.write(&serialized).await
@@ -281,10 +289,24 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
             }
             let len = usize::from_ne_bytes(len);
 
-            let mut serialized = vec![0u8; len];
-            self.fd.read(&mut serialized).await?;
-
-            unsafe { deserialize_with_handles(serialized).map(Some) }
+            if implements!(T: PlainOldData) {
+                struct Wrapper<T>(MaybeUninit<T>);
+                unsafe impl<T> Send for Wrapper<T> {}
+                let mut serialized = Wrapper::<T>(MaybeUninit::zeroed());
+                self.fd
+                    .read(unsafe {
+                        std::slice::from_raw_parts_mut(
+                            serialized.0.as_mut_ptr() as *mut u8,
+                            std::mem::size_of::<T>(),
+                        )
+                    })
+                    .await?;
+                Ok(Some(unsafe { serialized.0.assume_init() }))
+            } else {
+                let mut serialized = vec![0u8; len];
+                self.fd.read(&mut serialized).await?;
+                unsafe { deserialize_with_handles(serialized).map(Some) }
+            }
         }
     }
 }
