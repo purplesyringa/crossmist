@@ -416,7 +416,7 @@ pub mod imp;
 pub use imp::init;
 
 pub mod serde;
-pub use crate::serde::*;
+pub use serde::*;
 
 mod platform {
     #[cfg_attr(feature = "nightly", doc(cfg(all())))]
