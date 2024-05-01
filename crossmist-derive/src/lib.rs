@@ -81,8 +81,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     // Pray all &input are distinct
     let link_name = format!(
         "crossmist_{}_{:?}",
-        input.sig.ident.to_string(),
-        &input as *const syn::ItemFn
+        input.sig.ident, &input as *const syn::ItemFn,
     );
 
     let type_ident = format_ident!("T_{}", link_name);
@@ -135,7 +134,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    let bound = if args.len() == 0 {
+    let bound = if args.is_empty() {
         quote! { #ident }
     } else {
         let head_ty = &fn_types[0];
