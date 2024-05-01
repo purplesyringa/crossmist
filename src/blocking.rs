@@ -47,7 +47,7 @@
 use crate::{
     asynchronous,
     handles::{AsRawHandle, RawHandle},
-    FnOnceObject, Object,
+    FnOnceObject, KillHandle, Object,
 };
 use std::future::Future;
 use std::io::Result;
@@ -292,9 +292,9 @@ impl<S: Object, R: Object> std::os::unix::io::FromRawFd for Duplex<S, R> {
 pub struct Child<T: Object>(asynchronous::Child<Blocking, T>);
 
 impl<T: Object> Child<T> {
-    /// Terminate the process immediately.
-    pub fn kill(&self) -> Result<()> {
-        self.0.kill()
+    /// Get a handle for process termination.
+    pub fn get_kill_handle(&self) -> KillHandle {
+        self.0.get_kill_handle()
     }
 
     /// Get ID of the process.

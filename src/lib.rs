@@ -40,7 +40,7 @@
 //! ```
 //!
 //!
-//! ## Passing objects
+//! # Passing objects
 //!
 //! Almost arbitrary objects can be passed between processes and across channels, including file
 //! handles, sockets, and other channels.
@@ -64,7 +64,7 @@
 //! implement [`Object`] manually. Check out the documentation for [`Object`] for more information.
 //!
 //!
-//! ## Channels
+//! # Channels
 //!
 //! As the second example demonstrates, cross-process communication may be achieved not only via
 //! arguments and return values, but via long-lived channels. Channels may be unidirectional (one
@@ -87,7 +87,33 @@
 //! two processes started from the same executable file, this does not violate semver.
 //!
 //!
-//! ## Features
+//! # Aborting computations
+//!
+//! If, at any point, you determine that you are no longer interested in the output of a process,
+//! you can kill it:
+//!
+//! ```rust
+//! #[crossmist::main]
+//! fn main() {
+//!     let mut child = long_computation.spawn().expect("Failed to spawn child");
+//!     let kill_handle = child.get_kill_handle();
+//!     std::thread::spawn(move || {
+//!         // Wait, I don't need this, actually!
+//!         std::thread::sleep(std::time::Duration::from_millis(500));
+//!         kill_handle.kill();
+//!     });
+//!     // This will fail in 0.5 seconds:
+//!     child.join().unwrap_err();
+//! }
+//!
+//! #[crossmist::func]
+//! fn long_computation() {
+//!     loop {}
+//! }
+//! ```
+//!
+//!
+//! # Features
 //!
 //! This crate provides the following features:
 //! - `tokio`: enable [Tokio](https://tokio.rs) async runtime support.
@@ -448,6 +474,8 @@ pub mod smol;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
+#[doc(inline)]
+pub use asynchronous::KillHandle;
 pub use blocking::{channel, duplex, Child, Duplex, Receiver, Sender};
 
 pub(crate) mod relocation;

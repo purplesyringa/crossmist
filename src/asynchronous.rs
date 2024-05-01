@@ -50,6 +50,7 @@ use crate::{
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::marker::PhantomData;
+use std::sync::{Arc, Mutex};
 #[cfg(windows)]
 use {
     crate::{
@@ -423,6 +424,13 @@ pub(crate) type ProcID = RawHandle;
 pub struct Child<Stream: AsyncStream, T: Object> {
     proc_handle: ProcHandle,
     output_rx: Receiver<Stream, T>,
+    may_kill: Arc<Mutex<bool>>,
+}
+
+/// A handle that allows to kill the process.
+pub struct KillHandle {
+    proc_id: ProcID,
+    may_kill: Arc<Mutex<bool>>,
 }
 
 impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
@@ -430,18 +438,16 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
         Child {
             proc_handle,
             output_rx,
+            may_kill: Arc::new(Mutex::new(true)),
         }
     }
 
-    /// Terminate the process immediately.
-    pub fn kill(&self) -> Result<()> {
-        #[cfg(unix)]
-        nix::sys::signal::kill(self.proc_handle, nix::sys::signal::Signal::SIGKILL)?;
-        #[cfg(windows)]
-        unsafe {
-            Threading::TerminateProcess(self.proc_handle.as_raw_handle(), 1).ok()?;
+    /// Get a handle for process termination.
+    pub fn get_kill_handle(&self) -> crate::KillHandle {
+        KillHandle {
+            proc_id: self.id(),
+            may_kill: self.may_kill.clone(),
         }
-        Ok(())
     }
 
     /// Get ID of the process.
@@ -467,6 +473,8 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
             // The value should be None at this moment
             value = Some(void);
         }
+        let mut guard = self.may_kill.lock().expect("Kill mutex is poisoned");
+        *guard = false;
         // This is synchronous, but should be really fast
         #[cfg(unix)]
         {
@@ -521,6 +529,28 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
                 ))
             }
         }
+    }
+}
+
+impl KillHandle {
+    /// Terminate the process immediately.
+    pub fn kill(&self) -> Result<()> {
+        let guard = self.may_kill.lock().expect("Kill mutex is poisoned");
+        if !*guard {
+            return Err(std::io::Error::other(
+                "This process has already been joined",
+            ));
+        }
+        #[cfg(unix)]
+        nix::sys::signal::kill(
+            ProcHandle::from_raw(self.proc_id),
+            nix::sys::signal::Signal::SIGKILL,
+        )?;
+        #[cfg(windows)]
+        unsafe {
+            Threading::TerminateProcess(self.proc_id, 1).ok()?;
+        }
+        Ok(())
     }
 }
 
