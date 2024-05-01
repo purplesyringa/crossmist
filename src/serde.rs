@@ -219,7 +219,7 @@ impl Deserializer {
 /// }
 /// ```
 ///
-/// Note that only DSTs cannot be objects (but `Box<dyn Trait>` is fine).
+/// Note that DSTs cannot be objects (but `Box<dyn Trait>` and `Box<[T]>` are fine).
 ///
 ///
 /// # Cyclic structures
