@@ -7,8 +7,9 @@
 use std::os::windows::io;
 use windows::Win32::Foundation::HANDLE;
 
-// We use HANDLE from 'windows' crate instead of io::RawHandle because the latter is justan alias to
-// a pointer and not a newtype, so if we implement traits for it, chaos is likely to ensue.
+// We use HANDLE from 'windows' crate instead of io::RawHandle because the latter is just an alias
+// to a pointer and not a newtype, so if we implement traits for it, chaos is likely to ensue. Also,
+// *mut c_void is not Sync + Send, so lazy_static! and coroutines (likely) fail.
 
 pub trait FromRawHandle: io::FromRawHandle {
     unsafe fn from_raw_handle(handle: RawHandle) -> Self
