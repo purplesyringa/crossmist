@@ -157,13 +157,13 @@ impl<T: Object> std::os::windows::io::AsRawHandle for Sender<T> {
 #[cfg(unix)]
 impl<T: Object> std::os::unix::io::IntoRawFd for Sender<T> {
     fn into_raw_fd(self) -> RawHandle {
-        self.0.into_raw_fd()
+        self.0.fd.0.into_raw_fd()
     }
 }
 #[cfg(windows)]
 impl<T: Object> std::os::windows::io::IntoRawHandle for Sender<T> {
     fn into_raw_handle(self) -> std::os::windows::io::RawHandle {
-        self.0.into_raw_handle()
+        self.0.fd.0.into_raw_handle()
     }
 }
 
@@ -209,13 +209,13 @@ impl<T: Object> std::os::windows::io::AsRawHandle for Receiver<T> {
 #[cfg(unix)]
 impl<T: Object> std::os::unix::io::IntoRawFd for Receiver<T> {
     fn into_raw_fd(self) -> RawHandle {
-        self.0.into_raw_fd()
+        self.0.fd.0.into_raw_fd()
     }
 }
 #[cfg(windows)]
 impl<T: Object> std::os::windows::io::IntoRawHandle for Receiver<T> {
     fn into_raw_handle(self) -> std::os::windows::io::RawHandle {
-        self.0.into_raw_handle()
+        self.0.fd.0.into_raw_handle()
     }
 }
 
@@ -275,7 +275,7 @@ impl<S: Object, R: Object> std::os::unix::io::AsRawFd for Duplex<S, R> {
 #[cfg(unix)]
 impl<S: Object, R: Object> std::os::unix::io::IntoRawFd for Duplex<S, R> {
     fn into_raw_fd(self) -> RawHandle {
-        self.0.into_raw_fd()
+        self.0.fd.0.into_raw_fd()
     }
 }
 

@@ -109,7 +109,7 @@ pub unsafe trait AsyncStream: Object + Sized {
 /// `T` is the type of the objects this side sends via the channel and the other side receives.
 #[derive(Object)]
 pub struct Sender<Stream: AsyncStream, T: Object> {
-    fd: Stream,
+    pub(crate) fd: Stream,
     marker: PhantomData<fn(T)>,
 }
 
@@ -118,7 +118,7 @@ pub struct Sender<Stream: AsyncStream, T: Object> {
 /// `T` is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
 pub struct Receiver<Stream: AsyncStream, T: Object> {
-    fd: Stream,
+    pub(crate) fd: Stream,
     marker: PhantomData<fn() -> T>,
 }
 
@@ -129,7 +129,7 @@ pub struct Receiver<Stream: AsyncStream, T: Object> {
 #[derive(Object)]
 pub struct Duplex<Stream: AsyncStream, S: Object, R: Object> {
     #[cfg(unix)]
-    fd: Stream,
+    pub(crate) fd: Stream,
     #[cfg(unix)]
     marker: PhantomData<fn(S) -> R>,
     #[cfg(windows)]
@@ -237,11 +237,6 @@ impl<Stream: AsyncStream, T: Object> TryFrom<crate::Sender<T>> for Sender<Stream
         }
     }
 }
-impl<Stream: AsyncStream, T: Object> From<Sender<Stream, T>> for crate::Sender<T> {
-    fn from(value: Sender<Stream, T>) -> Self {
-        unsafe { Self::from_raw_handle(value.into_raw_handle()) }
-    }
-}
 
 #[cfg(unix)]
 impl<Stream: AsyncStream, T: Object> std::os::unix::io::AsRawFd for Sender<Stream, T> {
@@ -253,25 +248,6 @@ impl<Stream: AsyncStream, T: Object> std::os::unix::io::AsRawFd for Sender<Strea
 impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Sender<Stream, T> {
     fn as_raw_handle(&self) -> std::os::windows::prelude::RawHandle {
         self.fd.as_raw_handle().0 as _
-    }
-}
-
-#[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> std::os::unix::io::IntoRawFd for Sender<Stream, T> {
-    fn into_raw_fd(self) -> RawHandle {
-        let fd = self.fd.as_raw_handle();
-        std::mem::forget(self);
-        fd
-    }
-}
-#[cfg(windows)]
-impl<Stream: AsyncStream, T: Object> std::os::windows::prelude::IntoRawHandle
-    for Sender<Stream, T>
-{
-    fn into_raw_handle(self) -> std::os::windows::prelude::RawHandle {
-        let fd = io::AsRawHandle::as_raw_handle(&self);
-        std::mem::forget(self);
-        fd
     }
 }
 
@@ -322,11 +298,6 @@ impl<Stream: AsyncStream, T: Object> TryFrom<crate::Receiver<T>> for Receiver<St
         }
     }
 }
-impl<Stream: AsyncStream, T: Object> From<Receiver<Stream, T>> for crate::Receiver<T> {
-    fn from(value: Receiver<Stream, T>) -> Self {
-        unsafe { Self::from_raw_handle(value.into_raw_handle()) }
-    }
-}
 
 #[cfg(unix)]
 impl<Stream: AsyncStream, T: Object> std::os::unix::io::AsRawFd for Receiver<Stream, T> {
@@ -338,25 +309,6 @@ impl<Stream: AsyncStream, T: Object> std::os::unix::io::AsRawFd for Receiver<Str
 impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Receiver<Stream, T> {
     fn as_raw_handle(&self) -> std::os::windows::prelude::RawHandle {
         self.fd.as_raw_handle().0 as _
-    }
-}
-
-#[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> std::os::unix::io::IntoRawFd for Receiver<Stream, T> {
-    fn into_raw_fd(self) -> RawHandle {
-        let fd = self.fd.as_raw_handle();
-        std::mem::forget(self);
-        fd
-    }
-}
-#[cfg(windows)]
-impl<Stream: AsyncStream, T: Object> std::os::windows::prelude::IntoRawHandle
-    for Receiver<Stream, T>
-{
-    fn into_raw_handle(self) -> std::os::windows::prelude::RawHandle {
-        let fd = io::AsRawHandle::as_raw_handle(&self);
-        std::mem::forget(self);
-        fd
     }
 }
 
@@ -447,21 +399,6 @@ impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
         }
     }
 }
-impl<Stream: AsyncStream, S: Object, R: Object> From<Duplex<Stream, S, R>> for crate::Duplex<S, R> {
-    fn from(value: Duplex<Stream, S, R>) -> Self {
-        #[cfg(unix)]
-        unsafe {
-            Self::from_raw_handle(value.into_raw_handle())
-        }
-        #[cfg(windows)]
-        {
-            Self(Duplex {
-                sender: crate::Sender::from(value.sender).0,
-                receiver: crate::Receiver::from(value.receiver).0,
-            })
-        }
-    }
-}
 
 #[cfg(unix)]
 impl<Stream: AsyncStream, S: Object, R: Object> std::os::unix::io::AsRawFd
@@ -469,16 +406,6 @@ impl<Stream: AsyncStream, S: Object, R: Object> std::os::unix::io::AsRawFd
 {
     fn as_raw_fd(&self) -> RawHandle {
         self.fd.as_raw_handle()
-    }
-}
-#[cfg(unix)]
-impl<Stream: AsyncStream, S: Object, R: Object> std::os::unix::io::IntoRawFd
-    for Duplex<Stream, S, R>
-{
-    fn into_raw_fd(self) -> RawHandle {
-        let fd = self.fd.as_raw_handle();
-        std::mem::forget(self);
-        fd
     }
 }
 
@@ -607,14 +534,15 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
 
     let handles = s.drain_handles();
 
-    let (mut local, child) = duplex::<Stream, (Vec<u8>, Vec<RawHandle>), T>()?;
+    let (local, child) = crate::duplex()?;
+    let mut local: Duplex<Stream, (Vec<u8>, Vec<RawHandle>), T> = local.try_into()?;
 
     let process_handle;
     let receiver;
 
     #[cfg(unix)]
     {
-        process_handle = subprocess::_spawn_child(crate::Duplex::from(child), &handles)?;
+        process_handle = subprocess::_spawn_child(child, &handles)?;
         local.send(&(s.into_vec(), handles)).await?;
         receiver = Receiver::from_stream(local.fd);
     }
@@ -622,8 +550,8 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     #[cfg(windows)]
     {
         process_handle = subprocess::_spawn_child(
-            child.sender.as_raw_handle(),
-            child.receiver.as_raw_handle(),
+            child.0.sender.as_raw_handle(),
+            child.0.receiver.as_raw_handle(),
             &handles,
         )?;
         local.send(&(s.into_vec(), handles)).await?;
