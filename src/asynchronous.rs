@@ -43,9 +43,7 @@
 
 use crate::{
     handles::{FromRawHandle, IntoRawHandle, RawHandle},
-    imp,
-    ipc::SyncStream,
-    subprocess, FnOnceObject, Object, Serializer,
+    imp, subprocess, FnOnceObject, Object, Serializer,
 };
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
@@ -64,6 +62,11 @@ use {
     std::os::windows::io,
     windows::Win32::System::{Pipes, Threading, WindowsProgramming},
 };
+
+#[cfg(unix)]
+pub(crate) type SyncStream = std::os::unix::net::UnixStream;
+#[cfg(windows)]
+pub(crate) type SyncStream = std::fs::File;
 
 /// Runtime-dependent stream implementation.
 pub unsafe trait AsyncStream: Object + Sized {

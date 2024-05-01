@@ -5,7 +5,6 @@
 use crate::{
     asynchronous,
     handles::{AsRawHandle, RawHandle},
-    ipc::SyncStream,
     FnOnceObject, Object,
 };
 use std::io::Result;
@@ -18,7 +17,7 @@ pub struct Tokio(
 );
 
 unsafe impl asynchronous::AsyncStream for Tokio {
-    fn try_new(stream: SyncStream) -> Result<Self> {
+    fn try_new(stream: asynchronous::SyncStream) -> Result<Self> {
         #[cfg(unix)]
         return stream.try_into().map(Self);
         #[cfg(windows)]

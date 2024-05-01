@@ -425,14 +425,14 @@ mod platform {
         pub(crate) mod entry;
         pub mod handles;
         pub(crate) mod internals;
-        pub mod subprocess;
+        pub(crate) mod subprocess;
     }
     #[cfg(windows)]
     pub mod windows {
         pub(crate) mod entry;
         pub mod handles;
         pub(crate) mod internals;
-        pub mod subprocess;
+        pub(crate) mod subprocess;
     }
 }
 
@@ -442,17 +442,18 @@ pub use crate::platform::unix::*;
 pub use crate::platform::windows::*;
 
 pub mod asynchronous;
-pub mod ipc;
+pub mod blocking;
 #[cfg(feature = "smol")]
 pub mod smol;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
-pub use ipc::{channel, duplex, Duplex, Receiver, Sender};
+pub use blocking::{channel, duplex, Child, Duplex, Receiver, Sender};
+
+#[doc(hidden)]
+pub use subprocess::spawn;
 
 pub(crate) mod relocation;
-
-pub use subprocess::*;
 
 mod builtins;
 mod unsized_builtins;
