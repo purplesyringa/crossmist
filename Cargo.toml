@@ -40,9 +40,8 @@ smol = "2"
 smol-macros = "0.1"
 
 [features]
-async = []
-tokio = ["async", "dep:tokio"]
-smol = ["async", "dep:async-fs", "dep:async-io", "dep:futures-lite"]
+tokio = ["dep:tokio"]
+smol = ["dep:async-fs", "dep:async-io", "dep:futures-lite"]
 nightly = []
 
 [[test]]
@@ -61,4 +60,4 @@ path = "tests/smol.rs"
 harness = false
 
 [package.metadata.docs.rs]
-features = ["async", "tokio", "smol", "nightly"]
+features = ["tokio", "smol", "nightly"]

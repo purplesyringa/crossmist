@@ -224,10 +224,12 @@ pub unsafe fn spawn<T: Object>(
     let handles = s.drain_handles();
 
     let (mut local, child) = duplex::<(Vec<u8>, Vec<RawHandle>), T>()?;
-    let (child_tx, child_rx) = child.split();
-    let handle = _spawn_child(child_tx.as_raw_handle(), child_rx.as_raw_handle(), &handles)?;
+    let handle = _spawn_child(
+        child.0.sender.as_raw_handle(),
+        child.0.receiver.as_raw_handle(),
+        &handles,
+    )?;
     local.send(&(s.into_vec(), handles))?;
 
-    let (_, receiver) = local.split();
-    Ok(Child::new(handle, receiver))
+    Ok(Child::new(handle, local.0.receiver.into()))
 }

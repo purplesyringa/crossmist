@@ -5,6 +5,7 @@
 use crate::{
     asynchronous,
     handles::{AsRawHandle, RawHandle},
+    ipc::SyncStream,
     FnOnceObject, Object,
 };
 use std::io::Result;
@@ -17,18 +18,19 @@ pub struct Smol(
 );
 
 unsafe impl asynchronous::AsyncStream for Smol {
-    #[cfg(unix)]
-    fn try_new(stream: std::os::unix::net::UnixStream) -> Result<Self> {
-        stream.try_into().map(Self)
-    }
-    #[cfg(windows)]
-    fn try_new(stream: std::fs::File) -> Result<Self> {
-        Ok(Self(stream.into()))
+    fn try_new(stream: SyncStream) -> Result<Self> {
+        #[cfg(unix)]
+        return stream.try_into().map(Self);
+        #[cfg(windows)]
+        return Ok(Self(stream.into()));
     }
 
     fn as_raw_handle(&self) -> RawHandle {
         self.0.as_raw_handle()
     }
+
+    #[cfg(unix)]
+    const IS_BLOCKING: bool = false;
 
     #[cfg(unix)]
     async fn blocking_write<T>(&self, mut f: impl FnMut() -> Result<T> + Send) -> Result<T> {

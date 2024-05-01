@@ -43,28 +43,27 @@
 
 use crate::{
     handles::{FromRawHandle, IntoRawHandle, RawHandle},
-    imp, subprocess, FnOnceObject, Object, Serializer,
+    imp,
+    ipc::SyncStream,
+    subprocess, FnOnceObject, Object, Serializer,
 };
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::marker::PhantomData;
-#[cfg(windows)]
-use {
-    crate::handles::AsRawHandle,
-    std::os::windows::io,
-    windows::Win32::System::{Pipes, Threading, WindowsProgramming},
-};
 #[cfg(unix)]
 use {
     crate::internals::{socketpair, SingleObjectReceiver, SingleObjectSender},
     nix::libc::pid_t,
-    std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
 };
-
-#[cfg(unix)]
-type SyncStream = std::os::unix::net::UnixStream;
 #[cfg(windows)]
-type SyncStream = std::fs::File;
+use {
+    crate::{
+        handles::AsRawHandle,
+        internals::{deserialize_with_handles, serialize_with_handles},
+    },
+    std::os::windows::io,
+    windows::Win32::System::{Pipes, Threading, WindowsProgramming},
+};
 
 /// Runtime-dependent stream implementation.
 pub unsafe trait AsyncStream: Object + Sized {
@@ -73,6 +72,10 @@ pub unsafe trait AsyncStream: Object + Sized {
 
     /// Get a raw handle to the underlying stream.
     fn as_raw_handle(&self) -> RawHandle;
+
+    /// Whether socket operations should be blocking.
+    #[cfg(unix)]
+    const IS_BLOCKING: bool;
 
     /// Perform a blocking write.
     ///
@@ -130,9 +133,9 @@ pub struct Duplex<Stream: AsyncStream, S: Object, R: Object> {
     #[cfg(unix)]
     marker: PhantomData<fn(S) -> R>,
     #[cfg(windows)]
-    sender: Sender<Stream, S>,
+    pub(crate) sender: Sender<Stream, S>,
     #[cfg(windows)]
-    receiver: Receiver<Stream, R>,
+    pub(crate) receiver: Receiver<Stream, R>,
 }
 
 /// Create a unidirectional channel.
@@ -141,7 +144,7 @@ pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, R
     #[cfg(unix)]
     {
         let (tx, rx) = duplex::<Stream, T, T>()?;
-        unsafe { Ok((Sender::from_stream(tx.fd), Receiver::from_stream(rx.fd))) }
+        Ok((tx.into_sender(), rx.into_receiver()))
     }
     #[cfg(windows)]
     {
@@ -200,7 +203,7 @@ pub fn duplex<Stream: AsyncStream, A: Object, B: Object>(
 }
 
 impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
-    unsafe fn from_stream(fd: Stream) -> Self {
+    pub(crate) unsafe fn from_stream(fd: Stream) -> Self {
         Sender {
             fd,
             marker: PhantomData,
@@ -211,12 +214,13 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
     pub async fn send(&mut self, value: &T) -> Result<()> {
         #[cfg(unix)]
         {
-            let mut sender = SingleObjectSender::new(self.fd.as_raw_handle(), value, false);
+            let mut sender =
+                SingleObjectSender::new(self.fd.as_raw_handle(), value, Stream::IS_BLOCKING);
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
         {
-            let serialized = crate::ipc::serialize_with_handles(value)?;
+            let serialized = serialize_with_handles(value)?;
             self.fd.write(&serialized.len().to_ne_bytes()).await?;
             self.fd.write(&serialized).await
         }
@@ -240,8 +244,8 @@ impl<Stream: AsyncStream, T: Object> From<Sender<Stream, T>> for crate::Sender<T
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> AsRawFd for Sender<Stream, T> {
-    fn as_raw_fd(&self) -> RawFd {
+impl<Stream: AsyncStream, T: Object> std::os::unix::io::AsRawFd for Sender<Stream, T> {
+    fn as_raw_fd(&self) -> RawHandle {
         self.fd.as_raw_handle()
     }
 }
@@ -253,9 +257,9 @@ impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Sender<Stream, T> {
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> IntoRawFd for Sender<Stream, T> {
-    fn into_raw_fd(self) -> RawFd {
-        let fd = self.as_raw_fd();
+impl<Stream: AsyncStream, T: Object> std::os::unix::io::IntoRawFd for Sender<Stream, T> {
+    fn into_raw_fd(self) -> RawHandle {
+        let fd = self.fd.as_raw_handle();
         std::mem::forget(self);
         fd
     }
@@ -272,7 +276,7 @@ impl<Stream: AsyncStream, T: Object> std::os::windows::prelude::IntoRawHandle
 }
 
 impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
-    unsafe fn from_stream(fd: Stream) -> Self {
+    pub(crate) unsafe fn from_stream(fd: Stream) -> Self {
         Receiver {
             fd,
             marker: PhantomData,
@@ -285,7 +289,8 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
     pub async fn recv(&mut self) -> Result<Option<T>> {
         #[cfg(unix)]
         {
-            let mut receiver = unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle(), false) };
+            let mut receiver =
+                unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle(), Stream::IS_BLOCKING) };
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]
@@ -302,7 +307,7 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
             let mut serialized = vec![0u8; len];
             self.fd.read(&mut serialized).await?;
 
-            unsafe { crate::ipc::deserialize_with_handles(serialized).map(Some) }
+            unsafe { deserialize_with_handles(serialized).map(Some) }
         }
     }
 }
@@ -324,8 +329,8 @@ impl<Stream: AsyncStream, T: Object> From<Receiver<Stream, T>> for crate::Receiv
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> AsRawFd for Receiver<Stream, T> {
-    fn as_raw_fd(&self) -> RawFd {
+impl<Stream: AsyncStream, T: Object> std::os::unix::io::AsRawFd for Receiver<Stream, T> {
+    fn as_raw_fd(&self) -> RawHandle {
         self.fd.as_raw_handle()
     }
 }
@@ -337,9 +342,9 @@ impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Receiver<Stream, T> {
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> IntoRawFd for Receiver<Stream, T> {
-    fn into_raw_fd(self) -> RawFd {
-        let fd = self.as_raw_fd();
+impl<Stream: AsyncStream, T: Object> std::os::unix::io::IntoRawFd for Receiver<Stream, T> {
+    fn into_raw_fd(self) -> RawHandle {
+        let fd = self.fd.as_raw_handle();
         std::mem::forget(self);
         fd
     }
@@ -357,7 +362,7 @@ impl<Stream: AsyncStream, T: Object> std::os::windows::prelude::IntoRawHandle
 
 impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     #[cfg(unix)]
-    unsafe fn from_stream(fd: Stream) -> Self {
+    pub(crate) unsafe fn from_stream(fd: Stream) -> Self {
         Duplex {
             fd,
             marker: PhantomData,
@@ -368,7 +373,8 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     pub async fn send(&mut self, value: &S) -> Result<()> {
         #[cfg(unix)]
         {
-            let mut sender = SingleObjectSender::new(self.fd.as_raw_handle(), value, false);
+            let mut sender =
+                SingleObjectSender::new(self.fd.as_raw_handle(), value, Stream::IS_BLOCKING);
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
@@ -381,7 +387,8 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     pub async fn recv(&mut self) -> Result<Option<R>> {
         #[cfg(unix)]
         {
-            let mut receiver = unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle(), false) };
+            let mut receiver =
+                unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle(), Stream::IS_BLOCKING) };
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]
@@ -400,6 +407,24 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
             )
         })
     }
+
+    pub fn into_sender(self) -> Sender<Stream, S> {
+        #[cfg(unix)]
+        unsafe {
+            Sender::from_stream(self.fd)
+        }
+        #[cfg(windows)]
+        self.sender
+    }
+
+    pub fn into_receiver(self) -> Receiver<Stream, R> {
+        #[cfg(unix)]
+        unsafe {
+            Receiver::from_stream(self.fd)
+        }
+        #[cfg(windows)]
+        self.receiver
+    }
 }
 
 impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
@@ -410,15 +435,14 @@ impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
         #[cfg(unix)]
         unsafe {
             Ok(Self::from_stream(Stream::try_new(
-                SyncStream::from_raw_fd(value.into_raw_fd()),
+                SyncStream::from_raw_handle(value.into_raw_handle()),
             )?))
         }
         #[cfg(windows)]
         {
-            let (sender, receiver) = value.split();
             Ok(Self {
-                sender: sender.try_into()?,
-                receiver: receiver.try_into()?,
+                sender: crate::Sender(value.0.sender).try_into()?,
+                receiver: crate::Receiver(value.0.receiver).try_into()?,
             })
         }
     }
@@ -430,20 +454,29 @@ impl<Stream: AsyncStream, S: Object, R: Object> From<Duplex<Stream, S, R>> for c
             Self::from_raw_handle(value.into_raw_handle())
         }
         #[cfg(windows)]
-        Self::join(value.sender.into(), value.receiver.into())
+        {
+            Self(Duplex {
+                sender: crate::Sender::from(value.sender).0,
+                receiver: crate::Receiver::from(value.receiver).0,
+            })
+        }
     }
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, S: Object, R: Object> AsRawFd for Duplex<Stream, S, R> {
-    fn as_raw_fd(&self) -> RawFd {
+impl<Stream: AsyncStream, S: Object, R: Object> std::os::unix::io::AsRawFd
+    for Duplex<Stream, S, R>
+{
+    fn as_raw_fd(&self) -> RawHandle {
         self.fd.as_raw_handle()
     }
 }
 #[cfg(unix)]
-impl<Stream: AsyncStream, S: Object, R: Object> IntoRawFd for Duplex<Stream, S, R> {
-    fn into_raw_fd(self) -> RawFd {
-        let fd = self.as_raw_fd();
+impl<Stream: AsyncStream, S: Object, R: Object> std::os::unix::io::IntoRawFd
+    for Duplex<Stream, S, R>
+{
+    fn into_raw_fd(self) -> RawHandle {
+        let fd = self.fd.as_raw_handle();
         std::mem::forget(self);
         fd
     }

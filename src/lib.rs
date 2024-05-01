@@ -425,14 +425,13 @@ mod platform {
         pub(crate) mod entry;
         pub mod handles;
         pub(crate) mod internals;
-        pub mod ipc;
         pub mod subprocess;
     }
     #[cfg(windows)]
     pub mod windows {
         pub(crate) mod entry;
         pub mod handles;
-        pub mod ipc;
+        pub(crate) mod internals;
         pub mod subprocess;
     }
 }
@@ -442,8 +441,8 @@ pub use crate::platform::unix::*;
 #[cfg(windows)]
 pub use crate::platform::windows::*;
 
-#[cfg(feature = "async")]
 pub mod asynchronous;
+pub mod ipc;
 #[cfg(feature = "smol")]
 pub mod smol;
 #[cfg(feature = "tokio")]
