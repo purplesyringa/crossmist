@@ -45,19 +45,23 @@ smol = ["dep:async-fs", "dep:async-io", "dep:futures-lite"]
 nightly = []
 
 [[test]]
-name = "sync-main"
+name = "sync"
 path = "tests/main.rs"
 harness = false
 
 [[test]]
-name = "tokio-main"
+name = "tokio"
 path = "tests/tokio.rs"
 harness = false
 
 [[test]]
-name = "smol-main"
+name = "smol"
 path = "tests/smol.rs"
 harness = false
+
+[[test]]
+name = "serde"
+path = "tests/serde.rs"
 
 [package.metadata.docs.rs]
 features = ["tokio", "smol", "nightly"]
