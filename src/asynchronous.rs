@@ -507,7 +507,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     }
 
     /// Terminate the process immediately.
-    pub fn kill(&mut self) -> Result<()> {
+    pub fn kill(&self) -> Result<()> {
         #[cfg(unix)]
         nix::sys::signal::kill(self.proc_handle, nix::sys::signal::Signal::SIGKILL)?;
         #[cfg(windows)]

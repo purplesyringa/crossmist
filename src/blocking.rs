@@ -293,7 +293,7 @@ pub struct Child<T: Object>(asynchronous::Child<Blocking, T>);
 
 impl<T: Object> Child<T> {
     /// Terminate the process immediately.
-    pub fn kill(&mut self) -> Result<()> {
+    pub fn kill(&self) -> Result<()> {
         self.0.kill()
     }
 
