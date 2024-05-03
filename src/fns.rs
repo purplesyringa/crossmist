@@ -844,6 +844,12 @@ impl<F: FnPtr> StaticFn<F> {
             phantom: PhantomData,
         }
     }
+
+    /// Extract a function pointer from a [`StaticFn`].
+    pub fn get_fn(self) -> F {
+        assert!(std::mem::size_of::<*const ()>() == std::mem::size_of::<F>());
+        unsafe { std::mem::transmute_copy::<*const (), F>(&self.ptr.0) }
+    }
 }
 
 macro_rules! impl_fn_pointer {
@@ -861,8 +867,7 @@ macro_rules! impl_fn_pointer {
                 impl[Output, $([<T $tail>]),*] FnOnce<($([<T $tail>],)*), Output = Output> for StaticFn<fn($([<T $tail>]),*) -> Output> =
                 |self, args| {
                     let ($([<a $tail>],)*) = args;
-                    let func = unsafe { std::mem::transmute::<*const (), fn($([<T $tail>]),*) -> Output>(self.ptr.0) };
-                    func($([<a $tail>]),*)
+                    self.get_fn()($([<a $tail>]),*)
                 }
             }
             impl_fn! {
