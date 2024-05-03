@@ -1,4 +1,3 @@
-#![feature(box_patterns)]
 #[macro_use]
 extern crate quote;
 
@@ -118,13 +117,11 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
                 args_from_tuple.push(quote! { args.#i });
                 binding.push(quote! { .bind_value(#ident) });
                 has_references = has_references
+                    || matches!(**ty, syn::Type::Reference(_))
                     || matches!(
                         **ty,
-                        syn::Type::Reference(_)
-                            | syn::Type::Group(syn::TypeGroup {
-                                elem: box syn::Type::Reference(_),
-                                ..
-                            })
+                        syn::Type::Group(syn::TypeGroup { ref elem, .. })
+                            if matches!(**elem, syn::Type::Reference(_)),
                     );
             } else {
                 unreachable!();
