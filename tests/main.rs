@@ -1,4 +1,6 @@
-use crossmist::{channel, duplex, BindValue, Duplex, Object, Receiver, Sender};
+use crossmist::{
+    channel, duplex, static_ref, BindValue, Duplex, Object, Receiver, Sender, StaticRef,
+};
 
 #[derive(Debug, PartialEq, Object)]
 struct SimplePair {
@@ -121,6 +123,11 @@ fn with_passed_nested_channel(mut chan: Receiver<Receiver<i32>>) -> i32 {
 #[crossmist::func]
 fn exitting() {
     std::process::exit(0);
+}
+
+#[crossmist::func]
+fn with_static_ref(a: StaticRef<&'static str>) -> String {
+    a.to_string()
 }
 
 #[crossmist::main]
@@ -297,5 +304,15 @@ fn main() {
     {
         assert_eq!(exitting.run().unwrap(), ());
         println!("exitting OK");
+    }
+
+    {
+        assert_eq!(
+            with_static_ref
+                .run(static_ref!(&'static str, &"Hello, world!"))
+                .unwrap(),
+            "Hello, world!"
+        );
+        println!("with_static_ref OK");
     }
 }

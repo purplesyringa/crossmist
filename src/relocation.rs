@@ -7,8 +7,15 @@ use std::io::Result;
 static BASE_ADDRESS: fn(()) = std::mem::drop::<()>;
 
 #[repr(transparent)]
-#[derive(Clone, Copy)]
 pub(crate) struct RelocatablePtr<T>(pub(crate) *const T);
+
+// Implement Clone/Copy even for T: !Clone/Copy
+impl<T> Clone for RelocatablePtr<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for RelocatablePtr<T> {}
 
 unsafe impl<T> NonTrivialObject for RelocatablePtr<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
