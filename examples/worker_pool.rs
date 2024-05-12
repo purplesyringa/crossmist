@@ -20,8 +20,7 @@ type TypeErased = Box<dyn AnyObject>;
 struct Worker {
     // The worker process will receive tasks as functions returning Any output and return their
     // output via the channel.
-    channel:
-        Duplex<Box<dyn FnOnceObject<(), Output = TypeErased> + Send + Sync + 'static>, TypeErased>,
+    channel: Duplex<Box<dyn FnOnceObject<(), Output = TypeErased> + Send + Sync>, TypeErased>,
 
     child: Child<()>,
 }
@@ -102,10 +101,7 @@ fn _wrapped_function<
 #[func]
 #[tokio::main(flavor = "current_thread")]
 async fn worker(
-    mut channel: Duplex<
-        TypeErased,
-        Box<dyn FnOnceObject<(), Output = TypeErased> + Send + Sync + 'static>,
-    >,
+    mut channel: Duplex<TypeErased, Box<dyn FnOnceObject<(), Output = TypeErased> + Send + Sync>>,
 ) {
     while let Some(func) = channel.recv().await.unwrap() {
         channel.send(&func.call_object_once(())).await.unwrap();
