@@ -1,5 +1,6 @@
 use crossmist::{
-    channel, duplex, static_ref, BindValue, Duplex, Object, Receiver, Sender, StaticRef,
+    channel, duplex, static_ref, BindValue, Duplex, FnOnceObject, Object, Receiver, Sender,
+    StaticRef,
 };
 
 #[ctor::ctor]
@@ -46,6 +47,8 @@ fn add_with_arguments_spawn() {
 
 #[test]
 fn add_with_arguments_call() {
+    assert_eq!(add_with_arguments_impl.call_object_once((5, 7)), 12);
+    #[cfg(feature = "nightly")]
     assert_eq!(add_with_arguments_impl(5, 7), 12);
 }
 
@@ -158,7 +161,14 @@ fn with_passed_trait() {
 fn with_passed_fn() {
     #[crossmist::func]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
-        func(5, 7)
+        #[cfg(feature = "nightly")]
+        {
+            func(5, 7)
+        }
+        #[cfg(not(feature = "nightly"))]
+        {
+            func.call_object_once((5, 7))
+        }
     }
     assert_eq!(
         inner
@@ -174,7 +184,14 @@ fn with_passed_fn() {
 fn with_passed_bound_fn() {
     #[crossmist::func]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(i32,), Output = i32>>) -> i32 {
-        func(7)
+        #[cfg(feature = "nightly")]
+        {
+            func(7)
+        }
+        #[cfg(not(feature = "nightly"))]
+        {
+            func.call_object_once((7,))
+        }
     }
     assert_eq!(
         inner
@@ -190,7 +207,14 @@ fn with_passed_bound_fn() {
 fn with_passed_double_bound_fn() {
     #[crossmist::func]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(), Output = i32>>) -> i32 {
-        func()
+        #[cfg(feature = "nightly")]
+        {
+            func()
+        }
+        #[cfg(not(feature = "nightly"))]
+        {
+            func.call_object_once(())
+        }
     }
     assert_eq!(
         inner

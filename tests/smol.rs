@@ -1,5 +1,5 @@
 use crossmist::smol::{channel, duplex, Duplex, Receiver, Sender};
-use crossmist::Object;
+use crossmist::{FnOnceObject, Object};
 
 #[ctor::ctor]
 fn ctor() {
@@ -35,7 +35,7 @@ async fn add_with_arguments() {
         inner.spawn_smol(5, 7).await.unwrap().join().await.unwrap(),
         12
     );
-    assert_eq!(inner(5, 7).await, 12);
+    assert_eq!(inner.call_object_once((5, 7)).await, 12);
 }
 
 #[macro_rules_attribute::apply(smol_macros::main!)]

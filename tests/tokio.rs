@@ -1,5 +1,5 @@
 use crossmist::tokio::{channel, duplex, Duplex, Receiver, Sender};
-use crossmist::Object;
+use crossmist::{FnOnceObject, Object};
 
 #[ctor::ctor]
 fn ctor() {
@@ -31,7 +31,7 @@ async fn add_with_arguments() {
     async fn inner(x: i32, y: i32) -> i32 {
         x + y
     }
-    assert_eq!(inner(5, 7).await, 12);
+    assert_eq!(inner.call_object_once((5, 7)).await, 12);
     assert_eq!(
         inner.spawn_tokio(5, 7).await.unwrap().join().await.unwrap(),
         12
