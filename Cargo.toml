@@ -52,7 +52,6 @@ path = "tests/main.rs"
 [[test]]
 name = "tokio"
 path = "tests/tokio.rs"
-harness = false
 
 [[test]]
 name = "smol"
