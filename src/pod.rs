@@ -109,8 +109,6 @@ impl<T: NonTrivialObject> Object for T {
 
     #[cfg(not(feature = "nightly"))]
     fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
-        |d| unsafe {
-            Ok(Box::into_raw(Box::new(Self::deserialize_self_non_trivial(d)?)) as *mut ())
-        }
+        |d| unsafe { Ok(Box::into_raw(Box::new(Self::deserialize_self(d)?)) as *mut ()) }
     }
 }

@@ -12,7 +12,9 @@ struct DynFatPtr {
 unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
         #[cfg(not(feature = "nightly"))]
-        s.serialize(&RelocatablePtr(self.get_heap_deserializer() as *const ()));
+        s.serialize(&RelocatablePtr(
+            self.as_ref().get_heap_deserializer() as *const ()
+        ));
 
         if implements!(T: Sized) {
             self.as_ref().serialize_self(s);
@@ -56,15 +58,17 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
             })
         };
 
+        let pointer_thin_part = &mut pointer as *mut *mut T as *mut *mut ();
+
         #[cfg(feature = "nightly")]
         std::ptr::copy_nonoverlapping(
             &Box::into_raw(pointer.deserialize_on_heap(d)?) as *const *mut dyn Object
                 as *const *mut (),
-            &mut pointer as *mut *mut T as *mut *mut (),
+            pointer_thin_part,
             1,
         );
         #[cfg(not(feature = "nightly"))]
-        (&mut pointer as *mut *mut T as *mut *mut ()).write(heap_deserializer(d)?);
+        pointer_thin_part.write(heap_deserializer(d)?);
 
         Ok(Box::from_raw(pointer))
     }
