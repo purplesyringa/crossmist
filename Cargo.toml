@@ -56,7 +56,6 @@ path = "tests/tokio.rs"
 [[test]]
 name = "smol"
 path = "tests/smol.rs"
-harness = false
 
 [[test]]
 name = "serde"
