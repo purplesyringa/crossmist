@@ -6,6 +6,7 @@ use std::io::Result;
 
 static BASE_ADDRESS: fn(()) = std::mem::drop::<()>;
 
+#[derive(Debug)]
 #[repr(transparent)]
 pub(crate) struct RelocatablePtr<T>(pub(crate) *const T);
 

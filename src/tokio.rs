@@ -10,7 +10,7 @@ use crate::{
 use std::io::Result;
 
 /// `tokio` marker struct.
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct Tokio(
     #[cfg(unix)] tokio::net::UnixStream,
     #[cfg(windows)] tokio::fs::File,

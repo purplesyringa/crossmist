@@ -10,7 +10,7 @@ use crate::{
 use std::io::Result;
 
 /// `smol` marker type.
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct Smol(
     #[cfg(unix)] async_io::Async<std::os::unix::net::UnixStream>,
     #[cfg(windows)] async_fs::File,

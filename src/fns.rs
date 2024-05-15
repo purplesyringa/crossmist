@@ -172,6 +172,7 @@ macro_rules! impl_fn {
     };
 }
 
+#[allow(missing_debug_implementations)]
 #[doc(hidden)]
 #[derive(Object)]
 pub struct CallWrapper<T: Object>(pub T);
@@ -456,18 +457,21 @@ pub trait BindRef<Head: Object, Tail>: Object + Sized {
     fn bind_ref(self, head: Head) -> BoundRef<Self, Head>;
 }
 
+#[allow(missing_debug_implementations)]
 #[doc(hidden)]
 #[derive(Object)]
 pub struct BoundValue<Func: Object, Head: Object> {
     pub func: Func,
     pub head: Head,
 }
+#[allow(missing_debug_implementations)]
 #[doc(hidden)]
 #[derive(Object)]
 pub struct BoundMut<Func: Object, Head: Object> {
     pub func: Func,
     pub head: Head,
 }
+#[allow(missing_debug_implementations)]
 #[doc(hidden)]
 #[derive(Object)]
 pub struct BoundRef<Func: Object, Head: Object> {
@@ -825,7 +829,7 @@ pub trait FnPtr {
 /// let add: Box<dyn FnObject<(i32, i32), Output = i32>> = Box::new(add);
 /// assert_eq!(add(5, 7), 12);
 /// ```
-#[derive(Clone, Copy, Object)]
+#[derive(Clone, Copy, Debug, Object)]
 pub struct StaticFn<F: FnPtr> {
     ptr: RelocatablePtr<()>,
     phantom: PhantomData<F>,

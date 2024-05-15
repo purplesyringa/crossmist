@@ -133,6 +133,7 @@
         unboxed_closures,
     )
 )]
+#![deny(missing_debug_implementations)]
 
 extern crate self as crossmist;
 

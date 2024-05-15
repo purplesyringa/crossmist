@@ -67,7 +67,7 @@ fn block_on<F: Future>(f: F) -> F::Output {
 }
 
 /// Synchronous implementation marker type.
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct Blocking(asynchronous::SyncStream);
 
 unsafe impl asynchronous::AsyncStream for Blocking {
@@ -106,20 +106,20 @@ unsafe impl asynchronous::AsyncStream for Blocking {
 /// The transmitting side of a unidirectional channel.
 ///
 /// `T` is the type of the objects this side sends via the channel and the other side receives.
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct Sender<T: Object>(pub(crate) asynchronous::Sender<Blocking, T>);
 
 /// The receiving side of a unidirectional channel.
 ///
 /// `T` is the type of the objects the other side sends via the channel and this side receives.
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct Receiver<T: Object>(pub(crate) asynchronous::Receiver<Blocking, T>);
 
 /// A side of a bidirectional channel.
 ///
 /// `S` is the type of the objects this side sends via the channel and the other side receives, `R`
 /// is the type of the objects the other side sends via the channel and this side receives.
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct Duplex<S: Object, R: Object>(pub(crate) asynchronous::Duplex<Blocking, S, R>);
 
 /// Create a unidirectional channel.
@@ -289,6 +289,7 @@ impl<S: Object, R: Object> std::os::unix::io::FromRawFd for Duplex<S, R> {
 }
 
 /// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
+#[derive(Debug)]
 pub struct Child<T: Object>(asynchronous::Child<Blocking, T>);
 
 impl<T: Object> Child<T> {

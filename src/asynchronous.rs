@@ -47,6 +47,7 @@ use crate::{
     handles::{FromRawHandle, IntoRawHandle, RawHandle},
     imp, subprocess, FnOnceObject, Object, Serializer,
 };
+use std::fmt;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::marker::PhantomData;
@@ -236,6 +237,12 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
     }
 }
 
+impl<Stream: AsyncStream + fmt::Debug, T: Object> fmt::Debug for Sender<Stream, T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_tuple("Sender").field(&self.fd).finish()
+    }
+}
+
 impl<Stream: AsyncStream, T: Object> TryFrom<crate::Sender<T>> for Sender<Stream, T> {
     type Error = Error;
     fn try_from(value: crate::Sender<T>) -> Result<Self> {
@@ -308,6 +315,12 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
                 unsafe { deserialize_with_handles(serialized).map(Some) }
             }
         }
+    }
+}
+
+impl<Stream: AsyncStream + fmt::Debug, T: Object> fmt::Debug for Receiver<Stream, T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_tuple("Receiver").field(&self.fd).finish()
     }
 }
 
@@ -399,6 +412,12 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
         }
         #[cfg(windows)]
         self.receiver
+    }
+}
+
+impl<Stream: AsyncStream + fmt::Debug, S: Object, R: Object> fmt::Debug for Duplex<Stream, S, R> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_tuple("Duplex").field(&self.fd).finish()
     }
 }
 
@@ -554,6 +573,15 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     }
 }
 
+impl<Stream: AsyncStream + fmt::Debug, T: Object> fmt::Debug for Child<Stream, T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Child")
+            .field("proc_handle", &self.proc_handle)
+            .field("output_rx", &self.output_rx)
+            .finish()
+    }
+}
+
 impl KillHandle {
     /// Terminate the process immediately.
     pub fn kill(&self) -> Result<()> {
@@ -573,6 +601,14 @@ impl KillHandle {
             Threading::TerminateProcess(self.proc_id, 1).ok()?;
         }
         Ok(())
+    }
+}
+
+impl fmt::Debug for KillHandle {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("KillHandle")
+            .field("proc_id", &self.proc_id)
+            .finish()
     }
 }
 

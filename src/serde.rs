@@ -9,6 +9,7 @@ use crate::{
 };
 use std::any::Any;
 use std::collections::{hash_map, HashMap};
+use std::fmt;
 use std::io::Result;
 use std::num::NonZeroUsize;
 use std::os::raw::c_void;
@@ -78,6 +79,13 @@ impl Serializer {
     /// Extract serialized data.
     pub fn into_vec(self) -> Vec<u8> {
         self.data
+    }
+}
+
+impl fmt::Debug for Serializer {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        // Outputting the data is unsound, as it may contain uninitialized bytes
+        fmt.debug_struct("Serializer").finish()
     }
 }
 
@@ -185,6 +193,15 @@ impl Deserializer {
         self.cyclics[id.get() - 1]
             .downcast_ref()
             .expect("The cyclic object is of unexpected type")
+    }
+}
+
+impl fmt::Debug for Deserializer {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        // Outputting the data is unsound, as it may contain uninitialized bytes
+        fmt.debug_struct("Deserializer")
+            .field("pos", &self.pos)
+            .finish()
     }
 }
 

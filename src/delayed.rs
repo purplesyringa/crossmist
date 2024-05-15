@@ -28,6 +28,7 @@
 //! ```
 
 use crate::{handles::OwnedHandle, Deserializer, NonTrivialObject, Object, Serializer};
+use std::fmt;
 use std::io::Result;
 
 /// A wrapper for objects that require global state to be configured before deserialization.
@@ -59,6 +60,12 @@ impl<T: Object> Delayed<T> {
                 panic!("Cannot deserialize a deserialized Delayed value")
             }
         }
+    }
+}
+
+impl<T: Object> fmt::Debug for Delayed<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Delayed").finish()
     }
 }
 

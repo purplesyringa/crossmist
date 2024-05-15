@@ -70,6 +70,7 @@
 //! ```
 
 use crate::{relocation::RelocatablePtr, Object};
+use std::fmt;
 use std::ops::Deref;
 
 /// A `&'static T` implementing [`Object`].
@@ -135,6 +136,12 @@ impl<T> StaticRef<T> {
     /// and should seldom be used: instead of `static_ref.get().<...>` just do `static_ref.<...>`.
     pub fn get(self) -> &'static T {
         unsafe { &*self.ptr.0 }
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for StaticRef<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}", self.get())
     }
 }
 
