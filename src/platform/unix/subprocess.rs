@@ -1,5 +1,5 @@
 use crate::{entry, Duplex, Object};
-use nix::{libc::c_char, sched, sys::signal};
+use nix::{libc::c_char, sched};
 use std::ffi::{CStr, CString};
 use std::io::Result;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -37,24 +37,6 @@ unsafe fn fork_child_main(
     inherited_fds: &[RawFd],
 ) -> Result<()> {
     // No heap allocations are allowed here.
-    for i in 1..32 {
-        if i != nix::libc::SIGKILL && i != nix::libc::SIGSTOP {
-            signal::sigaction(
-                signal::Signal::try_from(i).unwrap(),
-                &signal::SigAction::new(
-                    signal::SigHandler::SigDfl,
-                    signal::SaFlags::empty(),
-                    signal::SigSet::empty(),
-                ),
-            )?;
-        }
-    }
-    signal::sigprocmask(
-        signal::SigmaskHow::SIG_SETMASK,
-        Some(&signal::SigSet::empty()),
-        None,
-    )?;
-
     entry::disable_cloexec(child_fd)?;
     for fd in inherited_fds {
         entry::disable_cloexec(*fd)?;
