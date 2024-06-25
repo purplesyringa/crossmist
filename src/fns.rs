@@ -803,13 +803,13 @@ pub trait FnPtr {
     fn addr(self) -> *const ();
 }
 
-/// A wrapper for `fn(...) -> ...` implementing `FnObject`.
+/// A wrapper for `fn(...) -> ...` implementing `Object`.
 ///
-/// This comes in handy when you have a captureless closure or a function you are too lazy to wrap
-/// in [`lambda`] or [`crossmist::func`]. Creating the wrapper from a function pointer requires
-/// unsafety, however, as there are no guarantees, generally speaking, that the function will be
-/// available in the child process, which can happen if it was created in runtime by JIT
-/// compilation.
+/// This type enables you to pass `fn` and `unsafe fn` pointers between processes soundly without
+/// requiring [`lambda`] or [`crossmist::func`].
+///
+/// Creating the wrapper from a function pointer is `unsafe` because functions might not be
+/// available in the child process if they were created in runtime by JIT compilation or alike.
 ///
 /// # Example
 ///
@@ -828,6 +828,18 @@ pub trait FnPtr {
 /// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new(|a, b| a + b) };
 /// let add: Box<dyn FnObject<(i32, i32), Output = i32>> = Box::new(add);
 /// assert_eq!(add(5, 7), 12);
+/// ```
+///
+/// ```rust
+/// # use crossmist::fns::{FnObject, StaticFn};
+/// unsafe fn dangerous_read(p: *const i32) -> i32 {
+///     p.read()
+/// }
+/// let dangerous_read = unsafe { StaticFn::<unsafe fn(*const i32) -> i32>::new(dangerous_read) };
+/// let dangerous_read = dangerous_read.get_fn();
+/// unsafe {
+///     assert_eq!(dangerous_read(&123), 123);
+/// }
 /// ```
 #[derive(Clone, Copy, Debug, Object)]
 pub struct StaticFn<F: FnPtr> {
@@ -884,6 +896,15 @@ macro_rules! impl_fn_pointer {
                 impl[Output, $([<T $tail>]),*] Fn<($([<T $tail>],)*)> for StaticFn<fn($([<T $tail>]),*) -> Output> =
                 |self, args| {
                     self.call_object_once(args)
+                }
+            }
+
+            impl<Output, $([<T $tail>]),*> fn_ptr_private::Sealed for unsafe fn($([<T $tail>]),*) -> Output {}
+            impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
+                type Args = ($([<T $tail>],)*);
+                type Output = Output;
+                fn addr(self) -> *const () {
+                    self as *const ()
                 }
             }
         }
