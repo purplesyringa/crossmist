@@ -119,7 +119,7 @@
 //! - `tokio`: enable [Tokio](https://tokio.rs) async runtime support.
 //! - `smol`: enable [smol](https://crates.io/crates/smol) async runtime support.
 //! - `nightly`: make use of nightly features. This enables crossmist to be more performant and
-//! provide better API, but requires a nightly compiler to be used.
+//!   provide better API, but requires a nightly compiler to be used.
 
 #![cfg_attr(
     feature = "nightly",

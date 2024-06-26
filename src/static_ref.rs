@@ -112,7 +112,7 @@ impl<T> StaticRef<T> {
     ///
     /// This function is safe to call if:
     /// - The referenced value must have existed since the beginning of the program execution (e.g.
-    /// the return value of `Box::leak` won't work), and
+    ///   the return value of `Box::leak` won't work), and
     /// - The referenced value is located outside of a dynamic library.
     ///
     /// # Example
