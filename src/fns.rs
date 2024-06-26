@@ -791,10 +791,14 @@ macro_rules! lambda_bind {
     };
 }
 
+mod fn_ptr_private {
+    pub trait Sealed {}
+}
+
 /// Metaprogramming on `fn(...) -> ...` types.
 ///
 /// This trait is not part of the stable API provided by crossmist.
-pub trait FnPtr {
+pub trait FnPtr: fn_ptr_private::Sealed {
     /// Convert the function pointer to a type-erased pointer.
     fn addr(self) -> *const ();
 }
@@ -868,6 +872,7 @@ macro_rules! impl_fn_pointer {
     () => {};
     ($head:tt $($tail:tt)*) => {
         paste! {
+            impl<Output, $([<T $tail>]),*> fn_ptr_private::Sealed for fn($([<T $tail>]),*) -> Output {}
             impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {
                 fn addr(self) -> *const () {
                     self as *const ()
