@@ -38,16 +38,15 @@ pub trait Object: private::Sealed {
     where
         Self: Sized;
     #[doc(hidden)]
-    #[cfg(feature = "nightly")]
-    unsafe fn deserialize_on_heap<'a>(
-        self: *const Self,
-        d: &mut Deserializer,
-    ) -> Result<Box<dyn Object + 'a>>
+    unsafe fn deserialize_on_heap(d: &mut Deserializer) -> Result<*mut ()>
     where
-        Self: 'a;
+        Self: Sized;
+    #[doc(hidden)]
+    #[cfg(feature = "nightly")]
+    unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> Result<*mut ()>;
     #[doc(hidden)]
     #[cfg(not(feature = "nightly"))]
-    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()>;
+    fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()>;
 }
 
 impl<T: NonTrivialObject> private::Sealed for T {}
@@ -96,19 +95,19 @@ impl<T: NonTrivialObject> Object for T {
         }
     }
 
-    #[cfg(feature = "nightly")]
-    unsafe fn deserialize_on_heap<'a>(
-        self: *const T,
-        d: &mut Deserializer,
-    ) -> Result<Box<dyn Object + 'a>>
+    unsafe fn deserialize_on_heap(d: &mut Deserializer) -> Result<*mut ()>
     where
-        Self: 'a,
+        Self: Sized,
     {
-        Ok(Box::new(Self::deserialize_self(d)?))
+        Ok(Box::into_raw(Box::new(Self::deserialize_self(d)?)) as *mut ())
     }
 
+    #[cfg(feature = "nightly")]
+    unsafe fn deserialize_on_heap_ptr(self: *const T, d: &mut Deserializer) -> Result<*mut ()> {
+        Self::deserialize_on_heap(d)
+    }
     #[cfg(not(feature = "nightly"))]
-    fn get_heap_deserializer(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
-        |d| unsafe { Ok(Box::into_raw(Box::new(Self::deserialize_self(d)?)) as *mut ()) }
+    fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
+        Self::deserialize_on_heap
     }
 }

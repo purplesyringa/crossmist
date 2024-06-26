@@ -1,6 +1,4 @@
-use crate::{
-    imp::implements, relocation::RelocatablePtr, Deserializer, NonTrivialObject, Object, Serializer,
-};
+use crate::{relocation::RelocatablePtr, Deserializer, NonTrivialObject, Object, Serializer};
 use std::io::Result;
 
 #[repr(C)]
@@ -9,66 +7,65 @@ struct DynFatPtr {
     vtable: *const (),
 }
 
+#[derive(PartialEq)]
+enum TypeClass {
+    Sized,
+    Dyn,
+}
+impl TypeClass {
+    const fn of<T: ?Sized>() -> Self {
+        if std::mem::size_of::<&T>() == std::mem::size_of::<usize>() {
+            Self::Sized
+        } else if std::mem::size_of::<&T>() == std::mem::size_of::<DynFatPtr>() {
+            Self::Dyn
+        } else {
+            panic!(
+                "Unexpected pointer size. You are probably trying to serialize Box<&dyn TraitA + \
+                 TraitB>, which crossmist does not support, because this feature was not present \
+                 in rustc when this crate was published.",
+            );
+        }
+    }
+}
+
 unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        #[cfg(not(feature = "nightly"))]
-        s.serialize(&RelocatablePtr(
-            self.as_ref().get_heap_deserializer() as *const ()
-        ));
+        // Object is only implemented for types that implement NonTrivialObject, which inherits
+        // Sized, and `dyn Trait` where `Trait: Object`. Therefore, the only possible Ts here are
+        // sized types and `dyn Trait`. Slices are handled in another impl block, custom DSTs are
+        // not supported at all.
 
-        if implements!(T: Sized) {
-            self.as_ref().serialize_self(s);
-        } else {
-            // Object is only implemented for types that implement NonTrivialObject, which inherits
-            // Sized, and `dyn Trait` where `Trait: Object`. Therefore, the only possible T here is
-            // `dyn Trait`. Slices are handled in another impl block, custom DSTs are not supported
-            // at all.
-            assert!(
-                std::mem::size_of::<&T>() == std::mem::size_of::<DynFatPtr>(),
-                "Unexpected fat pointer size. You are probably trying to serialize Box<&dyn \
-                 TraitA + TraitB>, which crossmist does not support, because this feature was not \
-                 present in rustc when this crate was published.",
-            );
+        if TypeClass::of::<T>() == TypeClass::Dyn {
             let fat_ptr = unsafe { std::mem::transmute_copy::<&T, DynFatPtr>(&self.as_ref()) };
             s.serialize(&RelocatablePtr(fat_ptr.vtable));
-            self.as_ref().serialize_self(s);
         }
+
+        #[cfg(not(feature = "nightly"))]
+        s.serialize(&RelocatablePtr(
+            self.as_ref().deserialize_on_heap_get() as *const ()
+        ));
+
+        self.as_ref().serialize_self(s);
     }
 
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
-        #[cfg(not(feature = "nightly"))]
-        let heap_deserializer = std::mem::transmute::<
-            RelocatablePtr<()>,
-            unsafe fn(&mut Deserializer) -> Result<*mut ()>,
-        >(d.deserialize::<RelocatablePtr<()>>()?);
-
-        let mut pointer: *mut T = if implements!(T: Sized) {
-            assert!(std::mem::size_of::<&T>() == std::mem::size_of::<usize>());
-            std::mem::transmute_copy::<usize, *mut T>(&0usize)
-        } else {
-            assert!(
-                std::mem::size_of::<&T>() == std::mem::size_of::<DynFatPtr>(),
-                "Unexpected fat pointer size. You are probably trying to serialize Box<&dyn \
-                 TraitA + TraitB>, which crossmist does not support, because this feature was not \
-                 present in rustc when this crate was published.",
-            );
-            std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
+        let mut pointer: *mut T = match TypeClass::of::<T>() {
+            TypeClass::Sized => std::mem::transmute_copy::<usize, *mut T>(&0usize),
+            TypeClass::Dyn => std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
                 data: std::ptr::null(),
                 vtable: d.deserialize::<RelocatablePtr<()>>()?.0,
-            })
+            }),
         };
 
-        let pointer_thin_part = &mut pointer as *mut *mut T as *mut *mut ();
-
         #[cfg(feature = "nightly")]
-        std::ptr::copy_nonoverlapping(
-            &Box::into_raw(pointer.deserialize_on_heap(d)?) as *const *mut dyn Object
-                as *const *mut (),
-            pointer_thin_part,
-            1,
-        );
+        let pointer_thin_part = pointer.deserialize_on_heap_ptr(d)?;
         #[cfg(not(feature = "nightly"))]
-        pointer_thin_part.write(heap_deserializer(d)?);
+        let pointer_thin_part = std::mem::transmute::<
+            RelocatablePtr<()>,
+            unsafe fn(&mut Deserializer) -> Result<*mut ()>,
+        >(d.deserialize::<RelocatablePtr<()>>()?)(d)?;
+
+        (&mut pointer as *mut *mut T as *mut *mut ()).write(pointer_thin_part);
 
         Ok(Box::from_raw(pointer))
     }
