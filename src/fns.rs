@@ -885,9 +885,14 @@ impl<F: FnPtr> StaticFn<F> {
 
     /// Extract a function pointer from a [`StaticFn`].
     pub fn get_fn(self) -> F {
-        assert!(std::mem::size_of::<*const ()>() == std::mem::size_of::<F>());
         unsafe { std::mem::transmute_copy::<*const (), F>(&self.ptr.0) }
     }
+
+    const _F_IS_POINTER_SIZED: () = assert!(
+        std::mem::size_of::<*const ()>() == std::mem::size_of::<F>(),
+        "An instance of FnPtr has a size not equal to the size of *const (). This should have \
+         been impossible."
+    );
 }
 
 macro_rules! impl_fn_pointer {
