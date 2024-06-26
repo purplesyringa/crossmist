@@ -127,6 +127,7 @@
         arbitrary_self_types,
         doc_cfg,
         doc_auto_cfg,
+        fn_ptr_trait,
         fn_traits,
         never_type,
         tuple_trait,

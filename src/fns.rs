@@ -96,14 +96,14 @@ use std::ops::Deref;
 
 macro_rules! impl_fn {
     (
-        impl[$($generic_bounds:tt)*] FnOnce<$args_ty:ty, Output = $output:ty> for $target:ty =
+        impl[$($generic_bounds:tt)*] FnOnce<$args_ty:ty, Output = $output:ty> for $target:ty $(where[$($where:tt)*])? =
         $(#[$attr:meta])*
         |$self:tt, $args:tt| {
             $($body:tt)*
         }
     ) => {
         #[cfg(feature = "nightly")]
-        impl<$($generic_bounds)*> std::ops::FnOnce<$args_ty> for $target {
+        impl<$($generic_bounds)*> std::ops::FnOnce<$args_ty> for $target $(where $($where)*)? {
             type Output = $output;
             $(#[$attr])*
             #[allow(unused_mut)]
@@ -112,7 +112,7 @@ macro_rules! impl_fn {
             }
         }
         #[cfg(not(feature = "nightly"))]
-        impl<$($generic_bounds)*> FnOnceObject<$args_ty> for $target {
+        impl<$($generic_bounds)*> FnOnceObject<$args_ty> for $target $(where $($where)*)? {
             type Output = $output;
             $(#[$attr])*
             #[allow(unused_mut)]
@@ -126,21 +126,21 @@ macro_rules! impl_fn {
     };
 
     (
-        impl[$($generic_bounds:tt)*] FnMut<$args_ty:ty> for $target:ty =
+        impl[$($generic_bounds:tt)*] FnMut<$args_ty:ty> for $target:ty $(where[$($where:tt)*])? =
         $(#[$attr:meta])*
         |$self:tt, $args:tt| {
             $($body:tt)*
         }
     ) => {
         #[cfg(feature = "nightly")]
-        impl<$($generic_bounds)*> std::ops::FnMut<$args_ty> for $target {
+        impl<$($generic_bounds)*> std::ops::FnMut<$args_ty> for $target $(where $($where)*)? {
             $(#[$attr])*
             extern "rust-call" fn call_mut(&mut $self, $args: $args_ty) -> Self::Output {
                 $($body)*
             }
         }
         #[cfg(not(feature = "nightly"))]
-        impl<$($generic_bounds)*> FnMutObject<$args_ty> for $target {
+        impl<$($generic_bounds)*> FnMutObject<$args_ty> for $target $(where $($where)*)? {
             $(#[$attr])*
             fn call_object_mut(&mut $self, $args: $args_ty) -> Self::Output {
                 $($body)*
@@ -149,21 +149,21 @@ macro_rules! impl_fn {
     };
 
     (
-        impl[$($generic_bounds:tt)*] Fn<$args_ty:ty> for $target:ty =
+        impl[$($generic_bounds:tt)*] Fn<$args_ty:ty> for $target:ty  $(where[$($where:tt)*])?=
         $(#[$attr:meta])*
         |$self:tt, $args:tt| {
             $($body:tt)*
         }
     ) => {
         #[cfg(feature = "nightly")]
-        impl<$($generic_bounds)*> std::ops::Fn<$args_ty> for $target {
+        impl<$($generic_bounds)*> std::ops::Fn<$args_ty> for $target $(where $($where)*)? {
             $(#[$attr])*
             extern "rust-call" fn call(&$self, $args: $args_ty) -> Self::Output {
                 $($body)*
             }
         }
         #[cfg(not(feature = "nightly"))]
-        impl<$($generic_bounds)*> FnObject<$args_ty> for $target {
+        impl<$($generic_bounds)*> FnObject<$args_ty> for $target $(where $($where)*)? {
             $(#[$attr])*
             fn call_object(&$self, $args: $args_ty) -> Self::Output {
                 $($body)*
@@ -791,14 +791,23 @@ macro_rules! lambda_bind {
     };
 }
 
-mod fn_ptr_private {
-    pub trait Sealed {}
-}
-
 /// Metaprogramming on `fn(...) -> ...` types.
 ///
 /// This trait is not part of the stable API provided by crossmist.
-pub trait FnPtr: fn_ptr_private::Sealed {
+#[cfg(feature = "nightly")]
+pub trait FnPtr: std::marker::FnPtr {}
+#[cfg(feature = "nightly")]
+impl<T: std::marker::FnPtr> FnPtr for T {}
+
+#[cfg(not(feature = "nightly"))]
+mod fn_ptr_private {
+    pub trait Sealed {}
+}
+/// Metaprogramming on `fn(...) -> ...` types.
+///
+/// This trait is not part of the stable API provided by crossmist.
+#[cfg(not(feature = "nightly"))]
+pub trait FnPtr: Copy + Clone + fn_ptr_private::Sealed {
     /// Convert the function pointer to a type-erased pointer.
     fn addr(self) -> *const ();
 }
@@ -810,6 +819,9 @@ pub trait FnPtr: fn_ptr_private::Sealed {
 ///
 /// Creating the wrapper from a function pointer is `unsafe` because functions might not be
 /// available in the child process if they were created in runtime by JIT compilation or alike.
+///
+/// All function pointers are supported on nightly. Only function pointers with up to 20 arguments
+/// with no lifetimes are supported without the `nightly` feature flag.
 ///
 /// # Example
 ///
@@ -828,6 +840,16 @@ pub trait FnPtr: fn_ptr_private::Sealed {
 /// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new(|a, b| a + b) };
 /// let add: Box<dyn FnObject<(i32, i32), Output = i32>> = Box::new(add);
 /// assert_eq!(add(5, 7), 12);
+/// ```
+///
+/// ```rust
+/// # use crossmist::fns::{FnObject, StaticFn};
+/// fn safe_read(p: &i32) -> i32 {
+///     *p
+/// }
+/// let safe_read = unsafe { StaticFn::<fn(&i32) -> i32>::new(safe_read) };
+/// let safe_read: Box<dyn FnObject<(&i32,), Output = i32>> = Box::new(safe_read);
+/// assert_eq!(safe_read(&123), 123);
 /// ```
 ///
 /// ```rust
@@ -872,36 +894,43 @@ macro_rules! impl_fn_pointer {
     () => {};
     ($head:tt $($tail:tt)*) => {
         paste! {
+            #[cfg(not(feature = "nightly"))]
             impl<Output, $([<T $tail>]),*> fn_ptr_private::Sealed for fn($([<T $tail>]),*) -> Output {}
+            #[cfg(not(feature = "nightly"))]
             impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {
                 fn addr(self) -> *const () {
                     self as *const ()
                 }
             }
+
+            #[cfg(not(feature = "nightly"))]
+            impl<Output, $([<T $tail>]),*> fn_ptr_private::Sealed for unsafe fn($([<T $tail>]),*) -> Output {}
+            #[cfg(not(feature = "nightly"))]
+            impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
+                fn addr(self) -> *const () {
+                    self as *const ()
+                }
+            }
+
             impl_fn! {
-                impl[Output, $([<T $tail>]),*] FnOnce<($([<T $tail>],)*), Output = Output> for StaticFn<fn($([<T $tail>]),*) -> Output> =
+                impl[T: FnPtr, Output, $([<T $tail>]),*] FnOnce<($([<T $tail>],)*), Output = Output> for StaticFn<T> where[T: FnOnce($([<T $tail>]),*) -> Output] =
                 |self, args| {
                     let ($([<a $tail>],)*) = args;
                     self.get_fn()($([<a $tail>]),*)
                 }
             }
             impl_fn! {
-                impl[Output, $([<T $tail>]),*] FnMut<($([<T $tail>],)*)> for StaticFn<fn($([<T $tail>]),*) -> Output> =
+                impl[T: FnPtr, Output, $([<T $tail>]),*] FnMut<($([<T $tail>],)*)> for StaticFn<T> where[T: FnMut($([<T $tail>]),*) -> Output] =
                 |self, args| {
-                    self.call_object_once(args)
+                    let ($([<a $tail>],)*) = args;
+                    self.get_fn()($([<a $tail>]),*)
                 }
             }
             impl_fn! {
-                impl[Output, $([<T $tail>]),*] Fn<($([<T $tail>],)*)> for StaticFn<fn($([<T $tail>]),*) -> Output> =
+                impl[T: FnPtr, Output, $([<T $tail>]),*] Fn<($([<T $tail>],)*)> for StaticFn<T> where[T: Fn($([<T $tail>]),*) -> Output] =
                 |self, args| {
-                    self.call_object_once(args)
-                }
-            }
-
-            impl<Output, $([<T $tail>]),*> fn_ptr_private::Sealed for unsafe fn($([<T $tail>]),*) -> Output {}
-            impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
-                fn addr(self) -> *const () {
-                    self as *const ()
+                    let ($([<a $tail>],)*) = args;
+                    self.get_fn()($([<a $tail>]),*)
                 }
             }
         }
