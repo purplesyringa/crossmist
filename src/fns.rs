@@ -821,9 +821,12 @@ pub trait FnPtr: Copy + Clone + fn_ptr_private::Sealed {
 /// available in the child process if they were created in runtime by JIT compilation or alike.
 ///
 /// All function pointers are supported on nightly. Only function pointers with up to 20 arguments
-/// with no lifetimes are supported without the `nightly` feature flag.
+/// with no references of generic lifetimes are supported without the `nightly` feature flag.
 ///
 /// # Example
+///
+/// These examples require the `nightly` feature to be enabled. [`FnObject::call_object`] can be
+/// used instead of direct calls on stable.
 ///
 /// ```rust
 /// # use crossmist::fns::{FnObject, StaticFn};
@@ -842,15 +845,7 @@ pub trait FnPtr: Copy + Clone + fn_ptr_private::Sealed {
 /// assert_eq!(add(5, 7), 12);
 /// ```
 ///
-/// ```rust
-/// # use crossmist::fns::{FnObject, StaticFn};
-/// fn safe_read(p: &i32) -> i32 {
-///     *p
-/// }
-/// let safe_read = unsafe { StaticFn::<fn(&i32) -> i32>::new(safe_read) };
-/// let safe_read: Box<dyn FnObject<(&i32,), Output = i32>> = Box::new(safe_read);
-/// assert_eq!(safe_read(&123), 123);
-/// ```
+/// This example works on stable without changes.
 ///
 /// ```rust
 /// # use crossmist::fns::{FnObject, StaticFn};
@@ -862,6 +857,18 @@ pub trait FnPtr: Copy + Clone + fn_ptr_private::Sealed {
 /// unsafe {
 ///     assert_eq!(dangerous_read(&123), 123);
 /// }
+/// ```
+///
+/// This example requires `nightly` because of references.
+///
+/// ```rust
+/// # use crossmist::fns::{FnObject, StaticFn};
+/// fn safe_read(p: &i32) -> i32 {
+///     *p
+/// }
+/// let safe_read = unsafe { StaticFn::<fn(&i32) -> i32>::new(safe_read) };
+/// let safe_read: Box<dyn FnObject<(&i32,), Output = i32>> = Box::new(safe_read);
+/// assert_eq!(safe_read(&123), 123);
 /// ```
 #[derive(Clone, Copy, Debug, Object)]
 pub struct StaticFn<F: FnPtr> {
