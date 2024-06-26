@@ -795,10 +795,6 @@ macro_rules! lambda_bind {
 ///
 /// This trait is not part of the stable API provided by crossmist.
 pub trait FnPtr {
-    /// Function arguments as a tuple.
-    type Args: Tuple;
-    /// Function output type.
-    type Output;
     /// Convert the function pointer to a type-erased pointer.
     fn addr(self) -> *const ();
 }
@@ -873,8 +869,6 @@ macro_rules! impl_fn_pointer {
     ($head:tt $($tail:tt)*) => {
         paste! {
             impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {
-                type Args = ($([<T $tail>],)*);
-                type Output = Output;
                 fn addr(self) -> *const () {
                     self as *const ()
                 }
@@ -901,8 +895,6 @@ macro_rules! impl_fn_pointer {
 
             impl<Output, $([<T $tail>]),*> fn_ptr_private::Sealed for unsafe fn($([<T $tail>]),*) -> Output {}
             impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
-                type Args = ($([<T $tail>],)*);
-                type Output = Output;
                 fn addr(self) -> *const () {
                     self as *const ()
                 }
