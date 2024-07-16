@@ -1,8 +1,10 @@
 use crate::{imp::implements, pod::PlainOldData, Deserializer, Object, Serializer};
-use nix::libc::{AF_UNIX, SOCK_CLOEXEC, SOCK_SEQPACKET};
 use nix::{
     cmsg_space,
-    sys::socket::{recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags},
+    sys::socket::{
+        self, recvmsg, sendmsg, AddressFamily, ControlMessage, ControlMessageOwned, MsgFlags,
+        SockFlag, SockType,
+    },
 };
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
@@ -15,24 +17,15 @@ use std::os::unix::{
 pub(crate) const MAX_PACKET_SIZE: usize = 16 * 1024;
 pub(crate) const MAX_PACKET_FDS: usize = 253; // SCM_MAX_FD
 
-pub(crate) fn socketpair(flags: i32) -> Result<(UnixStream, UnixStream)> {
+pub(crate) fn socketpair() -> Result<(UnixStream, UnixStream)> {
     // UnixStream creates a SOCK_STREAM by default, while we need SOCK_SEQPACKET
-    unsafe {
-        let mut fds = [0, 0];
-        if nix::libc::socketpair(
-            AF_UNIX,
-            SOCK_SEQPACKET | SOCK_CLOEXEC | flags,
-            0,
-            fds.as_mut_ptr(),
-        ) == -1
-        {
-            return Err(std::io::Error::last_os_error());
-        }
-        Ok((
-            UnixStream::from_raw_fd(fds[0]),
-            UnixStream::from_raw_fd(fds[1]),
-        ))
-    }
+    let (tx, rx) = socket::socketpair(
+        AddressFamily::Unix,
+        SockType::SeqPacket,
+        None,
+        SockFlag::SOCK_CLOEXEC,
+    )?;
+    Ok((tx.into(), rx.into()))
 }
 
 pub(crate) struct SingleObjectSender<'a> {

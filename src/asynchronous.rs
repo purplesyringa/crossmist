@@ -182,7 +182,7 @@ pub fn duplex<Stream: AsyncStream, A: Object, B: Object>(
 ) -> Result<(Duplex<Stream, A, B>, Duplex<Stream, B, A>)> {
     #[cfg(unix)]
     {
-        let (tx, rx) = socketpair(0)?;
+        let (tx, rx) = socketpair()?;
         unsafe {
             Ok((
                 Duplex::from_stream(Stream::try_new(tx)?),
