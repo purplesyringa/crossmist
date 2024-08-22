@@ -15,28 +15,6 @@ pub(crate) fn perform_sanity_checks() {
     );
 }
 
-pub trait Report {
-    fn report(self) -> i32;
-}
-
-impl Report for () {
-    fn report(self) -> i32 {
-        0
-    }
-}
-
-impl<T, E: std::fmt::Debug> Report for Result<T, E> {
-    fn report(self) -> i32 {
-        match self {
-            Ok(_) => 0,
-            Err(e) => {
-                eprintln!("Error: {e:?}");
-                1
-            }
-        }
-    }
-}
-
 // We use this little trick to implement the 'trivial_bounds' feature in stable Rust. Instead of
 // 'where T: Bounds', we use 'where for<'a> Identity<'a, T>: Bounds'. This seems to confuse the
 // hell out of rustc and makes it believe the where clause is not trivial. Credits go to

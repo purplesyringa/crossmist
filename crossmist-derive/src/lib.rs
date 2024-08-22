@@ -304,9 +304,9 @@ pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #input
 
-        fn main() {
+        fn main() -> impl ::std::process::Termination {
             ::crossmist::init();
-            ::std::process::exit(::crossmist::imp::Report::report(crossmist_old_main()));
+            crossmist_old_main()
         }
     };
 
