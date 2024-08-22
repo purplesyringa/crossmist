@@ -452,12 +452,12 @@ impl<Stream: AsyncStream, S: Object, R: Object> std::os::unix::io::AsRawFd
 }
 
 #[cfg(unix)]
-type ProcHandle = nix::unistd::Pid;
+type ProcHandle = rustix::process::Pid;
 #[cfg(windows)]
 type ProcHandle = crate::handles::OwnedHandle;
 
 #[cfg(unix)]
-pub(crate) type ProcID = nix::libc::pid_t;
+pub(crate) type ProcID = rustix::process::RawPid;
 #[cfg(windows)]
 pub(crate) type ProcID = RawHandle;
 
@@ -495,7 +495,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     pub fn id(&self) -> ProcID {
         #[cfg(unix)]
         {
-            self.proc_handle.as_raw()
+            rustix::process::Pid::as_raw(Some(self.proc_handle))
         }
         #[cfg(windows)]
         {
@@ -519,8 +519,12 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
         // This is synchronous, but should be really fast
         #[cfg(unix)]
         {
-            let status = nix::sys::wait::waitpid(self.proc_handle, None)?;
-            if let nix::sys::wait::WaitStatus::Exited(_, 0) = status {
+            let status = rustix::process::waitpid(
+                Some(self.proc_handle),
+                rustix::process::WaitOptions::empty(),
+            )?
+            .unwrap();
+            if status.exit_status() == Some(0) {
                 value.ok_or_else(|| {
                     Error::new(
                         ErrorKind::Other,
@@ -592,9 +596,9 @@ impl KillHandle {
             ));
         }
         #[cfg(unix)]
-        nix::sys::signal::kill(
-            ProcHandle::from_raw(self.proc_id),
-            nix::sys::signal::Signal::SIGKILL,
+        rustix::process::kill_process(
+            rustix::process::Pid::from_raw(self.proc_id).unwrap(),
+            rustix::process::Signal::Kill,
         )?;
         #[cfg(windows)]
         unsafe {

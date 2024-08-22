@@ -1,5 +1,6 @@
 use crate::{entry, Duplex, Object};
 use nix::{libc::c_char, sched};
+use rustix::process::Pid;
 use std::ffi::{CStr, CString};
 use std::io::Result;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -7,7 +8,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     child_fd: Duplex<S, R>,
     inherited_fds: &[RawFd],
-) -> Result<nix::unistd::Pid> {
+) -> Result<Pid> {
     let child_fd_str = CString::new(child_fd.as_raw_fd().to_string()).unwrap();
 
     let spawn_cb = || {
@@ -23,12 +24,16 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     };
 
     let mut stack = [0u8; 4096];
-    Ok(sched::clone(
-        Box::new(spawn_cb),
-        &mut stack,
-        sched::CloneFlags::CLONE_VM | sched::CloneFlags::CLONE_VFORK,
-        Some(nix::libc::SIGCHLD),
-    )?)
+    Ok(Pid::from_raw(
+        sched::clone(
+            Box::new(spawn_cb),
+            &mut stack,
+            sched::CloneFlags::CLONE_VM | sched::CloneFlags::CLONE_VFORK,
+            Some(nix::libc::SIGCHLD),
+        )?
+        .as_raw(),
+    )
+    .unwrap())
 }
 
 unsafe fn fork_child_main(
