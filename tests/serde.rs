@@ -1,6 +1,5 @@
 use crossmist::{lambda, Deserializer, FnOnceObject, Object, Serializer};
 use std::fmt::Debug;
-use std::os::fd::BorrowedFd;
 
 fn serde<T: Object>(x: &T) -> T {
     let mut s = Serializer::new();
@@ -12,7 +11,13 @@ fn serde<T: Object>(x: &T) -> T {
             data,
             handles
                 .into_iter()
-                .map(|fd| BorrowedFd::borrow_raw(fd).try_clone_to_owned().unwrap())
+                .map(|fd| {
+                    #[cfg(unix)]
+                    let borrowed = std::os::fd::BorrowedFd::borrow_raw(fd);
+                    #[cfg(windows)]
+                    let borrowed = std::os::windows::io::BorrowedHandle::borrow_raw(fd.0 as _);
+                    borrowed.try_clone_to_owned().unwrap()
+                })
                 .collect(),
         )
     };
