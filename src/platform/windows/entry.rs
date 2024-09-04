@@ -5,6 +5,7 @@ use crate::{
 };
 use lazy_static::lazy_static;
 use std::default::Default;
+use std::mem::ManuallyDrop;
 use std::sync::RwLock;
 
 lazy_static! {
@@ -14,15 +15,14 @@ lazy_static! {
 
 pub(crate) fn start_root() {
     let (ours, theirs) = channel().expect("Failed to create holder channel for handle broker");
-    let id = Box::leak(Box::new(
+    let broker = ManuallyDrop::new(
         handle_broker
             .spawn(theirs)
             .expect("Failed to start handle broker"),
-    ))
-    .id();
+    );
     *HANDLE_BROKER
         .write()
-        .expect("Failed to acquire write access to HANDLE_BROKER") = id;
+        .expect("Failed to acquire write access to HANDLE_BROKER") = broker.id();
     *HANDLE_BROKER_HOLDER
         .write()
         .expect("Failed to acquire write access to HANDLE_BROKER_HOLDER") = Some(ours);
