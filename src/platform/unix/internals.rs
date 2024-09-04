@@ -1,11 +1,9 @@
 use crate::{imp::implements, pod::PlainOldData, Deserializer, Object, Serializer};
 use nix::{
     cmsg_space,
-    sys::socket::{
-        self, recvmsg, sendmsg, AddressFamily, ControlMessage, ControlMessageOwned, MsgFlags,
-        SockFlag, SockType,
-    },
+    sys::socket::{recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags},
 };
+use rustix::net::{self, AddressFamily, SocketFlags, SocketType};
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
@@ -19,11 +17,11 @@ pub(crate) const MAX_PACKET_FDS: usize = 253; // SCM_MAX_FD
 
 pub(crate) fn socketpair() -> Result<(UnixStream, UnixStream)> {
     // UnixStream creates a SOCK_STREAM by default, while we need SOCK_SEQPACKET
-    let (tx, rx) = socket::socketpair(
-        AddressFamily::Unix,
-        SockType::SeqPacket,
+    let (tx, rx) = net::socketpair(
+        AddressFamily::UNIX,
+        SocketType::SEQPACKET,
+        SocketFlags::CLOEXEC,
         None,
-        SockFlag::SOCK_CLOEXEC,
     )?;
     Ok((tx.into(), rx.into()))
 }
