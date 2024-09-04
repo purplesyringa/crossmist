@@ -417,7 +417,17 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
 
 impl<Stream: AsyncStream + fmt::Debug, S: Object, R: Object> fmt::Debug for Duplex<Stream, S, R> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_tuple("Duplex").field(&self.fd).finish()
+        #[cfg(unix)]
+        {
+            fmt.debug_tuple("Duplex").field(&self.fd).finish()
+        }
+        #[cfg(windows)]
+        {
+            fmt.debug_struct("Duplex")
+                .field("sender", &self.sender)
+                .field("receiver", &self.receiver)
+                .finish()
+        }
     }
 }
 

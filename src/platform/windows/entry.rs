@@ -5,6 +5,7 @@ use crate::{
 };
 use lazy_static::lazy_static;
 use std::default::Default;
+use std::mem::ManuallyDrop;
 use std::sync::RwLock;
 
 lazy_static! {
@@ -14,22 +15,21 @@ lazy_static! {
 
 pub(crate) fn start_root() {
     let (ours, theirs) = channel().expect("Failed to create holder channel for handle broker");
-    let id = Box::leak(Box::new(
+    let broker = ManuallyDrop::new(
         handle_broker
             .spawn(theirs)
             .expect("Failed to start handle broker"),
-    ))
-    .id();
+    );
     *HANDLE_BROKER
         .write()
-        .expect("Failed to acquire write access to HANDLE_BROKER") = id;
+        .expect("Failed to acquire write access to HANDLE_BROKER") = broker.id();
     *HANDLE_BROKER_HOLDER
         .write()
         .expect("Failed to acquire write access to HANDLE_BROKER_HOLDER") = Some(ours);
 }
 
 #[func]
-fn handle_broker(mut holder: Receiver<()>) -> ! {
+fn handle_broker(mut holder: Receiver<()>) {
     holder
         .recv()
         .expect("Failed to receive from holder in handle broker");
@@ -91,7 +91,7 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     let mut deserializer = Deserializer::new(entry_data, entry_handles);
     let entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>> =
         unsafe { deserializer.deserialize() }.expect("Failed to deserialize entry");
-    std::process::exit(entry(handle_tx))
+    std::process::exit(entry.call_object_once((handle_tx,)))
 }
 
 fn parse_raw_handle(s: &str) -> RawHandle {
