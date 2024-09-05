@@ -4,7 +4,7 @@
 
 use crate::{
     asynchronous,
-    handles::{AsRawHandle, RawHandle, BorrowedHandle, AsHandle},
+    handles::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle},
     FnOnceObject, Object,
 };
 use std::io::Result;

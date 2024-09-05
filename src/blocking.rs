@@ -46,7 +46,7 @@
 
 use crate::{
     asynchronous,
-    handles::{AsRawHandle, RawHandle, BorrowedHandle, AsHandle},
+    handles::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle},
     FnOnceObject, KillHandle, Object,
 };
 use std::future::Future;
