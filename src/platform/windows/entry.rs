@@ -3,15 +3,16 @@ use crate::{
     handles::{FromRawHandle, OwnedHandle, RawHandle},
     Deserializer, FnOnceObject, Receiver, Sender,
 };
-use lazy_static::lazy_static;
 use std::default::Default;
 use std::mem::ManuallyDrop;
-use std::sync::RwLock;
+use std::sync::OnceLock;
 
-lazy_static! {
-    pub(crate) static ref HANDLE_BROKER: RwLock<RawHandle> = RwLock::new(Default::default());
-    pub(crate) static ref HANDLE_BROKER_HOLDER: RwLock<Option<Sender<()>>> = RwLock::new(None);
+pub(crate) struct HandleBroker {
+    pub(crate) process: RawHandle,
+    pub(crate) holder: Sender<()>,
 }
+
+pub(crate) static HANDLE_BROKER: OnceLock<HandleBroker> = OnceLock::new();
 
 pub(crate) fn start_root() {
     let (ours, theirs) = channel().expect("Failed to create holder channel for handle broker");
@@ -20,12 +21,13 @@ pub(crate) fn start_root() {
             .spawn(theirs)
             .expect("Failed to start handle broker"),
     );
-    *HANDLE_BROKER
-        .write()
-        .expect("Failed to acquire write access to HANDLE_BROKER") = broker.id();
-    *HANDLE_BROKER_HOLDER
-        .write()
-        .expect("Failed to acquire write access to HANDLE_BROKER_HOLDER") = Some(ours);
+    HANDLE_BROKER
+        .set(HandleBroker {
+            process: broker.id(),
+            holder: ours,
+        })
+        .ok()
+        .expect("HANDLE_BROKER has already been initialized");
 }
 
 #[func]
@@ -59,13 +61,13 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
             .expect("Expected four CLI arguments for crossmist"),
     );
 
-    *HANDLE_BROKER
-        .write()
-        .expect("Failed to acquire write access to HANDLE_BROKER") = handle_broker_id;
-    *HANDLE_BROKER_HOLDER
-        .write()
-        .expect("Failed to acquire write access to HANDLE_BROKER_HOLDER") =
-        Some(unsafe { Sender::from_raw_handle(handle_broker_holder_id) });
+    HANDLE_BROKER
+        .set(HandleBroker {
+            process: handle_broker_id,
+            holder: unsafe { Sender::from_raw_handle(handle_broker_holder_id) },
+        })
+        .ok()
+        .expect("HANDLE_BROKER has already been initialized");
 
     enable_cloexec(handle_tx).expect("Failed to set O_CLOEXEC for the file descriptor");
     enable_cloexec(handle_rx).expect("Failed to set O_CLOEXEC for the file descriptor");

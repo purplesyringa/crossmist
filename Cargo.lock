@@ -240,7 +240,6 @@ dependencies = [
  "crossmist-derive",
  "ctor",
  "futures-lite",
- "lazy_static",
  "macro_rules_attribute",
  "nix",
  "paste",
@@ -411,12 +410,6 @@ name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
-
-[[package]]
-name = "lazy_static"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"

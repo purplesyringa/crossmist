@@ -14,9 +14,9 @@ pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
     let handles = s.drain_handles();
     let mut dup_handles = Vec::new();
     if !handles.is_empty() {
-        let handle_broker = *entry::HANDLE_BROKER
-            .read()
-            .expect("Failed to acquire read access to HANDLE_BROKER");
+        let handle_broker = entry::HANDLE_BROKER
+            .get()
+            .expect("HANDLE_BROKER has not been initialized yet");
 
         for handle in handles {
             let mut dup_handle: RawHandle = Default::default();
@@ -49,9 +49,10 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
 
     let mut dup_handles = Vec::new();
     if !handles.is_empty() {
-        let handle_broker = *entry::HANDLE_BROKER
-            .read()
-            .expect("Failed to acquire read access to HANDLE_BROKER");
+        let handle_broker = entry::HANDLE_BROKER
+            .get()
+            .expect("HANDLE_BROKER has not been initialized yet")
+            .process;
 
         for handle in handles {
             let mut dup_handle: RawHandle = Default::default();
