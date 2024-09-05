@@ -22,9 +22,9 @@ mod private {
 /// communication, use [`Serializer`] and [`Deserializer`] APIs.
 pub trait Object: private::Sealed {
     /// Serialize a single object into a serializer.
-    fn serialize_self(&self, s: &mut Serializer);
+    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>);
     /// Serialize an array of objects into a serializer.
-    fn serialize_slice(elements: &[Self], s: &mut Serializer)
+    fn serialize_slice<'a>(elements: &'a [Self], s: &mut Serializer<'a>)
     where
         Self: Sized;
     /// Deserialize a single object from a deserializer.
@@ -51,7 +51,7 @@ pub trait Object: private::Sealed {
 
 impl<T: NonTrivialObject> private::Sealed for T {}
 impl<T: NonTrivialObject> Object for T {
-    fn serialize_self(&self, s: &mut Serializer) {
+    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
         if implements!(T: PlainOldData) {
             s.write(unsafe {
                 std::slice::from_raw_parts(self as *const T as *const u8, std::mem::size_of::<T>())
@@ -61,7 +61,7 @@ impl<T: NonTrivialObject> Object for T {
         }
     }
 
-    fn serialize_slice(elements: &[Self], s: &mut Serializer)
+    fn serialize_slice<'a>(elements: &'a [Self], s: &mut Serializer<'a>)
     where
         Self: Sized,
     {

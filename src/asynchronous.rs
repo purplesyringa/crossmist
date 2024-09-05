@@ -44,7 +44,7 @@
 #[cfg(unix)]
 use crate::internals::{socketpair, SingleObjectReceiver, SingleObjectSender};
 use crate::{
-    handles::{BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle},
+    handles::{BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle, AsRawHandle},
     imp, subprocess, FnOnceObject, Object, Serializer,
 };
 use std::fmt;
@@ -55,7 +55,6 @@ use std::sync::{Arc, Mutex};
 #[cfg(windows)]
 use {
     crate::{
-        handles::AsRawHandle,
         imp::implements,
         internals::{deserialize_with_handles, serialize_with_handles},
         pod::PlainOldData,
@@ -648,7 +647,7 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     #[cfg(unix)]
     {
         process_handle = subprocess::_spawn_child(child, &handles)?;
-        local.send(&(s.into_vec(), handles)).await?;
+        local.send(&(s.into_vec(), handles.iter().map(AsRawHandle::as_raw_handle).collect())).await?;
         receiver = Receiver::from_stream(local.fd);
     }
 

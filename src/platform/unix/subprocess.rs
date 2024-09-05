@@ -3,11 +3,11 @@ use nix::{libc::c_char, sched};
 use rustix::process::Pid;
 use std::ffi::{CStr, CString};
 use std::io::Result;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, RawFd, BorrowedFd};
 
 pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     child_fd: Duplex<S, R>,
-    inherited_fds: &[RawFd],
+    inherited_fds: &[BorrowedFd<'_>],
 ) -> Result<Pid> {
     let child_fd_str = CString::new(child_fd.as_raw_fd().to_string()).unwrap();
 
@@ -39,12 +39,12 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
 unsafe fn fork_child_main(
     child_fd: RawFd,
     child_fd_str: &CStr,
-    inherited_fds: &[RawFd],
+    inherited_fds: &[BorrowedFd<'_>],
 ) -> Result<()> {
     // No heap allocations are allowed here.
     entry::disable_cloexec(child_fd)?;
     for fd in inherited_fds {
-        entry::disable_cloexec(*fd)?;
+        entry::disable_cloexec(fd.as_raw_fd())?;
     }
 
     // nix::unistd::execv uses allocations

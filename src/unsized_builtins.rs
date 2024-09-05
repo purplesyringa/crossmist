@@ -29,7 +29,7 @@ impl TypeClass {
 }
 
 unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
-    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+    fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         // Object is only implemented for types that implement NonTrivialObject, which inherits
         // Sized, and `dyn Trait` where `Trait: Object`. Therefore, the only possible Ts here are
         // sized types and `dyn Trait`. Slices are handled in another impl block, custom DSTs are
@@ -37,11 +37,11 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
 
         if TypeClass::of::<T>() == TypeClass::Dyn {
             let fat_ptr = unsafe { std::mem::transmute_copy::<&T, DynFatPtr>(&self.as_ref()) };
-            s.serialize(&RelocatablePtr(fat_ptr.vtable));
+            s.serialize_temporary(RelocatablePtr(fat_ptr.vtable));
         }
 
         #[cfg(not(feature = "nightly"))]
-        s.serialize(&RelocatablePtr(
+        s.serialize_temporary(RelocatablePtr(
             self.as_ref().deserialize_on_heap_get() as *const ()
         ));
 
@@ -72,8 +72,8 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
 }
 
 unsafe impl<T: Object> NonTrivialObject for Box<[T]> {
-    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        s.serialize(&self.len());
+    fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
+        s.serialize_temporary(self.len());
         s.serialize_slice(self.as_ref());
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {

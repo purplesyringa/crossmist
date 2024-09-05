@@ -401,8 +401,8 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             };
 
             quote! {
-                unsafe impl #generics_impl ::crossmist:: NonTrivialObject for #ident #generics #generics_where {
-                    fn serialize_self_non_trivial(&self, s: &mut ::crossmist::Serializer) {
+                unsafe impl #generics_impl ::crossmist::NonTrivialObject for #ident #generics #generics_where {
+                    fn serialize_self_non_trivial<'serde>(&'serde self, s: &mut ::crossmist::Serializer<'serde>) {
                         #(#serialize_fields)*
                     }
                     unsafe fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> ::std::io::Result<Self> {
@@ -501,7 +501,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
 
             quote! {
                 unsafe impl #generics_impl ::crossmist::NonTrivialObject for #ident #generics #generics_where {
-                    fn serialize_self_non_trivial(&self, s: &mut ::crossmist::Serializer) {
+                    fn serialize_self_non_trivial<'serde>(&'serde self, s: &mut ::crossmist::Serializer<'serde>) {
                         match self {
                             #(#serialize_variants,)*
                         }

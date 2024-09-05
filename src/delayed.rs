@@ -70,18 +70,18 @@ impl<T: Object> fmt::Debug for Delayed<T> {
 }
 
 unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
-    fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+    fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         match self.inner {
             DelayedInner::Serialized(_, _) => panic!("Cannot serialize a serialized Delayed value"),
             DelayedInner::Deserialized(ref value) => {
                 let mut s1 = Serializer::new();
                 s1.serialize(value);
                 let handles = s1.drain_handles();
-                s.serialize(&handles.len());
+                s.serialize_temporary(handles.len());
                 for handle in handles {
                     s.serialize_handle(handle);
                 }
-                s.serialize(&s1.into_vec());
+                s.serialize_temporary(s1.into_vec());
             }
         }
     }

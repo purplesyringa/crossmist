@@ -53,11 +53,7 @@ impl<'a> SingleObjectSender<'a> {
             bytes = &[];
             let mut s = Serializer::new();
             s.serialize(value);
-            fds = s
-                .drain_handles()
-                .into_iter()
-                .map(|fd| unsafe { BorrowedFd::borrow_raw(fd) })
-                .collect();
+            fds = s.drain_handles();
             buffer = s.into_vec();
         }
         Self {

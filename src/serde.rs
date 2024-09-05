@@ -4,7 +4,7 @@
 //! to serialize not only data structures, but objects with real-world side-effects, e.g. files.
 
 use crate::{
-    handles::{OwnedHandle, RawHandle},
+    handles::{BorrowedHandle, OwnedHandle},
     Object,
 };
 use std::any::Any;
@@ -15,18 +15,21 @@ use std::num::NonZeroUsize;
 use std::os::raw::c_void;
 
 /// Stateful serialization.
-pub struct Serializer {
+///
+/// The serializer stores binary data corresponding to the serialized object and also borrowes file
+/// descriptors inside the object for `'fd`.
+pub struct Serializer<'fd> {
     data: Vec<u8>,
-    handles: Option<Vec<RawHandle>>,
+    handles: Vec<BorrowedHandle<'fd>>,
     cyclic_ids: HashMap<*const c_void, NonZeroUsize>,
 }
 
-impl Serializer {
+impl<'fd> Serializer<'fd> {
     /// Create a new serializer.
     pub fn new() -> Self {
         Serializer {
             data: Vec::new(),
-            handles: Some(Vec::new()),
+            handles: Vec::new(),
             cyclic_ids: HashMap::new(),
         }
     }
@@ -37,29 +40,37 @@ impl Serializer {
     }
 
     /// Append serialized data of an object.
-    pub fn serialize<T: Object>(&mut self, data: &T) {
+    pub fn serialize<T: Object>(&mut self, data: &'fd T) {
         data.serialize_self(self);
     }
 
     /// Append serialized data of a slice of objects, as if calling [`Serializer::serialize`] for
     /// each element.
-    pub fn serialize_slice<T: Object>(&mut self, data: &[T]) {
+    pub fn serialize_slice<T: Object>(&mut self, data: &'fd [T]) {
         Object::serialize_slice(data, self);
     }
 
+    /// Append serialized data of a temporary object free of file handles.
+    ///
+    /// Panics if the object contains file handles.
+    pub fn serialize_temporary<T: Object>(&mut self, data: T) {
+        let mut s1 = Serializer::new();
+        s1.serialize(&data);
+        assert!(
+            s1.handles.is_empty(),
+            "serialize_temporary invoked with an object containing file handles"
+        );
+        self.write(&s1.into_vec());
+    }
+
     /// Store a file handle.
-    pub fn serialize_handle(&mut self, handle: RawHandle) {
-        self.handles
-            .as_mut()
-            .expect("serialize_handle cannot be called after drain_handles")
-            .push(handle);
+    pub fn serialize_handle(&mut self, handle: BorrowedHandle<'fd>) {
+        self.handles.push(handle);
     }
 
     /// Get a list of added file handles.
-    pub fn drain_handles(&mut self) -> Vec<RawHandle> {
-        self.handles
-            .take()
-            .expect("drain_handles can only be called once")
+    pub fn drain_handles(&mut self) -> Vec<BorrowedHandle<'fd>> {
+        std::mem::take(&mut self.handles)
     }
 
     /// Check if an object has already been serialized in this session and return its index.
@@ -80,20 +91,20 @@ impl Serializer {
     }
 }
 
-impl fmt::Debug for Serializer {
+impl fmt::Debug for Serializer<'_> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         // Outputting the data is unsound, as it may contain uninitialized bytes
         fmt.debug_struct("Serializer").finish()
     }
 }
 
-impl Default for Serializer {
+impl Default for Serializer<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl IntoIterator for Serializer {
+impl IntoIterator for Serializer<'_> {
     type Item = u8;
     type IntoIter = <Vec<u8> as IntoIterator>::IntoIter;
     fn into_iter(self) -> Self::IntoIter {
@@ -215,7 +226,7 @@ impl fmt::Debug for Deserializer {
 /// }
 ///
 /// unsafe impl<T: Object, U: Object> NonTrivialObject for SimplePair<T, U> {
-///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+///     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
 ///         s.serialize(&self.first);
 ///         s.serialize(&self.second);
 ///     }
@@ -244,19 +255,19 @@ impl fmt::Debug for Deserializer {
 /// struct CustomRc<T: 'static>(Rc<T>);
 ///
 /// unsafe impl<T: 'static + Object> NonTrivialObject for CustomRc<T> {
-///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+///     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
 ///         // Any unique identifier works, but it must be *globally* unique, not just for objects
 ///         // of the same type.
 ///         match s.learn_cyclic(Rc::as_ptr(&self.0) as *const c_void) {
 ///             None => {
 ///                 // This is the first time we see this object -- encode a marker followed by its
 ///                 // contents. Under the hood, learn_cyclic remembers this object.
-///                 s.serialize(&0usize);
+///                 s.serialize_temporary(0usize);
 ///                 s.serialize(&*self.0);
 ///             }
 ///             Some(id) => {
 ///                 // We have seen this object before -- store its ID instead
-///                 s.serialize(&id);
+///                 s.serialize_temporary(id);
 ///             }
 ///         }
 ///     }
@@ -300,18 +311,19 @@ impl fmt::Debug for Deserializer {
 /// In this case, the following example should be of help:
 ///
 /// ```rust
-/// # use crossmist::{
-/// #     handles::{AsRawHandle, OwnedHandle},
-/// #     Deserializer, NonTrivialObject, Object, Serializer,
-/// # };
-/// # use std::fs::File;
-/// # use std::io::Result;
+/// use crossmist::{
+///     handles::{AsHandle, OwnedHandle},
+///     Deserializer, NonTrivialObject, Object, Serializer,
+/// };
+/// use std::fs::File;
+/// use std::io::Result;
+///
 /// struct CustomFile(std::fs::File);
 ///
 /// unsafe impl NonTrivialObject for CustomFile {
-///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
+///     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
 ///         // serialize_handle adds the handle (fd)
-///         s.serialize_handle(self.0.as_raw_handle());
+///         s.serialize_handle(self.0.as_handle());
 ///     }
 ///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
 ///         // Deserializing OwnedHandle results in the ID being resolved into the handle, which can
@@ -329,7 +341,7 @@ impl fmt::Debug for Deserializer {
 /// [`Deserializer::deserialize`] for more details.
 pub unsafe trait NonTrivialObject: Sized {
     /// Serialize a single object into a serializer.
-    fn serialize_self_non_trivial(&self, s: &mut Serializer);
+    fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>);
     /// Deserialize a single object from a deserializer.
     ///
     /// This function may assume the input data is produced by [`Self::serialize_self_non_trivial`].

@@ -4,23 +4,13 @@ use std::fmt::Debug;
 fn serde<T: Object>(x: &T) -> T {
     let mut s = Serializer::new();
     s.serialize(x);
-    let handles = s.drain_handles();
+    let handles = s
+        .drain_handles()
+        .into_iter()
+        .map(|handle| handle.try_clone_to_owned().unwrap())
+        .collect();
     let data = s.into_vec();
-    let mut d = unsafe {
-        Deserializer::new(
-            data,
-            handles
-                .into_iter()
-                .map(|fd| {
-                    #[cfg(unix)]
-                    let borrowed = std::os::fd::BorrowedFd::borrow_raw(fd);
-                    #[cfg(windows)]
-                    let borrowed = std::os::windows::io::BorrowedHandle::borrow_raw(fd.0 as _);
-                    borrowed.try_clone_to_owned().unwrap()
-                })
-                .collect(),
-        )
-    };
+    let mut d = Deserializer::new(data, handles);
     unsafe { d.deserialize() }.expect("Deserialization failed")
 }
 
