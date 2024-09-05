@@ -76,22 +76,21 @@ unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
             DelayedInner::Deserialized(ref value) => {
                 let mut s1 = Serializer::new();
                 s1.serialize(value);
-                let handles = s1
-                    .drain_handles()
-                    .into_iter()
-                    .map(|handle| s.add_handle(handle))
-                    .collect::<Vec<usize>>();
-                s.serialize(&handles);
+                let handles = s1.drain_handles();
+                s.serialize(&handles.len());
+                for handle in handles {
+                    s.serialize_handle(handle);
+                }
                 s.serialize(&s1.into_vec());
             }
         }
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
-        let handles = d
-            .deserialize::<Vec<usize>>()?
-            .into_iter()
-            .map(|handle| d.drain_handle(handle))
-            .collect();
+        let handles_len = d.deserialize()?;
+        let mut handles = Vec::with_capacity(handles_len);
+        for _ in 0..handles_len {
+            handles.push(d.deserialize::<OwnedHandle>()?);
+        }
         Ok(Delayed {
             inner: DelayedInner::Serialized(d.deserialize()?, handles),
         })

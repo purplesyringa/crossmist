@@ -396,19 +396,18 @@ impl<T: PlainOldData, E: PlainOldData> PlainOldData for std::result::Result<T, E
 
 unsafe impl NonTrivialObject for OwnedHandle {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        let handle = s.add_handle(self.as_raw_handle());
-        s.serialize(&handle)
+        s.serialize_handle(self.as_raw_handle());
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
-        let handle = d.deserialize()?;
-        Ok(d.drain_handle(handle))
+        Ok(d.handles
+            .next()
+            .expect("Mismatched calls to serialize_handle/deserialize_handle"))
     }
 }
 
 unsafe impl NonTrivialObject for std::fs::File {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        let handle = s.add_handle(self.as_raw_handle());
-        s.serialize(&handle)
+        s.serialize_handle(self.as_raw_handle());
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
         Ok(d.deserialize::<OwnedHandle>()?.into())
@@ -418,13 +417,13 @@ unsafe impl NonTrivialObject for std::fs::File {
 #[cfg(feature = "tokio")]
 unsafe impl NonTrivialObject for tokio::fs::File {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        let handle = s.add_handle(self.as_raw_handle());
-        s.serialize(&handle)
+        s.serialize_handle(self.as_raw_handle());
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
-        let handle = d.deserialize()?;
         Ok(unsafe {
-            <Self as FromRawHandle>::from_raw_handle(d.drain_handle(handle).into_raw_handle())
+            <Self as FromRawHandle>::from_raw_handle(
+                d.deserialize::<OwnedHandle>()?.into_raw_handle(),
+            )
         })
     }
 }
@@ -432,8 +431,7 @@ unsafe impl NonTrivialObject for tokio::fs::File {
 #[cfg(feature = "smol")]
 unsafe impl NonTrivialObject for async_fs::File {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        let handle = s.add_handle(self.as_raw_handle());
-        s.serialize(&handle)
+        s.serialize_handle(self.as_raw_handle());
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
         Ok(d.deserialize::<std::fs::File>()?.into())
@@ -443,8 +441,7 @@ unsafe impl NonTrivialObject for async_fs::File {
 #[cfg(unix)]
 unsafe impl NonTrivialObject for std::os::unix::net::UnixStream {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        let handle = s.add_handle(self.as_raw_handle());
-        s.serialize(&handle)
+        s.serialize_handle(self.as_raw_handle());
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
         Ok(d.deserialize::<OwnedHandle>()?.into())
@@ -454,8 +451,7 @@ unsafe impl NonTrivialObject for std::os::unix::net::UnixStream {
 #[cfg(all(unix, feature = "tokio"))]
 unsafe impl NonTrivialObject for tokio::net::UnixStream {
     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-        let handle = s.add_handle(self.as_raw_handle());
-        s.serialize(&handle)
+        s.serialize_handle(self.as_raw_handle());
     }
     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
         Self::from_std(d.deserialize()?)

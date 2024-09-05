@@ -47,14 +47,12 @@ impl Serializer {
         Object::serialize_slice(data, self);
     }
 
-    /// Store a file handle, returning its index.
-    pub fn add_handle(&mut self, handle: RawHandle) -> usize {
-        let handles = self
-            .handles
+    /// Store a file handle.
+    pub fn serialize_handle(&mut self, handle: RawHandle) {
+        self.handles
             .as_mut()
-            .expect("add_handle cannot be called after drain_handles");
-        handles.push(handle);
-        handles.len() - 1
+            .expect("serialize_handle cannot be called after drain_handles")
+            .push(handle);
     }
 
     /// Get a list of added file handles.
@@ -106,7 +104,7 @@ impl IntoIterator for Serializer {
 /// Stateful deserialization.
 pub struct Deserializer {
     data: Vec<u8>,
-    handles: Vec<Option<OwnedHandle>>,
+    pub(crate) handles: std::vec::IntoIter<OwnedHandle>,
     pos: usize,
     cyclics: Vec<Box<dyn Any>>,
 }
@@ -116,7 +114,7 @@ impl Deserializer {
     pub fn new(data: Vec<u8>, handles: Vec<OwnedHandle>) -> Self {
         Deserializer {
             data,
-            handles: handles.into_iter().map(Some).collect(),
+            handles: handles.into_iter(),
             pos: 0,
             cyclics: Vec::new(),
         }
@@ -174,13 +172,6 @@ impl Deserializer {
     /// [`std::fs::File`] and [`crossmist::handles::OwnedHandle`] are compatible.
     pub unsafe fn deserialize<T: Object>(&mut self) -> Result<T> {
         T::deserialize_self(self)
-    }
-
-    /// Extract a handle by an index.
-    pub fn drain_handle(&mut self, idx: usize) -> OwnedHandle {
-        self.handles[idx]
-            .take()
-            .expect("drain_handle can only be called once for a particular index")
     }
 
     /// Store a reference to a newly built potentially cyclic object.
@@ -319,9 +310,8 @@ impl fmt::Debug for Deserializer {
 ///
 /// unsafe impl NonTrivialObject for CustomFile {
 ///     fn serialize_self_non_trivial(&self, s: &mut Serializer) {
-///         // add_handle memorizes the handle (fd) and returns its ID
-///         let handle = s.add_handle(self.0.as_raw_handle());
-///         s.serialize(&handle)
+///         // serialize_handle adds the handle (fd)
+///         s.serialize_handle(self.0.as_raw_handle());
 ///     }
 ///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
 ///         // Deserializing OwnedHandle results in the ID being resolved into the handle, which can
