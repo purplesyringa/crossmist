@@ -1,14 +1,16 @@
 use crate::{imp::implements, pod::PlainOldData, Deserializer, Object, Serializer};
-use nix::{
+use rustix::{
     cmsg_space,
-    sys::socket::{recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags},
+    net::{
+        self, recvmsg, sendmsg, AddressFamily, RecvAncillaryBuffer, RecvAncillaryMessage,
+        RecvFlags, SendAncillaryBuffer, SendAncillaryMessage, SendFlags, SocketFlags, SocketType,
+    },
 };
-use rustix::net::{self, AddressFamily, SocketFlags, SocketType};
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::os::unix::{
-    io::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd},
+    io::{BorrowedFd, OwnedFd, RawFd},
     net::UnixStream,
 };
 
@@ -29,11 +31,11 @@ pub(crate) fn socketpair() -> Result<(UnixStream, UnixStream)> {
 pub(crate) struct SingleObjectSender<'a> {
     socket_fd: BorrowedFd<'a>,
     bytes: &'a [u8],
-    fds: Vec<RawFd>,
+    fds: Vec<BorrowedFd<'a>>,
     buffer: Vec<u8>,
     data_pos: usize,
     fds_pos: usize,
-    flags: MsgFlags,
+    flags: SendFlags,
 }
 
 impl<'a> SingleObjectSender<'a> {
@@ -51,7 +53,11 @@ impl<'a> SingleObjectSender<'a> {
             bytes = &[];
             let mut s = Serializer::new();
             s.serialize(value);
-            fds = s.drain_handles();
+            fds = s
+                .drain_handles()
+                .into_iter()
+                .map(|fd| unsafe { BorrowedFd::borrow_raw(fd) })
+                .collect();
             buffer = s.into_vec();
         }
         Self {
@@ -62,29 +68,36 @@ impl<'a> SingleObjectSender<'a> {
             data_pos: 0,
             fds_pos: 0,
             flags: if blocking {
-                MsgFlags::empty()
+                SendFlags::empty()
             } else {
-                MsgFlags::MSG_DONTWAIT
+                SendFlags::DONTWAIT
             },
         }
     }
 
     pub(crate) fn send_next(&mut self) -> Result<()> {
+        let mut space = [0; cmsg_space!(ScmRights(MAX_PACKET_FDS))];
+        let mut cmsg_buffer = SendAncillaryBuffer::new(&mut space);
+
         loop {
             let buffer_end = self.data().len().min(self.data_pos + MAX_PACKET_SIZE - 1);
             let fds_end = self.fds.len().min(self.fds_pos + MAX_PACKET_FDS);
 
             let is_last = buffer_end == self.data().len() && fds_end == self.fds.len();
 
-            let n_written = sendmsg::<()>(
-                self.socket_fd.as_raw_fd(),
+            cmsg_buffer.clear();
+            assert!(cmsg_buffer.push(SendAncillaryMessage::ScmRights(
+                &self.fds[self.fds_pos..fds_end],
+            )));
+
+            let n_written = sendmsg(
+                self.socket_fd,
                 &[
                     IoSlice::new(&[is_last as u8]),
                     IoSlice::new(&self.data()[self.data_pos..buffer_end]),
                 ],
-                &[ControlMessage::ScmRights(&self.fds[self.fds_pos..fds_end])],
+                &mut cmsg_buffer,
                 self.flags,
-                None,
             )?;
 
             self.data_pos += n_written - 1;
@@ -111,7 +124,7 @@ pub(crate) struct SingleObjectReceiver<T: Object> {
     data_pos: usize,
     value: MaybeUninit<T>,
     fds: Vec<OwnedFd>,
-    flags: MsgFlags,
+    flags: RecvFlags,
     terminated: bool,
     marker: PhantomData<fn() -> T>,
 }
@@ -127,9 +140,9 @@ impl<T: Object> SingleObjectReceiver<T> {
             value: MaybeUninit::zeroed(),
             fds: Vec::new(),
             flags: if blocking {
-                MsgFlags::empty()
+                RecvFlags::empty()
             } else {
-                MsgFlags::MSG_DONTWAIT
+                RecvFlags::DONTWAIT
             },
             terminated: false,
             marker: PhantomData,
@@ -141,6 +154,9 @@ impl<T: Object> SingleObjectReceiver<T> {
             !self.terminated,
             "Calling recv_next after it returned Ok(Some(...)) or Err(...) is undefined behavior",
         );
+
+        let mut space = [0; cmsg_space!(ScmRights(MAX_PACKET_FDS))];
+        let mut cmsg_buffer = RecvAncillaryBuffer::new(&mut space);
 
         loop {
             if !implements!(T: PlainOldData) {
@@ -164,29 +180,24 @@ impl<T: Object> SingleObjectReceiver<T> {
                 IoSliceMut::new(&mut data[self.data_pos..]),
             ];
 
-            let mut ancillary = cmsg_space!([RawFd; MAX_PACKET_FDS]);
-
-            let message = recvmsg::<()>(
-                self.socket_fd,
+            let message = recvmsg(
+                unsafe { BorrowedFd::borrow_raw(self.socket_fd) },
                 &mut iovecs,
-                Some(&mut ancillary),
-                self.flags | MsgFlags::MSG_CMSG_CLOEXEC,
+                &mut cmsg_buffer,
+                self.flags | RecvFlags::CMSG_CLOEXEC,
             )?;
 
-            for cmsg in message.cmsgs() {
-                if let ControlMessageOwned::ScmRights(rights) = cmsg {
-                    for fd in rights {
-                        self.fds.push(unsafe { OwnedFd::from_raw_fd(fd) });
-                    }
-                } else {
+            for cmsg in cmsg_buffer.drain() {
+                let RecvAncillaryMessage::ScmRights(rights) = cmsg else {
                     return Err(Error::new(
                         ErrorKind::Other,
                         "Unexpected kind of cmsg on stream",
                     ));
-                }
+                };
+                self.fds.extend(rights);
             }
 
-            if message.cmsgs().next().is_none() && message.bytes == 0 {
+            if message.bytes == 0 {
                 if self.data_pos == 0 && self.fds.is_empty() {
                     return Ok(None);
                 } else {
