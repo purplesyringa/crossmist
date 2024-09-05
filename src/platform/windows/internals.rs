@@ -38,14 +38,14 @@ pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
 
     let mut s1 = Serializer::new();
     s1.serialize(&dup_handles);
-    s1.serialize(&s.into_vec());
+    s1.write(&s.into_vec());
     Ok(s1.into_vec())
 }
 
 pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result<T> {
     let mut d = Deserializer::new(serialized, Vec::new());
     let handles: Vec<RawHandle> = d.deserialize()?;
-    let serialized_contents: Vec<u8> = d.deserialize()?;
+    let serialized_contents: Vec<u8> = Vec::from(d.get_rest());
 
     let mut dup_handles = Vec::new();
     if !handles.is_empty() {

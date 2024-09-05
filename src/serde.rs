@@ -196,6 +196,11 @@ impl Deserializer {
             .downcast_ref()
             .expect("The cyclic object is of unexpected type")
     }
+
+    #[cfg(windows)]
+    pub(crate) fn get_rest(&self) -> &[u8] {
+        &self.data[self.pos..]
+    }
 }
 
 impl fmt::Debug for Deserializer {
