@@ -285,7 +285,7 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
         #[cfg(unix)]
         {
             let mut receiver =
-                unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle(), Stream::IS_BLOCKING) };
+                unsafe { SingleObjectReceiver::new(self.fd.as_handle(), Stream::IS_BLOCKING) };
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]
@@ -379,7 +379,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
         #[cfg(unix)]
         {
             let mut receiver =
-                unsafe { SingleObjectReceiver::new(self.fd.as_raw_handle(), Stream::IS_BLOCKING) };
+                unsafe { SingleObjectReceiver::new(self.fd.as_handle(), Stream::IS_BLOCKING) };
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]

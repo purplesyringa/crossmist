@@ -10,7 +10,7 @@ use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::os::unix::{
-    io::{BorrowedFd, OwnedFd, RawFd},
+    io::{BorrowedFd, OwnedFd},
     net::UnixStream,
 };
 
@@ -118,8 +118,8 @@ impl<'a> SingleObjectSender<'a> {
     }
 }
 
-pub(crate) struct SingleObjectReceiver<T: Object> {
-    socket_fd: RawFd,
+pub(crate) struct SingleObjectReceiver<'a, T: Object> {
+    socket_fd: BorrowedFd<'a>,
     buffer: Vec<u8>,
     data_pos: usize,
     value: MaybeUninit<T>,
@@ -129,10 +129,10 @@ pub(crate) struct SingleObjectReceiver<T: Object> {
     marker: PhantomData<fn() -> T>,
 }
 
-unsafe impl<T: Object> Send for SingleObjectReceiver<T> {}
+unsafe impl<T: Object> Send for SingleObjectReceiver<'_, T> {}
 
-impl<T: Object> SingleObjectReceiver<T> {
-    pub(crate) unsafe fn new(socket_fd: RawFd, blocking: bool) -> Self {
+impl<'a, T: Object> SingleObjectReceiver<'a, T> {
+    pub(crate) unsafe fn new(socket_fd: BorrowedFd<'a>, blocking: bool) -> Self {
         Self {
             socket_fd,
             buffer: Vec::new(),
@@ -181,7 +181,7 @@ impl<T: Object> SingleObjectReceiver<T> {
             ];
 
             let message = recvmsg(
-                unsafe { BorrowedFd::borrow_raw(self.socket_fd) },
+                self.socket_fd,
                 &mut iovecs,
                 &mut cmsg_buffer,
                 self.flags | RecvFlags::CMSG_CLOEXEC,
