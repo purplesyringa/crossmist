@@ -1,9 +1,9 @@
-use crate::{entry, Duplex, Object};
+use crate::{entry, Duplex, Object, asynchronous::AsyncStream};
 use nix::{libc::c_char, sched};
 use rustix::process::Pid;
 use std::ffi::{CStr, CString};
 use std::io::Result;
-use std::os::unix::io::{AsRawFd, RawFd, BorrowedFd};
+use std::os::unix::io::{AsRawFd, BorrowedFd};
 
 pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     child_fd: Duplex<S, R>,
@@ -14,7 +14,7 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     let spawn_cb = || {
         // Use abort() instead of panic!() to prevent stack unwinding, as unwinding in the fork
         // child may free resources that would later be freed in the original process
-        match fork_child_main(child_fd.as_raw_fd(), &child_fd_str, inherited_fds) {
+        match fork_child_main(child_fd.0.fd.as_handle(), &child_fd_str, inherited_fds) {
             Ok(()) => unreachable!(),
             Err(e) => {
                 eprintln!("{e}");
@@ -37,14 +37,14 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
 }
 
 unsafe fn fork_child_main(
-    child_fd: RawFd,
+    child_fd: BorrowedFd<'_>,
     child_fd_str: &CStr,
     inherited_fds: &[BorrowedFd<'_>],
 ) -> Result<()> {
     // No heap allocations are allowed here.
     entry::disable_cloexec(child_fd)?;
     for fd in inherited_fds {
-        entry::disable_cloexec(fd.as_raw_fd())?;
+        entry::disable_cloexec(*fd)?;
     }
 
     // nix::unistd::execv uses allocations
