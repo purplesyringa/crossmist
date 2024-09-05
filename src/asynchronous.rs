@@ -475,7 +475,7 @@ pub(crate) type ProcID = RawHandle;
 
 /// A subprocess.
 pub struct Child<Stream: AsyncStream, T: Object> {
-    proc_handle: ProcHandle,
+    pub(crate) proc_handle: ProcHandle,
     output_rx: Receiver<Stream, T>,
     may_kill: Arc<Mutex<bool>>,
 }
@@ -637,6 +637,7 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     s.serialize(&entry);
 
     let handles = s.drain_handles();
+    let raw_handles = handles.iter().map(AsRawHandle::as_raw_handle).collect();
 
     let (local, child) = crate::duplex()?;
     let mut local: Duplex<Stream, (Vec<u8>, Vec<RawHandle>), T> = local.try_into()?;
@@ -647,18 +648,18 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     #[cfg(unix)]
     {
         process_handle = subprocess::_spawn_child(child, &handles)?;
-        local.send(&(s.into_vec(), handles.iter().map(AsRawHandle::as_raw_handle).collect())).await?;
+        local.send(&(s.into_vec(), raw_handles)).await?;
         receiver = Receiver::from_stream(local.fd);
     }
 
     #[cfg(windows)]
     {
         process_handle = subprocess::_spawn_child(
-            child.0.sender.as_raw_handle(),
-            child.0.receiver.as_raw_handle(),
-            &handles,
+            child.0.sender.fd.as_handle(),
+            child.0.receiver.fd.as_handle(),
+            handles,
         )?;
-        local.send(&(s.into_vec(), handles)).await?;
+        local.send(&(s.into_vec(), raw_handles)).await?;
         receiver = local.receiver;
     }
 

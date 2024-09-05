@@ -1,6 +1,7 @@
 use crate::{
+    asynchronous::AsyncStream,
     entry,
-    handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
+    handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle},
 };
 use std::ffi::c_void;
 use std::io::Result;
@@ -13,20 +14,19 @@ use windows::{
 };
 
 pub(crate) unsafe fn _spawn_child(
-    child_tx: RawHandle,
-    child_rx: RawHandle,
-    inherited_handles: &[RawHandle],
+    child_tx: BorrowedHandle<'_>,
+    child_rx: BorrowedHandle<'_>,
+    mut inherited_handles: Vec<BorrowedHandle<'_>>,
 ) -> Result<OwnedHandle> {
-    let mut inherited_handles = inherited_handles.to_vec();
     inherited_handles.push(child_tx);
     inherited_handles.push(child_rx);
 
     let (broker_process, holder_handle) = match entry::HANDLE_BROKER.get() {
         Some(handle_broker) => {
-            inherited_handles.push(handle_broker.process);
-            inherited_handles.push(handle_broker.holder.as_raw_handle());
+            inherited_handles.push(handle_broker.process.as_handle());
+            inherited_handles.push(handle_broker.holder.0.fd.as_handle());
             (
-                handle_broker.process.0,
+                handle_broker.process.as_raw_handle().0,
                 handle_broker.holder.as_raw_handle().0,
             )
         }
@@ -52,7 +52,10 @@ pub(crate) unsafe fn _spawn_child(
 
     let mut cmd_line: Vec<u16> = format!(
         "_crossmist_ {} {} {} {}\0",
-        broker_process, holder_handle, child_tx.0, child_rx.0
+        broker_process,
+        holder_handle,
+        child_tx.as_raw_handle().0,
+        child_rx.as_raw_handle().0,
     )
     .encode_utf16()
     .collect();

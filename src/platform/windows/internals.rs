@@ -1,6 +1,6 @@
 use crate::{
     entry,
-    handles::{FromRawHandle, OwnedHandle, RawHandle},
+    handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
     Deserializer, Object, Serializer,
 };
 use std::default::Default;
@@ -23,9 +23,9 @@ pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
             unsafe {
                 Foundation::DuplicateHandle(
                     Threading::GetCurrentProcess(),
-                    handle,
-                    handle_broker,
-                    &mut dup_handle as *mut RawHandle,
+                    handle.as_raw_handle(),
+                    handle_broker.process.as_raw_handle(),
+                    &mut dup_handle,
                     0,
                     false,
                     Foundation::DUPLICATE_SAME_ACCESS,
@@ -51,17 +51,16 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
     if !handles.is_empty() {
         let handle_broker = entry::HANDLE_BROKER
             .get()
-            .expect("HANDLE_BROKER has not been initialized yet")
-            .process;
+            .expect("HANDLE_BROKER has not been initialized yet");
 
         for handle in handles {
             let mut dup_handle: RawHandle = Default::default();
             unsafe {
                 Foundation::DuplicateHandle(
-                    handle_broker,
+                    handle_broker.process.as_raw_handle(),
                     handle,
                     Threading::GetCurrentProcess(),
-                    &mut dup_handle as *mut RawHandle,
+                    &mut dup_handle,
                     0,
                     false,
                     Foundation::DUPLICATE_CLOSE_SOURCE | Foundation::DUPLICATE_SAME_ACCESS,

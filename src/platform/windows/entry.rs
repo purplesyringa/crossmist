@@ -1,14 +1,13 @@
 use crate::{
     channel, func,
-    handles::{FromRawHandle, OwnedHandle, RawHandle},
+    handles::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle},
     Deserializer, FnOnceObject, Receiver, Sender,
 };
 use std::default::Default;
-use std::mem::ManuallyDrop;
 use std::sync::OnceLock;
 
 pub(crate) struct HandleBroker {
-    pub(crate) process: RawHandle,
+    pub(crate) process: OwnedHandle,
     pub(crate) holder: Sender<()>,
 }
 
@@ -16,14 +15,12 @@ pub(crate) static HANDLE_BROKER: OnceLock<HandleBroker> = OnceLock::new();
 
 pub(crate) fn start_root() {
     let (ours, theirs) = channel().expect("Failed to create holder channel for handle broker");
-    let broker = ManuallyDrop::new(
-        handle_broker
-            .spawn(theirs)
-            .expect("Failed to start handle broker"),
-    );
+    let broker = handle_broker
+        .spawn(theirs)
+        .expect("Failed to start handle broker");
     HANDLE_BROKER
         .set(HandleBroker {
-            process: broker.id(),
+            process: broker.0.proc_handle,
             holder: ours,
         })
         .ok()
@@ -40,39 +37,51 @@ fn handle_broker(mut holder: Receiver<()>) {
 }
 
 pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
-    let handle_broker_id: RawHandle = parse_raw_handle(
-        &args
-            .next()
-            .expect("Expected four CLI arguments for crossmist"),
-    );
-    let handle_broker_holder_id: RawHandle = parse_raw_handle(
-        &args
-            .next()
-            .expect("Expected four CLI arguments for crossmist"),
-    );
-    let handle_tx: RawHandle = parse_raw_handle(
-        &args
-            .next()
-            .expect("Expected four CLI arguments for crossmist"),
-    );
-    let handle_rx: RawHandle = parse_raw_handle(
-        &args
-            .next()
-            .expect("Expected four CLI arguments for crossmist"),
-    );
+    let handle_broker_id = unsafe {
+        parse_handle(
+            &args
+                .next()
+                .expect("Expected four CLI arguments for crossmist"),
+        )
+    };
+    let handle_broker_holder_id = unsafe {
+        parse_handle(
+            &args
+                .next()
+                .expect("Expected four CLI arguments for crossmist"),
+        )
+    };
+    let handle_tx = unsafe {
+        parse_handle(
+            &args
+                .next()
+                .expect("Expected four CLI arguments for crossmist"),
+        )
+    };
+    let handle_rx = unsafe {
+        parse_handle(
+            &args
+                .next()
+                .expect("Expected four CLI arguments for crossmist"),
+        )
+    };
 
     HANDLE_BROKER
         .set(HandleBroker {
             process: handle_broker_id,
-            holder: unsafe { Sender::from_raw_handle(handle_broker_holder_id) },
+            holder: unsafe { Sender::from_raw_handle(handle_broker_holder_id.into_raw_handle()) },
         })
         .ok()
         .expect("HANDLE_BROKER has already been initialized");
 
-    enable_cloexec(handle_tx).expect("Failed to set O_CLOEXEC for the file descriptor");
-    enable_cloexec(handle_rx).expect("Failed to set O_CLOEXEC for the file descriptor");
+    enable_cloexec(handle_tx.as_raw_handle())
+        .expect("Failed to set O_CLOEXEC for the file descriptor");
+    enable_cloexec(handle_rx.as_raw_handle())
+        .expect("Failed to set O_CLOEXEC for the file descriptor");
 
-    let mut entry_rx = unsafe { Receiver::<(Vec<u8>, Vec<RawHandle>)>::from_raw_handle(handle_rx) };
+    let mut entry_rx = unsafe {
+        Receiver::<(Vec<u8>, Vec<RawHandle>)>::from_raw_handle(handle_rx.into_raw_handle())
+    };
 
     let (entry_data, entry_handles) = entry_rx
         .recv()
@@ -93,12 +102,14 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     let mut deserializer = Deserializer::new(entry_data, entry_handles);
     let entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>> =
         unsafe { deserializer.deserialize() }.expect("Failed to deserialize entry");
-    std::process::exit(entry.call_object_once((handle_tx,)))
+    std::process::exit(entry.call_object_once((handle_tx.into_raw_handle(),)))
 }
 
-fn parse_raw_handle(s: &str) -> RawHandle {
+unsafe fn parse_handle(s: &str) -> OwnedHandle {
     use windows::Win32::Foundation;
-    Foundation::HANDLE(s.parse::<isize>().expect("Failed to parse handle"))
+    OwnedHandle::from_raw_handle(Foundation::HANDLE(
+        s.parse::<isize>().expect("Failed to parse handle"),
+    ))
 }
 
 pub(crate) fn disable_cloexec(handle: RawHandle) -> std::io::Result<()> {

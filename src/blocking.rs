@@ -294,7 +294,7 @@ impl<S: Object, R: Object> std::os::unix::io::FromRawFd for Duplex<S, R> {
 
 /// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
 #[derive(Debug)]
-pub struct Child<T: Object>(asynchronous::Child<Blocking, T>);
+pub struct Child<T: Object>(pub(crate) asynchronous::Child<Blocking, T>);
 
 impl<T: Object> Child<T> {
     /// Get a handle for process termination.
