@@ -26,7 +26,7 @@ macro_rules! impl_pod {
                 unreachable!()
             }
         }
-        impl<$($generics)*> PlainOldData for $t {}
+        unsafe impl<$($generics)*> PlainOldData for $t {}
     };
     (for $t:ty) => {
         unsafe impl NonTrivialObject for $t {
@@ -37,7 +37,7 @@ macro_rules! impl_pod {
                 unreachable!()
             }
         }
-        impl PlainOldData for $t {}
+        unsafe impl PlainOldData for $t {}
     };
 }
 
@@ -137,7 +137,7 @@ macro_rules! impl_serialize_for_tuple {
                     Ok(($([<x $tail>],)*))
                 }
             }
-            impl<$([<T $tail>]: PlainOldData),*> PlainOldData for ($([<T $tail>],)*) {}
+            unsafe impl<$([<T $tail>]: PlainOldData),*> PlainOldData for ($([<T $tail>],)*) {}
         }
     }
 }
@@ -162,7 +162,7 @@ unsafe impl<T: Object> NonTrivialObject for Option<T> {
         }
     }
 }
-impl<T: PlainOldData> PlainOldData for Option<T> {}
+unsafe impl<T: PlainOldData> PlainOldData for Option<T> {}
 
 unsafe impl<T: 'static + Object> NonTrivialObject for Rc<T> {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
@@ -247,7 +247,7 @@ unsafe impl<T: Object, const N: usize> NonTrivialObject for [T; N] {
         Ok(array.assume_init())
     }
 }
-impl<T: PlainOldData, const N: usize> PlainOldData for [T; N] {}
+unsafe impl<T: PlainOldData, const N: usize> PlainOldData for [T; N] {}
 
 unsafe impl<T: Object> NonTrivialObject for Vec<T> {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
@@ -392,7 +392,7 @@ unsafe impl<T: Object, E: Object> NonTrivialObject for std::result::Result<T, E>
         })
     }
 }
-impl<T: PlainOldData, E: PlainOldData> PlainOldData for std::result::Result<T, E> {}
+unsafe impl<T: PlainOldData, E: PlainOldData> PlainOldData for std::result::Result<T, E> {}
 
 unsafe impl NonTrivialObject for OwnedHandle {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {

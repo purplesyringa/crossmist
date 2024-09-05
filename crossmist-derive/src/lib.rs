@@ -409,7 +409,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                         #deserialize_fields
                     }
                 }
-                impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}
+                unsafe impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}
             }
         }
         syn::Data::Enum(enum_) => {
@@ -513,7 +513,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                         }
                     }
                 }
-                impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}
+                unsafe impl #generics_impl ::crossmist::imp::PlainOldData for #ident #generics #generics_where_pod {}
             }
         }
         syn::Data::Union(_) => unimplemented!(),

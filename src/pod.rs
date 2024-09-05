@@ -1,7 +1,7 @@
 use crate::{imp::implements, Deserializer, NonTrivialObject, Serializer};
 use std::io::Result;
 
-pub trait PlainOldData: NonTrivialObject {}
+pub unsafe trait PlainOldData: NonTrivialObject {}
 
 mod private {
     pub trait Sealed {}
