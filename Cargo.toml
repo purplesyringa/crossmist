@@ -17,7 +17,7 @@ crossmist-derive = { version = "=1.0.2", path = "crossmist-derive" }
 paste = "1.0"
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "0.38.34", features = ["process", "std"], default-features = false }
+rustix = { version = "0.38.34", features = ["net", "process", "std"], default-features = false }
 nix = { version = "0.27", features = ["fs", "process", "sched", "signal", "socket", "uio"] }
 tokio = { version = "1", features = ["fs", "macros", "net", "rt", "sync"], optional = true }
 
