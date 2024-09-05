@@ -4,7 +4,7 @@
 
 use crate::{
     asynchronous,
-    handles::{AsRawHandle, RawHandle},
+    handles::{AsRawHandle, AsHandle, RawHandle, BorrowedHandle},
     FnOnceObject, Object,
 };
 use std::io::Result;
@@ -22,6 +22,10 @@ unsafe impl asynchronous::AsyncStream for Tokio {
         return stream.try_into().map(Self);
         #[cfg(windows)]
         return Ok(Self(stream.into()));
+    }
+
+    fn as_handle(&self) -> BorrowedHandle<'_> {
+        self.0.as_handle()
     }
 
     fn as_raw_handle(&self) -> RawHandle {

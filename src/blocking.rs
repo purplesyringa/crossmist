@@ -46,7 +46,7 @@
 
 use crate::{
     asynchronous,
-    handles::{AsRawHandle, RawHandle},
+    handles::{AsRawHandle, RawHandle, BorrowedHandle, AsHandle},
     FnOnceObject, KillHandle, Object,
 };
 use std::future::Future;
@@ -73,6 +73,10 @@ pub struct Blocking(asynchronous::SyncStream);
 unsafe impl asynchronous::AsyncStream for Blocking {
     fn try_new(stream: asynchronous::SyncStream) -> Result<Self> {
         Ok(Self(stream))
+    }
+
+    fn as_handle(&self) -> BorrowedHandle<'_> {
+        self.0.as_handle()
     }
 
     fn as_raw_handle(&self) -> RawHandle {

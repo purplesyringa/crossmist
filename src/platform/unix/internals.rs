@@ -8,7 +8,7 @@ use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::os::unix::{
-    io::{FromRawFd, OwnedFd, RawFd},
+    io::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd},
     net::UnixStream,
 };
 
@@ -27,7 +27,7 @@ pub(crate) fn socketpair() -> Result<(UnixStream, UnixStream)> {
 }
 
 pub(crate) struct SingleObjectSender<'a> {
-    socket_fd: RawFd,
+    socket_fd: BorrowedFd<'a>,
     bytes: &'a [u8],
     fds: Vec<RawFd>,
     buffer: Vec<u8>,
@@ -37,7 +37,7 @@ pub(crate) struct SingleObjectSender<'a> {
 }
 
 impl<'a> SingleObjectSender<'a> {
-    pub(crate) fn new<T: Object>(socket_fd: RawFd, value: &'a T, blocking: bool) -> Self {
+    pub(crate) fn new<T: Object>(socket_fd: BorrowedFd<'a>, value: &'a T, blocking: bool) -> Self {
         let bytes;
         let fds;
         let buffer;
@@ -77,7 +77,7 @@ impl<'a> SingleObjectSender<'a> {
             let is_last = buffer_end == self.data().len() && fds_end == self.fds.len();
 
             let n_written = sendmsg::<()>(
-                self.socket_fd,
+                self.socket_fd.as_raw_fd(),
                 &[
                     IoSlice::new(&[is_last as u8]),
                     IoSlice::new(&self.data()[self.data_pos..buffer_end]),

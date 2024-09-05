@@ -44,7 +44,7 @@
 #[cfg(unix)]
 use crate::internals::{socketpair, SingleObjectReceiver, SingleObjectSender};
 use crate::{
-    handles::{FromRawHandle, IntoRawHandle, RawHandle},
+    handles::{FromRawHandle, IntoRawHandle, RawHandle, BorrowedHandle},
     imp, subprocess, FnOnceObject, Object, Serializer,
 };
 use std::fmt;
@@ -73,6 +73,9 @@ pub(crate) type SyncStream = std::fs::File;
 pub unsafe trait AsyncStream: Object + Sized {
     /// Create the stream from a sync stream.
     fn try_new(stream: SyncStream) -> Result<Self>;
+
+    /// Borrow a handle to the underlying stream.
+    fn as_handle(&self) -> BorrowedHandle<'_>;
 
     /// Get a raw handle to the underlying stream.
     fn as_raw_handle(&self) -> RawHandle;
@@ -219,7 +222,7 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
         #[cfg(unix)]
         {
             let mut sender =
-                SingleObjectSender::new(self.fd.as_raw_handle(), value, Stream::IS_BLOCKING);
+                SingleObjectSender::new(self.fd.as_handle(), value, Stream::IS_BLOCKING);
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
@@ -362,7 +365,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
         #[cfg(unix)]
         {
             let mut sender =
-                SingleObjectSender::new(self.fd.as_raw_handle(), value, Stream::IS_BLOCKING);
+                SingleObjectSender::new(self.fd.as_handle(), value, Stream::IS_BLOCKING);
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]

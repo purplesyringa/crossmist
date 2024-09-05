@@ -27,10 +27,17 @@ pub trait AsRawHandle: io::AsRawFd {
         self.as_raw_fd()
     }
 }
+pub trait AsHandle: io::AsFd {
+    fn as_handle(&self) -> BorrowedHandle<'_> {
+        self.as_fd()
+    }
+}
 
 impl<T: io::FromRawFd> FromRawHandle for T {}
 impl<T: io::IntoRawFd> IntoRawHandle for T {}
 impl<T: io::AsRawFd> AsRawHandle for T {}
+impl<T: io::AsFd> AsHandle for T {}
 
 pub type RawHandle = io::RawFd;
+pub type BorrowedHandle<'a> = io::BorrowedFd<'a>;
 pub type OwnedHandle = io::OwnedFd;

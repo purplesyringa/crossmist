@@ -32,10 +32,17 @@ pub trait AsRawHandle: io::AsRawHandle {
         HANDLE(<Self as io::AsRawHandle>::as_raw_handle(self) as isize)
     }
 }
+pub trait AsHandle: io::AsHandle {
+    fn as_handle(&self) -> BorrowedHandle<'_> {
+        <Self as io::AsHandle>::as_handle(self)
+    }
+}
 
 impl<T: io::FromRawHandle> FromRawHandle for T {}
 impl<T: io::IntoRawHandle> IntoRawHandle for T {}
 impl<T: io::AsRawHandle> AsRawHandle for T {}
+impl<T: io::AsHandle> AsHandle for T {}
 
 pub type RawHandle = HANDLE;
+pub type BorrowedHandle<'a> = io::BorrowedHandle<'a>;
 pub type OwnedHandle = io::OwnedHandle;
