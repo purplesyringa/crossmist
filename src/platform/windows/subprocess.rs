@@ -13,10 +13,10 @@ use windows::{
     },
 };
 
-pub(crate) unsafe fn _spawn_child(
-    child_tx: BorrowedHandle<'_>,
-    child_rx: BorrowedHandle<'_>,
-    mut inherited_handles: Vec<BorrowedHandle<'_>>,
+pub(crate) unsafe fn _spawn_child<'a>(
+    child_tx: BorrowedHandle<'a>,
+    child_rx: BorrowedHandle<'a>,
+    mut inherited_handles: Vec<BorrowedHandle<'a>>,
 ) -> Result<OwnedHandle> {
     inherited_handles.push(child_tx);
     inherited_handles.push(child_rx);

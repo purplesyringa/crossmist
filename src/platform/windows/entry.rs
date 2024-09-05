@@ -1,6 +1,8 @@
 use crate::{
     channel, func,
-    handles::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle},
+    handles::{
+        AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle,
+    },
     Deserializer, FnOnceObject, Receiver, Sender,
 };
 use std::default::Default;
@@ -74,10 +76,8 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
         .ok()
         .expect("HANDLE_BROKER has already been initialized");
 
-    enable_cloexec(handle_tx.as_raw_handle())
-        .expect("Failed to set O_CLOEXEC for the file descriptor");
-    enable_cloexec(handle_rx.as_raw_handle())
-        .expect("Failed to set O_CLOEXEC for the file descriptor");
+    enable_cloexec(handle_tx.as_handle()).expect("Failed to set O_CLOEXEC for the file descriptor");
+    enable_cloexec(handle_rx.as_handle()).expect("Failed to set O_CLOEXEC for the file descriptor");
 
     let mut entry_rx = unsafe {
         Receiver::<(Vec<u8>, Vec<RawHandle>)>::from_raw_handle(handle_rx.into_raw_handle())
@@ -90,14 +90,15 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
 
     drop(entry_rx);
 
-    for handle in &entry_handles {
-        enable_cloexec(*handle).expect("Failed to set O_CLOEXEC for the file descriptor");
-    }
-
     let entry_handles = entry_handles
         .into_iter()
         .map(|handle| unsafe { OwnedHandle::from_raw_handle(handle) })
-        .collect();
+        .collect::<Vec<_>>();
+
+    for handle in &entry_handles {
+        enable_cloexec(handle.as_handle())
+            .expect("Failed to set O_CLOEXEC for the file descriptor");
+    }
 
     let mut deserializer = Deserializer::new(entry_data, entry_handles);
     let entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>> =
@@ -112,11 +113,11 @@ unsafe fn parse_handle(s: &str) -> OwnedHandle {
     ))
 }
 
-pub(crate) fn disable_cloexec(handle: RawHandle) -> std::io::Result<()> {
+pub(crate) fn disable_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<()> {
     use windows::Win32::Foundation;
     unsafe {
         Foundation::SetHandleInformation(
-            handle,
+            handle.as_raw_handle(),
             Foundation::HANDLE_FLAG_INHERIT.0,
             Foundation::HANDLE_FLAG_INHERIT,
         )
@@ -124,11 +125,11 @@ pub(crate) fn disable_cloexec(handle: RawHandle) -> std::io::Result<()> {
     };
     Ok(())
 }
-pub(crate) fn enable_cloexec(handle: RawHandle) -> std::io::Result<()> {
+pub(crate) fn enable_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<()> {
     use windows::Win32::Foundation;
     unsafe {
         Foundation::SetHandleInformation(
-            handle,
+            handle.as_raw_handle(),
             Foundation::HANDLE_FLAG_INHERIT.0,
             Foundation::HANDLE_FLAGS::default(),
         )
@@ -136,9 +137,11 @@ pub(crate) fn enable_cloexec(handle: RawHandle) -> std::io::Result<()> {
     };
     Ok(())
 }
-pub(crate) fn is_cloexec(handle: RawHandle) -> std::io::Result<bool> {
+pub(crate) fn is_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<bool> {
     use windows::Win32::Foundation;
     let mut flags = 0u32;
-    unsafe { Foundation::GetHandleInformation(handle, &mut flags as *mut u32).ok()? };
+    unsafe {
+        Foundation::GetHandleInformation(handle.as_raw_handle(), &mut flags as *mut u32).ok()?
+    };
     Ok((flags & Foundation::HANDLE_FLAG_INHERIT.0) == 0)
 }
