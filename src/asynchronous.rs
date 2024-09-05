@@ -44,7 +44,7 @@
 #[cfg(unix)]
 use crate::internals::{socketpair, SingleObjectReceiver, SingleObjectSender};
 use crate::{
-    handles::{BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle, AsRawHandle},
+    handles::{AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle},
     imp, subprocess, FnOnceObject, Object, Serializer,
 };
 use std::fmt;
