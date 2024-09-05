@@ -1,5 +1,4 @@
 use crate::{entry, Duplex, Object, asynchronous::AsyncStream};
-use nix::{libc::c_char, sched};
 use rustix::process::Pid;
 use std::ffi::{CStr, CString};
 use std::io::Result;
@@ -25,10 +24,10 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
 
     let mut stack = [0u8; 4096];
     Ok(Pid::from_raw(
-        sched::clone(
+        nix::sched::clone(
             Box::new(spawn_cb),
             &mut stack,
-            sched::CloneFlags::CLONE_VM | sched::CloneFlags::CLONE_VFORK,
+            nix::sched::CloneFlags::CLONE_VM | nix::sched::CloneFlags::CLONE_VFORK,
             Some(nix::libc::SIGCHLD),
         )?
         .as_raw(),
@@ -47,14 +46,13 @@ unsafe fn fork_child_main(
         entry::disable_cloexec(*fd)?;
     }
 
-    // nix::unistd::execv uses allocations
-    nix::libc::execv(
+    libc::execv(
         c"/proc/self/exe".as_ptr(),
         &[
             c"_crossmist_".as_ptr(),
             child_fd_str.as_ptr(),
             std::ptr::null(),
-        ] as *const *const c_char,
+        ] as *const *const libc::c_char,
     );
 
     Err(std::io::Error::last_os_error())
