@@ -124,7 +124,7 @@
 #![cfg_attr(
     feature = "nightly",
     feature(
-        arbitrary_self_types,
+        arbitrary_self_types_pointers,
         doc_cfg,
         doc_auto_cfg,
         fn_ptr_trait,
