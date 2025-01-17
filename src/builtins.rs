@@ -118,12 +118,28 @@ macro_rules! serialize_rev {
     }
 }
 
+#[cfg(docsrs)]
+#[doc(cfg(true), fake_variadic)]
+/// This trait is implemented for tuples up to 20 items long.
+unsafe impl<T: Object> NonTrivialObject for (T,) {
+    fn serialize_self_non_trivial<'a>(&'a self, _s: &mut Serializer<'a>) {}
+    unsafe fn deserialize_self_non_trivial(_d: &mut Deserializer) -> Result<Self> {
+        unimplemented!()
+    }
+}
+
+#[cfg(docsrs)]
+#[doc(cfg(true), fake_variadic)]
+/// This trait is implemented for tuples up to 20 items long.
+unsafe impl<T: PlainOldData> PlainOldData for (T,) {}
+
 macro_rules! impl_serialize_for_tuple {
     () => {};
 
     ($head:tt $($tail:tt)*) => {
         impl_serialize_for_tuple!($($tail)*);
 
+        #[cfg(not(docsrs))]
         paste! {
             unsafe impl<$([<T $tail>]: Object),*> NonTrivialObject for ($([<T $tail>],)*) {
                 #[allow(unused_variables)]

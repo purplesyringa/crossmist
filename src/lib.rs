@@ -134,6 +134,8 @@
         unboxed_closures,
     )
 )]
+#![cfg_attr(docsrs, feature(rustdoc_internals))]
+#![cfg_attr(docsrs, allow(internal_features))]
 #![deny(missing_debug_implementations)]
 
 extern crate self as crossmist;
