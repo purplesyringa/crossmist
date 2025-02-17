@@ -531,7 +531,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
         // This is synchronous, but should be really fast
         #[cfg(unix)]
         {
-            let status = rustix::process::waitpid(
+            let (_pid, status) = rustix::process::waitpid(
                 Some(self.proc_handle),
                 rustix::process::WaitOptions::empty(),
             )?
@@ -610,7 +610,7 @@ impl KillHandle {
         #[cfg(unix)]
         rustix::process::kill_process(
             rustix::process::Pid::from_raw(self.proc_id).unwrap(),
-            rustix::process::Signal::Kill,
+            rustix::process::Signal::KILL,
         )?;
         #[cfg(windows)]
         unsafe {

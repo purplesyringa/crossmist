@@ -72,7 +72,7 @@ impl<'a> SingleObjectSender<'a> {
     }
 
     pub(crate) fn send_next(&mut self) -> Result<()> {
-        let mut space = [0; cmsg_space!(ScmRights(MAX_PACKET_FDS))];
+        let mut space = [MaybeUninit::uninit(); cmsg_space!(ScmRights(MAX_PACKET_FDS))];
         let mut cmsg_buffer = SendAncillaryBuffer::new(&mut space);
 
         loop {
@@ -151,7 +151,7 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
             "Calling recv_next after it returned Ok(Some(...)) or Err(...) is undefined behavior",
         );
 
-        let mut space = [0; cmsg_space!(ScmRights(MAX_PACKET_FDS))];
+        let mut space = [MaybeUninit::uninit(); cmsg_space!(ScmRights(MAX_PACKET_FDS))];
         let mut cmsg_buffer = RecvAncillaryBuffer::new(&mut space);
 
         loop {
