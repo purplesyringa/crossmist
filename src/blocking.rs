@@ -52,14 +52,10 @@ use crate::{
 use std::future::Future;
 use std::io::Result;
 use std::pin::pin;
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use std::task::{Context, Poll, Waker};
 
 fn block_on<F: Future>(f: F) -> F::Output {
-    // https://github.com/rust-lang/rust/issues/98286
-    const VTABLE: RawWakerVTable = RawWakerVTable::new(|_| RAW, |_| {}, |_| {}, |_| {});
-    const RAW: RawWaker = RawWaker::new(std::ptr::null(), &VTABLE);
-    let waker = unsafe { Waker::from_raw(RAW) };
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = Context::from_waker(Waker::noop());
     match pin!(f).poll(&mut cx) {
         Poll::Ready(value) => value,
         Poll::Pending => unreachable!(),
