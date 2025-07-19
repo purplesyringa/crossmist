@@ -19,7 +19,10 @@ pub struct Tokio(
 unsafe impl asynchronous::AsyncStream for Tokio {
     fn try_new(stream: asynchronous::SyncStream) -> Result<Self> {
         #[cfg(unix)]
-        return stream.try_into().map(Self);
+        {
+            stream.set_nonblocking(true)?;
+            stream.try_into().map(Self)
+        }
         #[cfg(windows)]
         return Ok(Self(stream.into()));
     }
