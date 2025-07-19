@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 4 * * 1'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux-native:
+    timeout-minutes: 3
+    runs-on: ${{ matrix.machine.os }}
+    if: success() || failure()
+    strategy:
+      fail-fast: false
+      matrix:
+        libc: [gnu, musl]
+        machine:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+    env:
+      target: ${{ matrix.machine.arch }}-unknown-linux-${{ matrix.libc }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup update nightly && rustup default nightly
+      - name: Add target
+        run: rustup target add $target
+      - name: Test (debug)
+        run: cargo test --all-features --target $target
+      - name: Test (release)
+        run: cargo test --all-features --target $target --release
+
+  windows:
+    timeout-minutes: 3
+    runs-on: ${{ matrix.machine.os }}
+    if: success() || failure()
+    strategy:
+      fail-fast: false
+      matrix:
+        machine:
+          - os: windows-latest
+            arch: x86_64
+          - os: windows-latest
+            arch: i686
+          - os: windows-11-arm
+            arch: aarch64
+        abi: [msvc, gnu, gnullvm]
+        exclude:
+          # rustc does not support aarch64-pc-windows-gnu (2025-06-03)
+          - machine:
+              arch: aarch64
+            abi: gnu
+        include:
+          - machine:
+              os: windows-11-arm
+              arch: arm64ec
+            abi: msvc
+    env:
+      host: ${{ matrix.machine.arch == 'arm64ec' && 'aarch64' || matrix.machine.arch }}-pc-windows-${{ matrix.abi == 'gnullvm' && (matrix.machine.arch == 'aarch64' && 'msvc' || 'gnu') || matrix.abi }}
+      target: ${{ matrix.machine.arch }}-pc-windows-${{ matrix.abi }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set default-host
+        run: rustup set default-host $host
+      - name: Install Rust
+        run: rustup update nightly && rustup default nightly
+      - name: Add target
+        run: rustup target add $target
+      - name: Install and configure LLVM-MinGW
+        if: matrix.abi == 'gnullvm'
+        run: >
+          curl -L https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-${{ matrix.machine.arch }}.zip -o llvm-mingw.zip &&
+          7z x llvm-mingw.zip &&
+          echo "[target.${{ matrix.machine.arch }}-pc-windows-gnullvm]" >~/.cargo/config.toml &&
+          echo "linker = '$(pwd -W)/llvm-mingw-20250528-ucrt-${{ matrix.machine.arch }}/bin/clang'" >>~/.cargo/config.toml &&
+          echo "rustflags = ['-C', 'target-feature=+crt-static']" >>~/.cargo/config.toml &&
+          echo "rustdocflags = ['-C', 'target-feature=+crt-static']" >>~/.cargo/config.toml
+      - name: Test (debug)
+        run: ci/cargo-save "Test (debug)" test --all-features --target $target
+      - name: Test (release)
+        run: ci/cargo-save "Test (release)" test --all-features --target $target --release
+      - name: Upload built tests for Wine
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests-${{ env.target }}
+          path: saved-jobs
+          retention-days: 1
+
+  wine:
+    timeout-minutes: 3
+    runs-on: ${{ matrix.machine.os }}
+    needs: windows
+    strategy:
+      fail-fast: false
+      matrix:
+        machine:
+          - os: ubuntu-latest
+            ubuntu_arch: amd64
+            rust_arch: x86_64
+          - os: ubuntu-latest
+            ubuntu_arch: i386
+            rust_arch: i686
+          # XXX: wine hangs on ubuntu-24.04-arm AND ubuntu-22.04-arm provides ancient wine
+          # https://github.com/actions/partner-runner-images/issues/31
+          - os: ubuntu-22.04-arm
+            ubuntu_arch: arm64
+            rust_arch: aarch64
+        abi: [msvc, gnu, gnullvm]
+        exclude:
+          - machine:
+              rust_arch: aarch64
+            abi: gnu
+        # Wine doesn't support arm64ec out of the box yet, see
+        # https://bugs.winehq.org/show_bug.cgi?id=58092
+        # include:
+        #   - machine:
+        #       os: ubuntu-22.04-arm
+        #       ubuntu_arch: arm64
+        #       rust_arch: arm64ec
+        #     abi: msvc
+    env:
+      WINEPREFIX: /tmp/prefix
+      WINEDEBUG: fixme+all,err+all  # :ferrisClueless:
+      target: ${{ matrix.machine.rust_arch }}-pc-windows-${{ matrix.abi }}
+    container: debian:trixie-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install wine
+        run: |
+          set -exuo pipefail
+          dpkg --add-architecture ${{ matrix.machine.ubuntu_arch }}
+          apt-get update
+          apt-get -y install wine:${{ matrix.machine.ubuntu_arch }}
+          wineboot
+      - name: Download built tests
+        uses: actions/download-artifact@v4
+        with:
+          name: tests-${{ env.target }}
+          path: saved-jobs
+      - name: Run tests
+        run: ci/run-saved-jobs
+
+  test-stable:
+    timeout-minutes: 3
+    runs-on: ubuntu-latest
+    if: success() || failure()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: Test (debug)
+        run: cargo test --all-features
+      - name: Test (release)
+        run: cargo test --all-features --release
+
+  lint:
+    timeout-minutes: 2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup update nightly && rustup default nightly
+      - name: Install rustfmt and clippy
+        run: rustup component add rustfmt clippy
+      - name: Rustfmt
+        run: cargo fmt -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings

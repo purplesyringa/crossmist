@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -e
+
+if [[ "$1" == --run ]]; then
+    mkdir -p saved-jobs
+
+    description="$2"
+    path="$(mktemp -p saved-jobs)"
+    cp "$3" "$path"
+    chmod +x "$path"
+    shift 3
+
+    "$path" "$@"
+    exit_code="$?"
+
+    printf -v code "%q " run "$description" "$exit_code" "$path" "$@"
+    echo "$code" >>saved-jobs/list
+    exit "$exit_code"
+fi
+
+# Explicitly specifying the native path to shell is necessary for Windows
+case "$OSTYPE" in
+    msys*|cygwin*)
+        shell="$(cygpath -w "$SHELL")"
+        ;;
+    *)
+        shell="$SHELL"
+        ;;
+esac
+
+description="$1"
+shift
+exec cargo --config "target.'$target'.runner = ['$shell', '$(dirname "$0")/cargo-save', '--run', '$description']" "$@"
