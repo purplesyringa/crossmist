@@ -538,19 +538,12 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
             .unwrap();
             if status.exit_status() == Some(0) {
                 value.ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::Other,
-                        "The subprocess terminated without returning a value",
-                    )
+                    Error::other("The subprocess terminated without returning a value")
                 })
             } else {
-                Err(Error::new(
-                    ErrorKind::Other,
-                    format!(
-                        "The subprocess did not terminate successfully: {:?}",
-                        status
-                    ),
-                ))
+                Err(Error::other(format!(
+                    "The subprocess did not terminate successfully: {status:?}"
+                )))
             }
         }
         #[cfg(windows)]
@@ -574,16 +567,12 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
             }
             if code == 0 {
                 value.ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::Other,
-                        "The subprocess terminated without returning a value",
-                    )
+                    Error::other("The subprocess terminated without returning a value")
                 })
             } else {
-                Err(Error::new(
-                    ErrorKind::Other,
-                    format!("The subprocess terminated with exit code {code}"),
-                ))
+                Err(Error::other(format!(
+                    "The subprocess terminated with exit code {code}"
+                )))
             }
         }
     }

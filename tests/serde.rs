@@ -78,7 +78,7 @@ impl Trait for ImplB {
 
 impl Trait for bool {
     fn say(&self) -> String {
-        format!("bool says: {}", self)
+        format!("bool says: {self}")
     }
 }
 

@@ -83,6 +83,7 @@ fn swap_complex_argument() {
 #[test]
 fn inc_with_boxed() {
     #[crossmist::func]
+    #[expect(clippy::boxed_local, reason = "intended")]
     fn inner(item: Box<i32>) -> Box<i32> {
         Box::new(*item + 1)
     }
@@ -92,6 +93,7 @@ fn inc_with_boxed() {
 #[test]
 fn inc_with_vec_and_box() {
     #[crossmist::func]
+    #[expect(clippy::boxed_local, reason = "intended")]
     fn inner(vec: Vec<i32>, box_: Box<[i32]>) -> (i32, i32) {
         (vec.iter().sum(), box_.iter().sum())
     }
@@ -129,7 +131,7 @@ impl Trait for ImplB {
 
 impl Trait for bool {
     fn say(&self) -> String {
-        format!("bool says: {}", self)
+        format!("bool says: {self}")
     }
 }
 
@@ -297,7 +299,7 @@ fn exitting() {
     fn inner() {
         std::process::exit(0);
     }
-    assert_eq!(inner.run().unwrap(), ());
+    inner.run().unwrap();
 }
 
 #[test]

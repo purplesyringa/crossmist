@@ -185,10 +185,7 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
 
             for cmsg in cmsg_buffer.drain() {
                 let RecvAncillaryMessage::ScmRights(rights) = cmsg else {
-                    return Err(Error::new(
-                        ErrorKind::Other,
-                        "Unexpected kind of cmsg on stream",
-                    ));
+                    return Err(Error::other("Unexpected kind of cmsg on stream"));
                 };
                 self.fds.extend(rights);
             }
@@ -197,15 +194,12 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
                 if self.data_pos == 0 && self.fds.is_empty() {
                     return Ok(None);
                 } else {
-                    return Err(Error::new(ErrorKind::Other, "Unterminated data on stream"));
+                    return Err(Error::other("Unterminated data on stream"));
                 }
             }
 
             if message.bytes == 0 {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "Unexpected empty message on stream",
-                ));
+                return Err(Error::other("Unexpected empty message on stream"));
             }
 
             self.data_pos += message.bytes - 1;

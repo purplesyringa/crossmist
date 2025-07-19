@@ -150,5 +150,5 @@ async fn exitting() {
     async fn inner() {
         std::process::exit(0);
     }
-    assert_eq!(inner.run_tokio().await.unwrap(), ());
+    inner.run_tokio().await.unwrap();
 }
