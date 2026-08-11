@@ -126,7 +126,6 @@
     feature(
         arbitrary_self_types_pointers,
         doc_cfg,
-        doc_auto_cfg,
         fn_ptr_trait,
         fn_traits,
         never_type,
