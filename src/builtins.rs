@@ -11,7 +11,6 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedL
 use std::hash::{BuildHasher, Hash};
 use std::io::Result;
 use std::mem::MaybeUninit;
-use std::os::raw::c_void;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -192,7 +191,7 @@ unsafe impl<T: Object> Object for Option<T> {
 
 unsafe impl<T: 'static + Object> Object for Rc<T> {
     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        match s.learn_cyclic(Rc::as_ptr(self) as *const c_void) {
+        match s.learn_cyclic(Rc::as_ptr(self) as *const ()) {
             None => {
                 s.serialize_temporary(0usize);
                 s.serialize(&**self);
@@ -219,7 +218,7 @@ unsafe impl<T: 'static + Object> Object for Rc<T> {
 
 unsafe impl<T: 'static + Object> Object for Arc<T> {
     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        match s.learn_cyclic(Arc::as_ptr(self) as *const c_void) {
+        match s.learn_cyclic(Arc::as_ptr(self) as *const ()) {
             None => {
                 s.serialize_temporary(0usize);
                 s.serialize(&**self);

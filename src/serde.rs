@@ -9,7 +9,6 @@ use std::collections::{HashMap, hash_map};
 use std::fmt;
 use std::io::Result;
 use std::num::NonZeroUsize;
-use std::os::raw::c_void;
 
 /// Stateful serialization.
 ///
@@ -18,7 +17,7 @@ use std::os::raw::c_void;
 pub struct Serializer<'fd> {
     data: Vec<u8>,
     handles: Vec<BorrowedHandle<'fd>>,
-    cyclic_ids: HashMap<*const c_void, NonZeroUsize>,
+    cyclic_ids: HashMap<*const (), NonZeroUsize>,
 }
 
 impl<'fd> Serializer<'fd> {
@@ -71,7 +70,7 @@ impl<'fd> Serializer<'fd> {
     }
 
     /// Check if an object has already been serialized in this session and return its index.
-    pub fn learn_cyclic(&mut self, ptr: *const c_void) -> Option<NonZeroUsize> {
+    pub fn learn_cyclic(&mut self, ptr: *const ()) -> Option<NonZeroUsize> {
         let len_before = self.cyclic_ids.len();
         match self.cyclic_ids.entry(ptr) {
             hash_map::Entry::Occupied(occupied) => Some(*occupied.get()),
@@ -257,7 +256,6 @@ impl fmt::Debug for Deserializer {
 /// ```rust
 /// # use crossmist::{Deserializer, Object, Serializer};
 /// # use std::io::Result;
-/// # use std::os::raw::c_void;
 /// # use std::rc::Rc;
 /// struct CustomRc<T: 'static>(Rc<T>);
 ///
@@ -265,7 +263,7 @@ impl fmt::Debug for Deserializer {
 ///     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
 ///         // Any unique identifier works, but it must be *globally* unique, not just for objects
 ///         // of the same type.
-///         match s.learn_cyclic(Rc::as_ptr(&self.0) as *const c_void) {
+///         match s.learn_cyclic(Rc::as_ptr(&self.0) as *const ()) {
 ///             None => {
 ///                 // This is the first time we see this object -- encode a marker followed by its
 ///                 // contents. Under the hood, learn_cyclic remembers this object.
