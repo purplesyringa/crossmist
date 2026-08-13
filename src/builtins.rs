@@ -16,26 +16,43 @@ use std::os::raw::c_void;
 use std::rc::Rc;
 use std::sync::Arc;
 
+macro_rules! impl_pod_body {
+    () => {
+        // Newer Rust cannot detect the bound for these objects and reports false.
+        // For now, let’s just write raw bytes, so serialization is correct.
+        #[allow(unreachable_code)]
+        fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
+            s.write(unsafe {
+                std::slice::from_raw_parts(
+                    self as *const Self as *const u8,
+                    std::mem::size_of::<Self>(),
+                )
+            });
+        }
+        #[allow(unreachable_code)]
+        unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+            let mut value = MaybeUninit::<Self>::uninit();
+            unsafe {
+                d.read(std::slice::from_raw_parts_mut(
+                    value.as_mut_ptr() as *mut u8,
+                    std::mem::size_of::<Self>(),
+                ));
+                Ok(value.assume_init())
+            }
+        }
+    };
+}
+
 macro_rules! impl_pod {
     ([$($generics:tt)*] for $t:ty) => {
         unsafe impl<$($generics)*> NonTrivialObject for $t {
-            fn serialize_self_non_trivial<'a>(&'a self, _s: &mut Serializer<'a>) {
-                unreachable!()
-            }
-            unsafe fn deserialize_self_non_trivial(_d: &mut Deserializer) -> Result<Self> {
-                unreachable!()
-            }
+            impl_pod_body!();
         }
         unsafe impl<$($generics)*> PlainOldData for $t {}
     };
     (for $t:ty) => {
         unsafe impl NonTrivialObject for $t {
-            fn serialize_self_non_trivial<'a>(&'a self, _s: &mut Serializer<'a>) {
-                unreachable!()
-            }
-            unsafe fn deserialize_self_non_trivial(_d: &mut Deserializer) -> Result<Self> {
-                unreachable!()
-            }
+            impl_pod_body!();
         }
         unsafe impl PlainOldData for $t {}
     };
