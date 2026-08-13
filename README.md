@@ -30,8 +30,8 @@ Check out [docs.rs](https://docs.rs/crossmist/latest/crossmist/).
 This crate allows you to easily perform computations in another process without creating a separate executable or parsing command line arguments manually. For example, the simplest example, computing a sum of several numbers in a one-shot subprocess, looks like this:
 
 ```rust
-#[crossmist::main]
 fn main() {
+    crossmist::init();
     println!("5 + 7 = {}", add.run(vec![5, 7]).unwrap());
 }
 
@@ -44,8 +44,8 @@ fn add(nums: Vec<i32>) -> i32 {
 This crate also supports long-lived tasks with constant cross-process communication:
 
 ```rust
-#[crossmist::main]
 fn main() {
+    crossmist::init();
     let (mut ours, theirs) = crossmist::duplex().unwrap();
     add.spawn(theirs).expect("Failed to spawn child");
     for i in 1..=5 {

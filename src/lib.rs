@@ -6,8 +6,8 @@
 //! example, computing a sum of several numbers in a one-shot subprocess, looks like this:
 //!
 //! ```rust
-//! #[crossmist::main]
 //! fn main() {
+//!     crossmist::init();
 //!     println!("5 + 7 = {}", add.run(vec![5, 7]).unwrap());
 //! }
 //!
@@ -20,8 +20,8 @@
 //! This crate also supports long-lived tasks with constant cross-process communication:
 //!
 //! ```rust
-//! #[crossmist::main]
 //! fn main() {
+//!     crossmist::init();
 //!     let (mut ours, theirs) = crossmist::duplex().unwrap();
 //!     add.spawn(theirs).expect("Failed to spawn child");
 //!     for i in 1..=5 {
@@ -93,8 +93,8 @@
 //! you can kill it:
 //!
 //! ```rust
-//! #[crossmist::main]
 //! fn main() {
+//!     crossmist::init();
 //!     let mut child = long_computation.spawn().expect("Failed to spawn child");
 //!     let kill_handle = child.get_kill_handle();
 //!     std::thread::spawn(move || {
@@ -167,15 +167,15 @@ extern crate self as crossmist;
 /// For example:
 ///
 /// ```rust
-/// use crossmist::{func, main};
+/// use crossmist::func;
 ///
 /// #[func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
 ///
-/// #[main]
 /// fn main() {
+///     crossmist::init();
 ///     assert_eq!(example.spawn(5, 7).unwrap().join().unwrap(), 12);
 ///     assert_eq!(example.run(5, 7).unwrap(), 12);
 /// }
@@ -186,15 +186,15 @@ extern crate self as crossmist;
 /// [`std::ops::FnMut`], and [`std::ops::Fn`], respectively:
 ///
 /// ```rust
-/// use crossmist::{FnObject, func, main};
+/// use crossmist::{FnObject, func};
 ///
 /// #[func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
 ///
-/// #[main]
 /// fn main() {
+///     crossmist::init();
 ///     assert_eq!(example.call_object((5, 7)), 12);
 /// }
 /// ```
@@ -203,15 +203,15 @@ extern crate self as crossmist;
 /// same behavior as if `#[func]` was not used:
 ///
 /// ```ignore
-/// use crossmist::{FnObject, func, main};
+/// use crossmist::{FnObject, func};
 ///
 /// #[func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
 ///
-/// #[main]
 /// fn main() {
+///     crossmist::init();
 ///     assert_eq!(example(5, 7), 12);
 /// }
 /// ```
@@ -228,8 +228,8 @@ extern crate self as crossmist;
 /// Do:
 ///
 /// ```rust
-/// #[crossmist::main]
 /// fn main() {
+///     crossmist::init();
 ///     let child = long_running_task.spawn().expect("Failed to spawn child");
 ///     // ...
 ///     let need_child_result = false;  // assume this is computed from some external data
@@ -250,8 +250,8 @@ extern crate self as crossmist;
 /// Don't:
 ///
 /// ```no_run
-/// #[crossmist::main]
 /// fn main() {
+///     crossmist::init();
 ///     let child = long_running_task.spawn().expect("Failed to spawn child");
 ///     // ...
 ///     let need_child_result = false;  // assume this is computed from some external data
@@ -275,8 +275,8 @@ extern crate self as crossmist;
 /// Do:
 ///
 /// ```rust
-/// #[crossmist::main]
 /// fn main() {
+///     crossmist::init();
 ///     long_running_task.spawn().expect("Failed to spawn child");
 /// }
 ///
@@ -289,8 +289,8 @@ extern crate self as crossmist;
 /// Do:
 ///
 /// ```rust
-/// #[crossmist::main]
 /// fn main() {
+///     crossmist::init();
 ///     let child = long_running_task.spawn().expect("Failed to spawn child");
 ///     // ...
 ///     child.join().expect("Child died");
@@ -340,61 +340,38 @@ extern crate self as crossmist;
 /// vice versa:
 ///
 /// ```rust
-/// use crossmist::{func, main};
+/// use crossmist::func;
 ///
 /// #[func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
 ///
-/// #[main]
+/// fn main() {
+///     crossmist::init();
+///     async_main();
+/// }
+///
 /// #[tokio::main(flavor = "current_thread")]
-/// async fn main() {
+/// async fn async_main() {
 ///     assert_eq!(example.run_tokio(5, 7).await.unwrap(), 12);
 /// }
 /// ```
 ///
 /// ```rust
-/// use crossmist::{func, main};
+/// use crossmist::func;
 ///
 /// #[func(tokio(flavor = "current_thread"))]
 /// async fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
 ///
-/// #[main]
 /// fn main() {
+///     crossmist::init();
 ///     assert_eq!(example.run(5, 7).unwrap(), 12);
 /// }
 /// ```
 pub use crossmist_derive::func;
-
-/// Setup an entrypoint.
-///
-/// This attribute must always be added to `fn main`:
-///
-/// ```rust
-/// #[crossmist::main]
-/// fn main() {
-///     // ...
-/// }
-/// ```
-///
-/// Without it, starting child processes will panic.
-///
-/// This attribute may be mixed with other attributes, e.g. `#[tokio::main]`. In this case, this
-/// attribute should be the first in the list:
-///
-/// ```rust
-/// #[crossmist::main]
-/// #[tokio::main(flavor = "current_thread")]
-/// async fn main() {
-///     // ...
-/// }
-/// ```
-///
-/// If applying the attribute to `main` is not an option, consider [`init`] instead.
-pub use crossmist_derive::main;
 
 /// Make a structure or a enum serializable.
 ///

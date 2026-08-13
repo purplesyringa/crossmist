@@ -11,7 +11,7 @@ pub static INITIALIZED: AtomicBool = AtomicBool::new(false);
 pub(crate) fn perform_sanity_checks() {
     assert!(
         INITIALIZED.load(Ordering::Acquire),
-        "#[crossmist::main] or a call to crossmist::init() is missing"
+        "crossmist::init() wasn't called"
     );
 }
 
@@ -77,8 +77,8 @@ pub(crate) use implements;
 ///     std::process::exit(0)
 /// }
 ///
-/// #[crossmist::main]
 /// fn main() {
+///     crossmist::init();
 ///     conjure_zst();
 /// }
 /// ```
@@ -90,11 +90,26 @@ impl IsVoid for () {}
 
 /// Initialize the crossmist runtime.
 ///
-/// This function should always be called at the beginning of the program. It is automatically
-/// called by `#[crossmist::main]`.
+/// This function should always be called at the beginning of the program.
 ///
 /// When crossmist spawns child processes, they start executing `main`. Calling [`init`] lets
 /// crossmist passes control to the function that the process is actually supposed to be executing.
+/// Without it, starting child processes will panic.
+///
+/// `init` should preferably be invoked before much work is done. For example, in asynchronous
+/// applications, avoid annotating `main` with `#[tokio::main]` directly, and prefer:
+///
+/// ```rust
+/// fn main() {
+///     crossmist::init();
+///     async_main();
+/// }
+///
+/// #[tokio::main(flavor = "current_thread")]
+/// async fn async_main() {
+///     // ...
+/// }
+/// ```
 pub fn init() {
     if INITIALIZED.swap(true, Ordering::AcqRel) {
         return;

@@ -20,8 +20,8 @@
 //! const CAT: Configuration = Configuration { meows: true, woofs: false };
 //! const DOG: Configuration = Configuration { meows: false, woofs: true };
 //!
-//! #[crossmist::main]
 //! fn main() {
+//!     crossmist::init();
 //!     test.run(static_ref!(Configuration, CAT));
 //! }
 //!
@@ -58,8 +58,8 @@
 //!     }
 //! }
 //!
-//! #[crossmist::main]
 //! fn main() {
+//!     crossmist::init();
 //!     test.run(static_ref!(&'static dyn Speak, &Cat));
 //! }
 //!

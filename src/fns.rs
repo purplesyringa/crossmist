@@ -9,10 +9,10 @@
 //! To fix the following code:
 //!
 //! ```compile_fail
-//! use crossmist::{func, main, Object};
+//! use crossmist::{func, Object};
 //!
-//! #[main]
 //! fn main() {
+//!     crossmist::init();
 //!     let x = 7;
 //!     println!("{}", go.run(5, Box::new(|y| x + y)).unwrap());
 //! }
@@ -26,10 +26,10 @@
 //! ...we have to use a macro, and also a different invocation syntax:
 //!
 //! ```rust
-//! use crossmist::{FnObject, func, lambda, main};
+//! use crossmist::{FnObject, func, lambda};
 //!
-//! #[main]
 //! fn main() {
+//!     crossmist::init();
 //!     let x = 7;
 //!     println!("{}", go.run(5, lambda! { move(x: i32) |y: i32| -> i32 { x + y } }).unwrap());
 //! }
@@ -49,10 +49,10 @@
 //! syntax is used:
 //!
 //! ```rust
-//! use crossmist::{FnObject, func, lambda, main};
+//! use crossmist::{FnObject, func, lambda};
 //!
-//! #[main]
 //! fn main() {
+//!     crossmist::init();
 //!     let x = Box::new(7);
 //!     println!("{}", go.run(5, lambda! { move(&x: &Box<i32>) |y: i32| -> i32 { **x + y } }).unwrap());
 //! }
@@ -70,10 +70,11 @@
 //! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`:
 //!
 //! ```rust
-//! use crossmist::{BindValue, FnObject, func, main};
+//! use crossmist::{BindValue, FnObject, func};
 //!
-//! #[main]
 //! fn main() {
+//!     crossmist::init();
+//!
 //!     #[func]
 //!     fn add(x: i32, y: i32) -> i32 {
 //!         x + y
@@ -591,9 +592,9 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// Simplest example:
 ///
 /// ```rust
-/// # use crossmist::{lambda, main};
-/// #[main]
+/// # use crossmist::lambda;
 /// fn main() {
+///     crossmist::init();
 ///     let func = lambda! { |a: i32, b: i32| -> i32 { a + b } };
 ///     assert_eq!(func.run(5, 7).unwrap(), 12);
 /// }
@@ -602,9 +603,9 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// With captures:
 ///
 /// ```rust
-/// # use crossmist::{FnObject, FnOnceObject, func, lambda, main};
-/// #[main]
+/// # use crossmist::{FnObject, FnOnceObject, func, lambda};
 /// fn main() {
+///     crossmist::init();
 ///     let a = 5;
 ///     let func = lambda! { move(a: i32) |b: i32| -> i32 { a + b } };
 ///     // run/spawn do not work directly, but you may still call/pass the function
@@ -624,9 +625,9 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// unnecessary):
 ///
 /// ```rust
-/// # use crossmist::{FnOnceObject, lambda, main};
-/// # #[main]
+/// # use crossmist::{FnOnceObject, lambda};
 /// # fn main() {
+/// # crossmist::init();
 /// let a = "Hello, ".to_string();
 /// // a is accessible by value when the lambda is executed
 /// let prepend_hello: Box<dyn FnOnceObject<(&str,), Output = String>> =
@@ -638,9 +639,9 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// ```
 ///
 /// ```rust
-/// # use crossmist::{FnMutObject, lambda, main};
-/// # #[main]
+/// # use crossmist::{FnMutObject, lambda};
 /// # fn main() {
+/// # crossmist::init();
 /// let cache = vec![0, 1];
 /// // cache is accessible by a mutable reference when the lambda is executed
 /// let mut fibonacci: Box<dyn FnMutObject<(usize,), Output = u32>> = lambda! {
@@ -658,9 +659,9 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// ```
 ///
 /// ```rust
-/// # use crossmist::{FnObject, lambda, main};
-/// # #[main]
+/// # use crossmist::{FnObject, lambda};
 /// # fn main() {
+/// # crossmist::init();
 /// let s = "Hello, world!".to_string();
 /// // s is accessible by an immutable reference when the lambda is executed
 /// let count_occurrences: Box<dyn FnObject<(char,), Output = usize>> =

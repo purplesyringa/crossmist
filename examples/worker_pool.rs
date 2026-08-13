@@ -104,9 +104,8 @@ async fn worker(
     }
 }
 
-#[crossmist::main]
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+async fn async_main() -> Result<()> {
     let pool = Arc::new(WorkerPool::new(4).await?);
     let mut tasks = Vec::new();
     for x in 1..=5 {
@@ -127,4 +126,9 @@ async fn main() -> Result<()> {
         .close()
         .await?;
     Ok(())
+}
+
+fn main() -> Result<()> {
+    crossmist::init();
+    async_main()
 }

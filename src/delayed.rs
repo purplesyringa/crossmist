@@ -9,13 +9,13 @@
 //! In these cases, the following pattern may be used:
 //!
 //! ```rust
-//! use crossmist::{Delayed, func, main, Object};
+//! use crossmist::{Delayed, func, Object};
 //!
 //! #[derive(Object)]
 //! struct ComplexType;
 //!
-//! #[main]
 //! fn main() {
+//!     crossmist::init();
 //!     go.run(Delayed::new(ComplexType)).unwrap();
 //! }
 //!

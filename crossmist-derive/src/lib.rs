@@ -295,24 +295,6 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-#[proc_macro_attribute]
-pub fn main(_meta: TokenStream, input: TokenStream) -> TokenStream {
-    let mut input = parse_macro_input!(input as syn::ItemFn);
-
-    input.sig.ident = syn::Ident::new("crossmist_old_main", input.sig.ident.span());
-
-    let expanded = quote! {
-        #input
-
-        fn main() -> impl ::std::process::Termination {
-            ::crossmist::init();
-            crossmist_old_main()
-        }
-    };
-
-    TokenStream::from(expanded)
-}
-
 #[proc_macro_derive(Object)]
 pub fn derive_object(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
