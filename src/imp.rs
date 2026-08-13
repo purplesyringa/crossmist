@@ -1,4 +1,4 @@
-pub use crate::{delayed::Delayed, pod::PlainOldData};
+pub use crate::delayed::Delayed;
 
 #[cfg(feature = "smol")]
 pub use async_io;
@@ -14,42 +14,6 @@ pub(crate) fn perform_sanity_checks() {
         "crossmist::init() wasn't called"
     );
 }
-
-// We use this little trick to implement the 'trivial_bounds' feature in stable Rust. Instead of
-// 'where T: Bounds', we use 'where for<'a> Identity<'a, T>: Bounds'. This seems to confuse the
-// hell out of rustc and makes it believe the where clause is not trivial. Credits go to
-// @danielhenrymantilla at GitHub, see:
-// - https://github.com/getditto/safer_ffi/blob/65a8a2d8ccfd5ef5b5f58a495bc8cea9da07c6fc/src/_lib.rs#L519-L534
-// - https://github.com/getditto/safer_ffi/blob/64b921bdcabe441b957742332773248af6677a89/src/proc_macro/utils/trait_impl_shenanigans.rs#L6-L28
-pub type Identity<'a, T> = <T as IdentityImpl<'a>>::Type;
-pub trait IdentityImpl<'a> {
-    type Type: ?Sized;
-}
-impl<T: ?Sized> IdentityImpl<'_> for T {
-    type Type = Self;
-}
-
-macro_rules! implements {
-    ($type:ty: $($trait:tt)*) => {{
-        // Workaround for a false positive "trait is never used" warning
-        #[allow(dead_code)]
-        fn use_trait<T: $($trait)*>(_: T) {}
-
-        // https://stackoverflow.com/a/71721609
-        struct Probe<'a, T: ?Sized>(&'a std::cell::Cell<bool>, std::marker::PhantomData<T>);
-        impl<T: ?Sized> Clone for Probe<'_, T> {
-            fn clone(&self) -> Self {
-                self.0.set(false);
-                Self(self.0, self.1)
-            }
-        }
-        impl<T: $($trait)*> Copy for Probe<'_, T> {}
-        let cell = std::cell::Cell::new(true);
-        let _ = [Probe(&cell, std::marker::PhantomData::<$type>)].clone();
-        cell.get()
-    }};
-}
-pub(crate) use implements;
 
 /// Returns Some(()) if T is (), None otherwise
 ///

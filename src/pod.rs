@@ -1,7 +1,5 @@
-use crate::{Deserializer, NonTrivialObject, Serializer, imp::implements};
+use crate::{Deserializer, NonTrivialObject, Serializer};
 use std::io::Result;
-
-pub unsafe trait PlainOldData: NonTrivialObject {}
 
 mod private {
     pub trait Sealed {}
@@ -52,30 +50,15 @@ pub trait Object: private::Sealed {
 impl<T: NonTrivialObject> private::Sealed for T {}
 impl<T: NonTrivialObject> Object for T {
     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        if implements!(T: PlainOldData) {
-            s.write(unsafe {
-                std::slice::from_raw_parts(self as *const T as *const u8, std::mem::size_of::<T>())
-            });
-        } else {
-            self.serialize_self_non_trivial(s);
-        }
+        self.serialize_self_non_trivial(s);
     }
 
     fn serialize_slice<'a>(elements: &'a [Self], s: &mut Serializer<'a>)
     where
         Self: Sized,
     {
-        if implements!(T: PlainOldData) {
-            s.write(unsafe {
-                std::slice::from_raw_parts(
-                    elements.as_ptr() as *const u8,
-                    std::mem::size_of_val(elements),
-                )
-            });
-        } else {
-            for element in elements {
-                element.serialize_self_non_trivial(s)
-            }
+        for element in elements {
+            element.serialize_self_non_trivial(s)
         }
     }
 
@@ -83,18 +66,7 @@ impl<T: NonTrivialObject> Object for T {
     where
         Self: Sized,
     {
-        unsafe {
-            if implements!(T: PlainOldData) {
-                let mut val = std::mem::MaybeUninit::<T>::uninit();
-                d.read(std::slice::from_raw_parts_mut(
-                    val.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<T>(),
-                ));
-                Ok(val.assume_init())
-            } else {
-                T::deserialize_self_non_trivial(d)
-            }
-        }
+        unsafe { T::deserialize_self_non_trivial(d) }
     }
 
     unsafe fn deserialize_on_heap(d: &mut Deserializer) -> Result<*mut ()>

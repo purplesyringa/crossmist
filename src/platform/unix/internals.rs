@@ -1,4 +1,4 @@
-use crate::{Deserializer, Object, Serializer, imp::implements, pod::PlainOldData};
+use crate::{Deserializer, Object, Serializer};
 use rustix::{
     cmsg_space,
     net::{
@@ -31,7 +31,6 @@ pub(crate) fn socketpair() -> Result<(UnixStream, UnixStream)> {
 
 pub(crate) struct SingleObjectSender<'a> {
     socket_fd: BorrowedFd<'a>,
-    bytes: &'a [u8],
     fds: Vec<BorrowedFd<'a>>,
     buffer: Vec<u8>,
     data_pos: usize,
@@ -41,25 +40,13 @@ pub(crate) struct SingleObjectSender<'a> {
 
 impl<'a> SingleObjectSender<'a> {
     pub(crate) fn new<T: Object>(socket_fd: BorrowedFd<'a>, value: &'a T, blocking: bool) -> Self {
-        let bytes;
-        let fds;
-        let buffer;
-        if implements!(T: PlainOldData) {
-            bytes = unsafe {
-                std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>())
-            };
-            fds = Vec::new();
-            buffer = Vec::new();
-        } else {
-            bytes = &[];
-            let mut s = Serializer::new();
-            s.serialize(value);
-            fds = s.drain_handles();
-            buffer = s.into_vec();
-        }
+        let mut s = Serializer::new();
+        s.serialize(value);
+        let fds = s.drain_handles();
+        let buffer = s.into_vec();
+
         Self {
             socket_fd,
-            bytes,
             fds,
             buffer,
             data_pos: 0,
@@ -77,10 +64,10 @@ impl<'a> SingleObjectSender<'a> {
         let mut cmsg_buffer = SendAncillaryBuffer::new(&mut space);
 
         loop {
-            let buffer_end = self.data().len().min(self.data_pos + MAX_PACKET_SIZE - 1);
+            let buffer_end = self.buffer.len().min(self.data_pos + MAX_PACKET_SIZE - 1);
             let fds_end = self.fds.len().min(self.fds_pos + MAX_PACKET_FDS);
 
-            let is_last = buffer_end == self.data().len() && fds_end == self.fds.len();
+            let is_last = buffer_end == self.buffer.len() && fds_end == self.fds.len();
 
             cmsg_buffer.clear();
             assert!(cmsg_buffer.push(SendAncillaryMessage::ScmRights(
@@ -91,7 +78,7 @@ impl<'a> SingleObjectSender<'a> {
                 self.socket_fd,
                 &[
                     IoSlice::new(&[is_last as u8]),
-                    IoSlice::new(&self.data()[self.data_pos..buffer_end]),
+                    IoSlice::new(&self.buffer[self.data_pos..buffer_end]),
                 ],
                 &mut cmsg_buffer,
                 self.flags,
@@ -105,21 +92,12 @@ impl<'a> SingleObjectSender<'a> {
             }
         }
     }
-
-    fn data(&self) -> &[u8] {
-        if self.bytes.is_empty() {
-            &self.buffer
-        } else {
-            self.bytes
-        }
-    }
 }
 
 pub(crate) struct SingleObjectReceiver<'a, T: Object> {
     socket_fd: BorrowedFd<'a>,
     buffer: Vec<u8>,
     data_pos: usize,
-    value: MaybeUninit<T>,
     fds: Vec<OwnedFd>,
     flags: RecvFlags,
     terminated: bool,
@@ -134,7 +112,6 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
             socket_fd,
             buffer: Vec::new(),
             data_pos: 0,
-            value: MaybeUninit::zeroed(),
             fds: Vec::new(),
             flags: if blocking {
                 RecvFlags::empty()
@@ -156,25 +133,12 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
         let mut cmsg_buffer = RecvAncillaryBuffer::new(&mut space);
 
         loop {
-            if !implements!(T: PlainOldData) {
-                self.buffer.resize(self.data_pos + MAX_PACKET_SIZE - 1, 0);
-            }
-
-            let data = if implements!(T: PlainOldData) {
-                unsafe {
-                    std::slice::from_raw_parts_mut(
-                        self.value.as_mut_ptr() as *mut u8,
-                        std::mem::size_of::<T>(),
-                    )
-                }
-            } else {
-                &mut self.buffer
-            };
+            self.buffer.resize(self.data_pos + MAX_PACKET_SIZE - 1, 0);
 
             let mut marker = [0];
             let mut iovecs = [
                 IoSliceMut::new(&mut marker),
-                IoSliceMut::new(&mut data[self.data_pos..]),
+                IoSliceMut::new(&mut self.buffer[self.data_pos..]),
             ];
 
             let message = recvmsg(
@@ -209,10 +173,6 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
             }
 
             self.terminated = true;
-
-            if implements!(T: PlainOldData) {
-                return Ok(Some(unsafe { self.value.assume_init_read() }));
-            }
 
             self.buffer.truncate(self.data_pos);
             let buffer = std::mem::take(&mut self.buffer);
