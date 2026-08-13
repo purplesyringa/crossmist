@@ -131,10 +131,10 @@ impl Deserializer {
         }
     }
 
-    /// Fill the buffer from internal data.
-    pub fn read(&mut self, data: &mut [u8]) {
-        data.clone_from_slice(&self.data[self.pos..self.pos + data.len()]);
-        self.pos += data.len();
+    /// Read the next `count` bytes.
+    pub fn read(&mut self, count: usize) -> &[u8] {
+        self.pos += count;
+        &self.data[self.pos - count..self.pos]
     }
 
     /// Deserialize an object of a given type from `self`.

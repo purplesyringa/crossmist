@@ -35,14 +35,9 @@ macro_rules! impl_pod {
             }
             #[allow(unreachable_code)]
             unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
-                let mut value = MaybeUninit::<Self>::uninit();
-                unsafe {
-                    d.read(std::slice::from_raw_parts_mut(
-                        value.as_mut_ptr() as *mut u8,
-                        std::mem::size_of::<Self>(),
-                    ));
-                    Ok(value.assume_init())
-                }
+                Ok(unsafe {
+                    d.read(std::mem::size_of::<Self>()).as_ptr().cast::<Self>().read_unaligned()
+                })
             }
         }
     };
