@@ -1,5 +1,5 @@
 use crate::{
-    Deserializer, FnOnceObject, Receiver, Sender, channel, func,
+    Deserializer, FnOnceObject, Receiver, Sender, channel,
     handles::{
         AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle,
     },
@@ -28,7 +28,7 @@ pub(crate) fn start_root() {
         .expect("HANDLE_BROKER has already been initialized");
 }
 
-#[func]
+#[crossmist::func]
 fn handle_broker(mut holder: Receiver<()>) {
     holder
         .recv()

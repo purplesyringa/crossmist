@@ -9,7 +9,7 @@
 //! To fix the following code:
 //!
 //! ```compile_fail
-//! use crossmist::{func, Object};
+//! use crossmist::Object;
 //!
 //! fn main() {
 //!     crossmist::init();
@@ -17,7 +17,7 @@
 //!     println!("{}", go.run(5, Box::new(|y| x + y)).unwrap());
 //! }
 //!
-//! #[func]
+//! #[crossmist::func]
 //! fn go(x: i32, f: Box<dyn Object + Fn(i32) -> i32>) -> i32 {
 //!     f(x)
 //! }
@@ -26,7 +26,7 @@
 //! ...we have to use a macro, and also a different invocation syntax:
 //!
 //! ```rust
-//! use crossmist::{FnObject, func, lambda};
+//! use crossmist::{FnObject, lambda};
 //!
 //! fn main() {
 //!     crossmist::init();
@@ -34,7 +34,7 @@
 //!     println!("{}", go.run(5, lambda! { move(x: i32) |y: i32| -> i32 { x + y } }).unwrap());
 //! }
 //!
-//! #[func]
+//! #[crossmist::func]
 //! fn go(x: i32, f: Box<dyn FnObject<(i32,), Output = i32>>) -> i32 {
 //!     f.call_object((x,))
 //! }
@@ -49,7 +49,7 @@
 //! syntax is used:
 //!
 //! ```rust
-//! use crossmist::{FnObject, func, lambda};
+//! use crossmist::{FnObject, lambda};
 //!
 //! fn main() {
 //!     crossmist::init();
@@ -57,7 +57,7 @@
 //!     println!("{}", go.run(5, lambda! { move(&x: &Box<i32>) |y: i32| -> i32 { **x + y } }).unwrap());
 //! }
 //!
-//! #[func]
+//! #[crossmist::func]
 //! fn go(x: i32, f: Box<dyn FnObject<(i32,), Output = i32>>) -> i32 {
 //!     f.call_object((x,))
 //! }
@@ -70,12 +70,12 @@
 //! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`:
 //!
 //! ```rust
-//! use crossmist::{BindValue, FnObject, func};
+//! use crossmist::{BindValue, FnObject};
 //!
 //! fn main() {
 //!     crossmist::init();
 //!
-//!     #[func]
+//!     #[crossmist::func]
 //!     fn add(x: i32, y: i32) -> i32 {
 //!         x + y
 //!     }
@@ -84,7 +84,7 @@
 //!     println!("{}", go.run(5, Box::new(add.bind_value(x))).unwrap());
 //! }
 //!
-//! #[func]
+//! #[crossmist::func]
 //! fn go(x: i32, f: Box<dyn FnObject<(i32,), Output = i32>>) -> i32 {
 //!     f.call_object((x,))
 //! }
@@ -405,9 +405,9 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> + std::ops::Fn<Args> {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnObject, func};
+    /// use crossmist::FnObject;
     ///
-    /// #[func]
+    /// #[crossmist::func]
     /// fn add(a: i32, b: i32) -> i32 {
     ///     a + b
     /// }
@@ -427,9 +427,9 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnObject, func};
+    /// use crossmist::FnObject;
     ///
-    /// #[func]
+    /// #[crossmist::func]
     /// fn add(a: i32, b: i32) -> i32 {
     ///     a + b
     /// }
@@ -583,7 +583,7 @@ macro_rules! decl_fn {
 decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 
 /// A short-cut for turning a (possible capturing) closure into an object function, just like as if
-/// `#[func]` was used.
+/// `#[crossmist::func]` was used.
 ///
 /// Syntax is similar to that of closure, except that types of all arguments and the type of the
 /// return value are not inferred. Additionally, all moved values have to be listed manually,
@@ -603,7 +603,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// With captures:
 ///
 /// ```rust
-/// # use crossmist::{FnObject, FnOnceObject, func, lambda};
+/// # use crossmist::{FnObject, FnOnceObject, lambda};
 /// fn main() {
 ///     crossmist::init();
 ///     let a = 5;
@@ -613,7 +613,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 ///     assert_eq!(gate.run(func, 7).unwrap(), 12);
 /// }
 ///
-/// #[func]
+/// #[crossmist::func]
 /// fn gate(f: Box<dyn FnOnceObject<(i32,), Output = i32>>, arg: i32) -> i32 {
 ///     f.call_object_once((arg,))
 /// }

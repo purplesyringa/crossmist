@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use crossmist::{
-    BindValue, FnOnceObject, Object, func, lambda,
+    BindValue, FnOnceObject, Object, lambda,
     tokio::{Child, Duplex, duplex},
 };
 use std::any::Any;
@@ -84,7 +84,7 @@ impl WorkerPool {
     }
 }
 
-#[func]
+#[crossmist::func]
 fn _wrapped_function<
     Output: Object + 'static,
     Func: FnOnceObject<(), Output = Output> + Send + Sync + 'static,
@@ -94,8 +94,7 @@ fn _wrapped_function<
     Box::new(func.call_object_once(()))
 }
 
-#[func]
-#[tokio::main(flavor = "current_thread")]
+#[crossmist::func(tokio(flavor = "current_thread"))]
 async fn worker(
     mut channel: Duplex<TypeErased, Box<dyn FnOnceObject<(), Output = TypeErased> + Send + Sync>>,
 ) {

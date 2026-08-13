@@ -148,7 +148,7 @@ extern crate self as crossmist;
 /// For a function declared as
 ///
 /// ```ignore
-/// #[func]
+/// #[crossmist::func]
 /// fn example(arg1: Type1, ...) -> Output;
 /// ```
 ///
@@ -167,9 +167,7 @@ extern crate self as crossmist;
 /// For example:
 ///
 /// ```rust
-/// use crossmist::func;
-///
-/// #[func]
+/// #[crossmist::func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
@@ -186,9 +184,9 @@ extern crate self as crossmist;
 /// [`std::ops::FnMut`], and [`std::ops::Fn`], respectively:
 ///
 /// ```rust
-/// use crossmist::{FnObject, func};
+/// use crossmist::FnObject;
 ///
-/// #[func]
+/// #[crossmist::func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
@@ -200,12 +198,12 @@ extern crate self as crossmist;
 /// ```
 ///
 /// If the `nightly` feature is enabled, the function can also directly be called, providing the
-/// same behavior as if `#[func]` was not used:
+/// same behavior as if `#[crossmist::func]` was not used:
 ///
 /// ```ignore
-/// use crossmist::{FnObject, func};
+/// use crossmist::FnObject;
 ///
-/// #[func]
+/// #[crossmist::func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
@@ -344,9 +342,7 @@ extern crate self as crossmist;
 /// vice versa:
 ///
 /// ```rust
-/// use crossmist::func;
-///
-/// #[func]
+/// #[crossmist::func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
@@ -363,9 +359,7 @@ extern crate self as crossmist;
 /// ```
 ///
 /// ```rust
-/// use crossmist::func;
-///
-/// #[func(tokio(flavor = "current_thread"))]
+/// #[crossmist::func(tokio(flavor = "current_thread"))]
 /// async fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
