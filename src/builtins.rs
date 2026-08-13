@@ -13,6 +13,7 @@ use std::io::Result;
 use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 macro_rules! impl_pod {
     ($([$($generics:tt)*])? for $t:ty) => {
@@ -75,9 +76,34 @@ impl_pod!(for std::num::NonZeroU32);
 impl_pod!(for std::num::NonZeroU64);
 impl_pod!(for std::num::NonZeroU128);
 impl_pod!(for std::num::NonZeroUsize);
-impl_pod!(for std::time::Duration);
-impl_pod!(for std::time::Instant);
-impl_pod!(for std::time::SystemTime);
+
+unsafe impl Object for Duration {
+    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+        s.serialize_temporary(self.as_nanos());
+    }
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
+        Ok(Duration::from_nanos_u128(unsafe { d.deserialize()? }))
+    }
+}
+// `Instant` cannot implement `Object` because it may be relative to the process start time.
+unsafe impl Object for SystemTime {
+    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+        // `SystemTime::MIN` is nightly-only, so for now we store the sign bit separately.
+        let (is_negative, duration) = match self.duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(duration) => (false, duration),
+            Err(err) => (true, err.duration()),
+        };
+        s.serialize_temporary((is_negative, duration));
+    }
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
+        let (is_negative, duration) = unsafe { d.deserialize::<(bool, Duration)>()? };
+        Ok(if is_negative {
+            SystemTime::UNIX_EPOCH - duration
+        } else {
+            SystemTime::UNIX_EPOCH + duration
+        })
+    }
+}
 
 unsafe impl Object for String {
     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
