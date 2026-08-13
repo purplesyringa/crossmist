@@ -3,7 +3,7 @@ use crossmist::{
     StaticRef,
 };
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn ctor() {
     crossmist::init();
 }

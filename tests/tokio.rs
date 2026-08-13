@@ -1,7 +1,7 @@
 use crossmist::tokio::{channel, duplex, Duplex, Receiver, Sender};
 use crossmist::{FnOnceObject, Object};
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn ctor() {
     crossmist::init();
 }

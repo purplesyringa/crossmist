@@ -18,13 +18,13 @@ paste = "1.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.158"
-rustix = { version = "1.0.0-prerelease.0", features = ["net", "process", "std"], default-features = false }
+rustix = { version = "1.1.4", features = ["net", "process", "std"], default-features = false }
 tokio = { version = "1", features = ["fs", "macros", "net", "rt", "sync"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 futures-lite = { version = "2", optional = true }
 tokio = { version = "1", features = ["rt", "macros", "fs", "io-util", "sync"], optional = true }
-windows = { version = "0.39.0", features = [
+windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_LibraryLoader",
@@ -35,7 +35,7 @@ windows = { version = "0.39.0", features = [
 
 [dev-dependencies]
 anyhow = "1"
-ctor = "0.3.4"
+ctor = "1"
 macro_rules_attribute = "0.2"
 smol = "2"
 smol-macros = "0.1"
