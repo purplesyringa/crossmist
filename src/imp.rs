@@ -88,14 +88,13 @@ pub fn if_void<T>() -> Option<T> {
 
 /// Initialize the crossmist runtime.
 ///
-/// This function should always be called at the beginning of the program.
+/// This function should always be called at the beginning of `main`.
 ///
-/// When crossmist spawns child processes, they start executing `main`. Calling [`init`] lets
-/// crossmist passes control to the function that the process is actually supposed to be executing.
-/// Without it, starting child processes will panic.
+/// When crossmist spawns child processes, they start executing the same `main` function as the root
+/// process. Calling [`init`] lets crossmist pass control to the function that the process is
+/// actually supposed to be executing.
 ///
-/// `init` should preferably be invoked before much work is done. For example, in asynchronous
-/// applications, avoid annotating `main` with `#[tokio::main]` directly, and prefer:
+/// In asynchronous programs, avoid annotating `main` with `#[tokio::main]` directly, and prefer:
 ///
 /// ```rust
 /// fn main() {
@@ -108,6 +107,9 @@ pub fn if_void<T>() -> Option<T> {
 ///     // ...
 /// }
 /// ```
+///
+/// [`init`] should not be invoked before `main`, e.g. with crates like `ctor`, since it ends up
+/// running user code that may rely on `std` being fully initialized.
 pub fn init() {
     if INITIALIZED.swap(true, Ordering::AcqRel) {
         return;
