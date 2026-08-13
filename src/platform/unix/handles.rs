@@ -10,9 +10,9 @@ pub trait FromRawHandle: io::FromRawFd {
     unsafe fn from_raw_handle(handle: RawHandle) -> Self
     where
         Self: Sized,
-    {
+    { unsafe {
         Self::from_raw_fd(handle)
-    }
+    }}
 }
 pub trait IntoRawHandle: io::IntoRawFd {
     fn into_raw_handle(self) -> RawHandle

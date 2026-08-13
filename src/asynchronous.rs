@@ -619,7 +619,7 @@ impl fmt::Debug for KillHandle {
 
 pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
-) -> Result<Child<Stream, T>> {
+) -> Result<Child<Stream, T>> { unsafe {
     imp::perform_sanity_checks();
 
     let mut s = Serializer::new();
@@ -653,4 +653,4 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     }
 
     Ok(Child::new(process_handle, receiver))
-}
+}}

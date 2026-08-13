@@ -43,9 +43,9 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     std::process::exit(entry.call_object_once((handle.as_raw_handle(),)))
 }
 
-unsafe fn parse_handle(s: &str) -> OwnedHandle {
+unsafe fn parse_handle(s: &str) -> OwnedHandle { unsafe {
     OwnedHandle::from_raw_handle(s.parse().expect("Failed to parse fd"))
-}
+}}
 
 pub(crate) fn disable_cloexec(fd: BorrowedHandle<'_>) -> std::io::Result<()> {
     fcntl_setfd(fd, FdFlags::empty())?;

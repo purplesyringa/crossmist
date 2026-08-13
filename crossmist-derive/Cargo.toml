@@ -2,7 +2,7 @@
 name = "crossmist-derive"
 version = "1.0.2"
 authors = ["Alisa Sireneva <me@purplesyringa.moe>"]
-edition = "2021"
+edition = "2024"
 description = "Efficient and seamless cross-process communication, both synchronously and asynchronously"
 documentation = "https://docs.rs/crossmist-derive"
 repository = "https://github.com/purplesyringa/crossmist/tree/master/crossmist-derive/"

@@ -22,9 +22,9 @@ unsafe impl<T> NonTrivialObject for RelocatablePtr<T> {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         s.serialize_temporary((self.0 as usize).wrapping_sub(BASE_ADDRESS as usize));
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
         Ok(Self(
             (BASE_ADDRESS as usize).wrapping_add(d.deserialize()?) as *const T
         ))
-    }
+    }}
 }

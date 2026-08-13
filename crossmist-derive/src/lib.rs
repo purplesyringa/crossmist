@@ -40,9 +40,9 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             .params
             .iter()
             .map(|param| match param {
-                syn::GenericParam::Type(ref ty) => ty.ident.to_token_stream(),
-                syn::GenericParam::Lifetime(ref lt) => lt.lifetime.to_token_stream(),
-                syn::GenericParam::Const(ref con) => con.ident.to_token_stream(),
+                syn::GenericParam::Type(ty) => ty.ident.to_token_stream(),
+                syn::GenericParam::Lifetime(lt) => lt.lifetime.to_token_stream(),
+                syn::GenericParam::Const(con) => con.ident.to_token_stream(),
             })
             .collect();
         quote! { <#(#params,)*> }
@@ -56,15 +56,15 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         .map(|(i, param)| {
             let field = format_ident!("f{}", i);
             match param {
-                syn::GenericParam::Type(ref ty) => {
+                syn::GenericParam::Type(ty) => {
                     let ident = &ty.ident;
                     quote! { #field: std::marker::PhantomData<fn(#ident) -> #ident> }
                 }
-                syn::GenericParam::Lifetime(ref lt) => {
+                syn::GenericParam::Lifetime(lt) => {
                     let lt = &lt.lifetime;
                     quote! { #field: std::marker::PhantomData<& #lt ()> }
                 }
-                syn::GenericParam::Const(ref _con) => {
+                syn::GenericParam::Const(_con) => {
                     unimplemented!()
                 }
             }
@@ -325,9 +325,9 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             .params
             .iter()
             .map(|param| match param {
-                syn::GenericParam::Type(ref ty) => ty.ident.to_token_stream(),
-                syn::GenericParam::Lifetime(ref lt) => lt.lifetime.to_token_stream(),
-                syn::GenericParam::Const(ref con) => con.ident.to_token_stream(),
+                syn::GenericParam::Type(ty) => ty.ident.to_token_stream(),
+                syn::GenericParam::Lifetime(lt) => lt.lifetime.to_token_stream(),
+                syn::GenericParam::Const(con) => con.ident.to_token_stream(),
             })
             .collect();
         quote! { <#(#params,)*> }

@@ -48,7 +48,7 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
         self.as_ref().serialize_self(s);
     }
 
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
         let mut pointer: *mut T = match TypeClass::of::<T>() {
             TypeClass::Sized => std::mem::transmute_copy::<usize, *mut T>(&0usize),
             TypeClass::Dyn => std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
@@ -68,7 +68,7 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
         (&mut pointer as *mut *mut T as *mut *mut ()).write(pointer_thin_part);
 
         Ok(Box::from_raw(pointer))
-    }
+    }}
 }
 
 unsafe impl<T: Object> NonTrivialObject for Box<[T]> {
@@ -76,7 +76,7 @@ unsafe impl<T: Object> NonTrivialObject for Box<[T]> {
         s.serialize_temporary(self.len());
         s.serialize_slice(self.as_ref());
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
         Ok(d.deserialize::<Vec<T>>()?.into_boxed_slice())
-    }
+    }}
 }

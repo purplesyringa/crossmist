@@ -181,9 +181,9 @@ impl Deserializer {
     /// It is also sometimes safe to invoke deserialize with mismatched types if the two types have
     /// the exact same layout in crossmist's serde (not in Rust memory model!). For example,
     /// [`std::fs::File`] and [`crossmist::handles::OwnedHandle`] are compatible.
-    pub unsafe fn deserialize<T: Object>(&mut self) -> Result<T> {
+    pub unsafe fn deserialize<T: Object>(&mut self) -> Result<T> { unsafe {
         T::deserialize_self(self)
-    }
+    }}
 
     /// Store a reference to a newly built potentially cyclic object.
     pub fn learn_cyclic<T: 'static>(&mut self, obj: T) {

@@ -82,7 +82,7 @@ impl<T: NonTrivialObject> Object for T {
     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self>
     where
         Self: Sized,
-    {
+    { unsafe {
         if implements!(T: PlainOldData) {
             let mut val = std::mem::MaybeUninit::<T>::uninit();
             d.read(std::slice::from_raw_parts_mut(
@@ -93,19 +93,19 @@ impl<T: NonTrivialObject> Object for T {
         } else {
             T::deserialize_self_non_trivial(d)
         }
-    }
+    }}
 
     unsafe fn deserialize_on_heap(d: &mut Deserializer) -> Result<*mut ()>
     where
         Self: Sized,
-    {
+    { unsafe {
         Ok(Box::into_raw(Box::new(Self::deserialize_self(d)?)) as *mut ())
-    }
+    }}
 
     #[cfg(feature = "nightly")]
-    unsafe fn deserialize_on_heap_ptr(self: *const T, d: &mut Deserializer) -> Result<*mut ()> {
+    unsafe fn deserialize_on_heap_ptr(self: *const T, d: &mut Deserializer) -> Result<*mut ()> { unsafe {
         Self::deserialize_on_heap(d)
-    }
+    }}
     #[cfg(not(feature = "nightly"))]
     fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
         Self::deserialize_on_heap

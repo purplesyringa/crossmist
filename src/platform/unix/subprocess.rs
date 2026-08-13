@@ -14,7 +14,7 @@ struct CloneArg<'a> {
 pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     child_fd: Duplex<S, R>,
     inherited_fds: &[BorrowedFd<'_>],
-) -> Result<Pid> {
+) -> Result<Pid> { unsafe {
     let child_fd_str = CString::new(child_fd.as_raw_fd().to_string()).unwrap();
     let clone_arg = CloneArg {
         child_fd: child_fd.0.fd.as_handle(),
@@ -35,7 +35,7 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     } else {
         Ok(Pid::from_raw(result as i32).unwrap())
     }
-}
+}}
 
 // XXX: The signature of libc::clone forces this function to be safe when in reality it isn't
 // (calling it with an arbitrary arg may be unsound). libc 1.0 is going to fix that, see

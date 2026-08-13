@@ -92,6 +92,6 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 #[doc(hidden)]
 pub async unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
-) -> Result<Child<T>> {
+) -> Result<Child<T>> { unsafe {
     asynchronous::spawn::<Tokio, T>(entry).await
-}
+}}

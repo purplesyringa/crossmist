@@ -85,7 +85,7 @@ unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
             }
         }
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
         let handles_len = d.deserialize()?;
         let mut handles = Vec::with_capacity(handles_len);
         for _ in 0..handles_len {
@@ -94,5 +94,5 @@ unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
         Ok(Delayed {
             inner: DelayedInner::Serialized(d.deserialize()?, handles),
         })
-    }
+    }}
 }

@@ -169,7 +169,7 @@ impl<T> Deref for StaticRef<T> {
 /// ```
 #[macro_export]
 macro_rules! static_ref {
-    ($type:ty, $value:expr) => {{
+    ($type:ty, $value:expr_2021) => {{
         const VALUE: $type = $value;
         unsafe { $crate::StaticRef::new_unchecked(&VALUE) }
     }};
