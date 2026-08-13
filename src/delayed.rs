@@ -1,4 +1,4 @@
-use crate::{Deserializer, NonTrivialObject, Object, Serializer, handles::OwnedHandle};
+use crate::{Deserializer, Object, Serializer, handles::OwnedHandle};
 use std::fmt;
 use std::io::Result;
 
@@ -40,8 +40,8 @@ impl<T: Object> fmt::Debug for Delayed<T> {
     }
 }
 
-unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
-    fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
+unsafe impl<T: Object> Object for Delayed<T> {
+    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
         match self.inner {
             DelayedInner::Serialized(_, _) => panic!("Cannot serialize a serialized Delayed value"),
             DelayedInner::Deserialized(ref value) => {
@@ -56,7 +56,7 @@ unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
             }
         }
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
         unsafe {
             let handles_len = d.deserialize()?;
             let mut handles = Vec::with_capacity(handles_len);

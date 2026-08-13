@@ -468,6 +468,3 @@ pub use fns::*;
 
 pub mod static_ref;
 pub use static_ref::StaticRef;
-
-mod pod;
-pub use pod::Object;

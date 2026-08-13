@@ -1,4 +1,4 @@
-use crate::{Deserializer, NonTrivialObject, Object, Serializer, relocation::RelocatablePtr};
+use crate::{Deserializer, Object, Serializer, relocation::RelocatablePtr};
 use std::io::Result;
 
 // XXX: Rust doesn't guarantee the order of data and vtable pointers, so this can break.
@@ -29,12 +29,11 @@ impl TypeClass {
     }
 }
 
-unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
-    fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
-        // Object is only implemented for types that implement NonTrivialObject, which inherits
-        // Sized, and `dyn Trait` where `Trait: Object`. Therefore, the only possible Ts here are
-        // sized types and `dyn Trait`. Slices are handled in another impl block, custom DSTs are
-        // not supported at all.
+unsafe impl<T: Object + ?Sized> Object for Box<T> {
+    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+        // Object inherits from BaseObject, which only has two implemetors: an explicit blanket impl
+        // for Sized types and `dyn Trait` where `Trait: BaseObject`, so these two are the only
+        // possible metadatas. Slices are handled in another impl, custom DSTs are unsupported.
 
         if TypeClass::of::<T>() == TypeClass::Dyn {
             let fat_ptr = unsafe { std::mem::transmute_copy::<&T, DynFatPtr>(&self.as_ref()) };
@@ -49,7 +48,7 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
         self.as_ref().serialize_self(s);
     }
 
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
         unsafe {
             let mut pointer: *mut T = match TypeClass::of::<T>() {
                 TypeClass::Sized => std::mem::transmute_copy::<usize, *mut T>(&0usize),
@@ -74,12 +73,12 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
     }
 }
 
-unsafe impl<T: Object> NonTrivialObject for Box<[T]> {
-    fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
+unsafe impl<T: Object> Object for Box<[T]> {
+    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
         s.serialize_temporary(self.len());
         s.serialize_slice(self.as_ref());
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
         unsafe { Ok(d.deserialize::<Vec<T>>()?.into_boxed_slice()) }
     }
 }

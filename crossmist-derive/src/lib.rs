@@ -371,11 +371,11 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             };
 
             quote! {
-                unsafe impl #generics_impl ::crossmist::NonTrivialObject for #ident #generics #generics_where {
-                    fn serialize_self_non_trivial<'serde>(&'serde self, s: &mut ::crossmist::Serializer<'serde>) {
+                unsafe impl #generics_impl ::crossmist::Object for #ident #generics #generics_where {
+                    fn serialize_self<'serde>(&'serde self, s: &mut ::crossmist::Serializer<'serde>) {
                         #(#serialize_fields)*
                     }
-                    unsafe fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> ::std::io::Result<Self> {
+                    unsafe fn deserialize_self(d: &mut ::crossmist::Deserializer) -> ::std::io::Result<Self> {
                         #deserialize_fields
                     }
                 }
@@ -453,13 +453,13 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             });
 
             quote! {
-                unsafe impl #generics_impl ::crossmist::NonTrivialObject for #ident #generics #generics_where {
-                    fn serialize_self_non_trivial<'serde>(&'serde self, s: &mut ::crossmist::Serializer<'serde>) {
+                unsafe impl #generics_impl ::crossmist::Object for #ident #generics #generics_where {
+                    fn serialize_self<'serde>(&'serde self, s: &mut ::crossmist::Serializer<'serde>) {
                         match self {
                             #(#serialize_variants,)*
                         }
                     }
-                    unsafe fn deserialize_self_non_trivial(d: &mut ::crossmist::Deserializer) -> ::std::io::Result<Self> {
+                    unsafe fn deserialize_self(d: &mut ::crossmist::Deserializer) -> ::std::io::Result<Self> {
                         match d.deserialize::<usize>()? {
                             #(#deserialize_variants,)*
                             _ => panic!("Unexpected enum variant"),

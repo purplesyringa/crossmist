@@ -3,10 +3,7 @@
 //! This is *not* the well-known `serde` crate. We use custom serialization methods because we need
 //! to serialize not only data structures, but objects with real-world side-effects, e.g. files.
 
-use crate::{
-    Object,
-    handles::{BorrowedHandle, OwnedHandle},
-};
+use crate::handles::{BorrowedHandle, OwnedHandle};
 use std::any::Any;
 use std::collections::{HashMap, hash_map};
 use std::fmt;
@@ -212,17 +209,22 @@ impl fmt::Debug for Deserializer {
     }
 }
 
-/// A serializable object with complicated serialization/deserialization.
+/// A serializable object.
 ///
-/// This trait should only be implemented, not used directly. If you ever need to specify a generic
-/// type of a serializable object, you're looking for [`Object`].
+/// This trait is already implemented for most types from the standard library for which it can
+/// reasonably be implemented, and if you need it for your structs and enums, you can use
+/// `#[derive(Object)]`.
+///
+/// You don't need to call the methods of this trait directly: crossmist does this for you whenever
+/// you pass objects over channels. In case you need to transmit data via other ways of
+/// communication, use [`Serializer`] and [`Deserializer`] APIs.
 ///
 /// If you have a type for which `#[derive(Object)]` does not produce the desired semantics (e.g.
 /// you have additional state stored elsewhere that should be dumped in the serialization stream),
 /// implement this trait based on this template:
 ///
 /// ```rust
-/// use crossmist::{Deserializer, NonTrivialObject, Object, Serializer};
+/// use crossmist::{Deserializer, Object, Serializer};
 /// use std::io::Result;
 ///
 /// struct SimplePair<T: Object, U: Object> {
@@ -230,12 +232,12 @@ impl fmt::Debug for Deserializer {
 ///     second: U,
 /// }
 ///
-/// unsafe impl<T: Object, U: Object> NonTrivialObject for SimplePair<T, U> {
-///     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
+/// unsafe impl<T: Object, U: Object> Object for SimplePair<T, U> {
+///     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
 ///         s.serialize(&self.first);
 ///         s.serialize(&self.second);
 ///     }
-///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+///     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
 ///         let first = d.deserialize::<T>()?;
 ///         let second = d.deserialize::<U>()?;
 ///         Ok(Self { first, second })
@@ -253,14 +255,14 @@ impl fmt::Debug for Deserializer {
 /// if nothing better comes to your mind, you can do the same thing that `Rc` does:
 ///
 /// ```rust
-/// # use crossmist::{Deserializer, NonTrivialObject, Object, Serializer};
+/// # use crossmist::{Deserializer, Object, Serializer};
 /// # use std::io::Result;
 /// # use std::os::raw::c_void;
 /// # use std::rc::Rc;
 /// struct CustomRc<T: 'static>(Rc<T>);
 ///
-/// unsafe impl<T: 'static + Object> NonTrivialObject for CustomRc<T> {
-///     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
+/// unsafe impl<T: 'static + Object> Object for CustomRc<T> {
+///     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
 ///         // Any unique identifier works, but it must be *globally* unique, not just for objects
 ///         // of the same type.
 ///         match s.learn_cyclic(Rc::as_ptr(&self.0) as *const c_void) {
@@ -276,7 +278,7 @@ impl fmt::Debug for Deserializer {
 ///             }
 ///         }
 ///     }
-///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+///     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
 ///         let id = d.deserialize::<usize>()?;
 ///         match std::num::NonZeroUsize::new(id) {
 ///             None => {
@@ -316,21 +318,18 @@ impl fmt::Debug for Deserializer {
 /// In this case, the following example should be of help:
 ///
 /// ```rust
-/// use crossmist::{
-///     handles::{AsHandle, OwnedHandle},
-///     Deserializer, NonTrivialObject, Object, Serializer,
-/// };
+/// use crossmist::{handles::{AsHandle, OwnedHandle}, Deserializer, Object, Serializer};
 /// use std::fs::File;
 /// use std::io::Result;
 ///
 /// struct CustomFile(std::fs::File);
 ///
-/// unsafe impl NonTrivialObject for CustomFile {
-///     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
+/// unsafe impl Object for CustomFile {
+///     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
 ///         // serialize_handle adds the handle (fd)
 ///         s.serialize_handle(self.0.as_handle());
 ///     }
-///     unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+///     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
 ///         // Deserializing OwnedHandle results in the ID being resolved into the handle, which can
 ///         // then be used to create the instance of the object we are deserializing
 ///         Ok(Self(d.deserialize::<OwnedHandle>()?.into()))
@@ -344,20 +343,60 @@ impl fmt::Debug for Deserializer {
 /// An implementation of this trait function is safe if the order of serialized types during
 /// serialization and deserialization matches, up to serialization layout. See the documentation of
 /// [`Deserializer::deserialize`] for more details.
-pub unsafe trait NonTrivialObject: Sized {
+#[allow(private_bounds)]
+pub unsafe trait Object: BaseObject {
     /// Serialize a single object into a serializer.
-    fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>);
+    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>);
+    /// Serialize an array of objects into a serializer.
+    fn serialize_slice<'a>(elements: &'a [Self], s: &mut Serializer<'a>)
+    where
+        Self: Sized,
+    {
+        for element in elements {
+            element.serialize_self(s)
+        }
+    }
     /// Deserialize a single object from a deserializer.
     ///
-    /// This function may assume the input data is produced by [`Self::serialize_self_non_trivial`].
-    /// You are supposed to return `Err(_)` to indicate that converting parsed data to Rust data
-    /// structures failed, e.g. on allocation failures or when OS limits are exceeded, not to
-    /// indicate the data is corrupted.
+    /// This function may assume the input data is produced by [`Self::serialize_self`]. You are
+    /// supposed to return `Err(_)` to indicate that converting parsed data to Rust data structures
+    /// failed, e.g. on allocation failures or when OS limits are exceeded, not to indicate the data
+    /// is corrupted.
     ///
     /// # Safety
     ///
     /// This function is safe to call if the order of serialized types during serialization and
     /// deserialization matches, up to serialization layout. See the documentation of
     /// [`Deserializer::deserialize`] for more details.
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self>;
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self>
+    where
+        Self: Sized;
+    #[doc(hidden)]
+    unsafe fn deserialize_on_heap(d: &mut Deserializer) -> Result<*mut ()>
+    where
+        Self: Sized,
+    {
+        unsafe { Ok(Box::into_raw(Box::new(Self::deserialize_self(d)?)) as *mut ()) }
+    }
+}
+
+// These methods need to be dyn-compatible, but can only be implemented for `Self: Sized`, so they
+// can't go into the `Object` trait as a default implementation directly. Instead they're
+// blanket-implemented in a supertrait.
+pub(crate) trait BaseObject {
+    #[cfg(feature = "nightly")]
+    unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> Result<*mut ()>;
+    #[cfg(not(feature = "nightly"))]
+    fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()>;
+}
+
+impl<T: Object> BaseObject for T {
+    #[cfg(feature = "nightly")]
+    unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> Result<*mut ()> {
+        unsafe { Self::deserialize_on_heap(d) }
+    }
+    #[cfg(not(feature = "nightly"))]
+    fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
+        Self::deserialize_on_heap
+    }
 }
