@@ -1,32 +1,3 @@
-//! A wrapper for objects that require global state to be configured before deserialization.
-//!
-//! Typically, arguments passed to a cross-process entry function are deserialized shortly after the
-//! child process is started and just before the function is executed. This works for most types,
-//! but some objects, e.g. [`tokio::fs::File`], cannot be created before a specific action is
-//! performed (in this example, before the tokio runtime is started). This crate attempts to handle
-//! tokio gracefully, however there might be more cases when intervention is required.
-//!
-//! In these cases, the following pattern may be used:
-//!
-//! ```rust
-//! use crossmist::{Delayed, func, Object};
-//!
-//! #[derive(Object)]
-//! struct ComplexType;
-//!
-//! fn main() {
-//!     crossmist::init();
-//!     go.run(Delayed::new(ComplexType)).unwrap();
-//! }
-//!
-//! #[func]
-//! fn go(argument: Delayed<ComplexType>) {
-//!     // TODO: Initialize runtime here
-//!     let argument = argument.deserialize();
-//!     // Keep going...
-//! }
-//! ```
-
 use crate::{Deserializer, NonTrivialObject, Object, Serializer, handles::OwnedHandle};
 use std::fmt;
 use std::io::Result;

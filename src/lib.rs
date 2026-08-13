@@ -467,8 +467,7 @@ pub(crate) mod relocation;
 mod builtins;
 mod unsized_builtins;
 
-pub mod delayed;
-pub use delayed::Delayed;
+mod delayed;
 
 pub mod fns;
 pub use fns::*;

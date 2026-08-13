@@ -1,4 +1,4 @@
-pub use crate::pod::PlainOldData;
+pub use crate::{delayed::Delayed, pod::PlainOldData};
 
 #[cfg(feature = "smol")]
 pub use async_io;

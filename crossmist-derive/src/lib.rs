@@ -225,14 +225,14 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #[derive(::crossmist::Object)]
         struct #entry_ident #generic_params {
-            func: ::crossmist::Delayed<::std::boxed::Box<dyn ::crossmist::FnOnceObject<(), Output = #return_type_wrapped>>>,
+            func: ::crossmist::imp::Delayed<::std::boxed::Box<dyn ::crossmist::FnOnceObject<(), Output = #return_type_wrapped>>>,
             #(#generic_phantom,)*
         }
 
         impl #generic_params #entry_ident #generics {
             fn new(func: ::std::boxed::Box<dyn ::crossmist::FnOnceObject<(), Output = #return_type_wrapped>>) -> Self {
                 Self {
-                    func: ::crossmist::Delayed::new(func),
+                    func: ::crossmist::imp::Delayed::new(func),
                     #(#generic_phantom_build,)*
                 }
             }
