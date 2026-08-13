@@ -36,6 +36,10 @@ impl<'fd> Serializer<'fd> {
     }
 
     /// Append serialized data of an object.
+    ///
+    /// The object is borrowed for the lifetime of the serializer so that file descriptors can be
+    /// transmitted. Temporary objects that cannot be borrowed for this long can be serialized with
+    /// [`serialize_temporary`](Serializer::serialize_temporary).
     pub fn serialize<T: Object>(&mut self, data: &'fd T) {
         data.serialize_self(self);
     }
@@ -46,7 +50,7 @@ impl<'fd> Serializer<'fd> {
         Object::serialize_slice(data, self);
     }
 
-    /// Append serialized data of a temporary object free of file handles.
+    /// Append serialized data of a temporary object free of file handles, without a long borrow.
     ///
     /// Panics if the object contains file handles.
     pub fn serialize_temporary<T: Object>(&mut self, data: T) {
