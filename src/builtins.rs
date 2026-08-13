@@ -14,42 +14,36 @@ use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::sync::Arc;
 
-macro_rules! impl_pod_body {
-    () => {
-        // Newer Rust cannot detect the bound for these objects and reports false.
-        // For now, let’s just write raw bytes, so serialization is correct.
-        #[allow(unreachable_code)]
-        fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-            s.write(unsafe {
-                std::slice::from_raw_parts(
-                    self as *const Self as *const u8,
-                    std::mem::size_of::<Self>(),
-                )
-            });
-        }
-        #[allow(unreachable_code)]
-        unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
-            let mut value = MaybeUninit::<Self>::uninit();
-            unsafe {
-                d.read(std::slice::from_raw_parts_mut(
-                    value.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<Self>(),
-                ));
-                Ok(value.assume_init())
-            }
-        }
-    };
-}
-
 macro_rules! impl_pod {
-    ([$($generics:tt)*] for $t:ty) => {
-        unsafe impl<$($generics)*> Object for $t {
-            impl_pod_body!();
-        }
-    };
-    (for $t:ty) => {
-        unsafe impl Object for $t {
-            impl_pod_body!();
+    ($([$($generics:tt)*])? for $t:ty) => {
+        unsafe impl$(<$($generics)*>)? Object for $t {
+            fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+                s.write(unsafe {
+                    std::slice::from_raw_parts(
+                        self as *const Self as *const u8,
+                        std::mem::size_of::<Self>(),
+                    )
+                });
+            }
+            fn serialize_slice<'a>(elements: &'a [Self], s: &mut Serializer<'a>) {
+                s.write(unsafe {
+                    std::slice::from_raw_parts(
+                        elements.as_ptr() as *const u8,
+                        std::mem::size_of_val(elements),
+                    )
+                });
+            }
+            #[allow(unreachable_code)]
+            unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
+                let mut value = MaybeUninit::<Self>::uninit();
+                unsafe {
+                    d.read(std::slice::from_raw_parts_mut(
+                        value.as_mut_ptr() as *mut u8,
+                        std::mem::size_of::<Self>(),
+                    ));
+                    Ok(value.assume_init())
+                }
+            }
         }
     };
 }
