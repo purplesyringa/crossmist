@@ -3,9 +3,8 @@
 //! Check out the docs at [`asynchronous`] for more information.
 
 use crate::{
-    asynchronous,
+    FnOnceObject, Object, asynchronous,
     handles::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle},
-    FnOnceObject, Object,
 };
 use std::io::Result;
 
@@ -93,6 +92,6 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 #[doc(hidden)]
 pub async unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
-) -> Result<Child<T>> { unsafe {
-    asynchronous::spawn::<Smol, T>(entry).await
-}}
+) -> Result<Child<T>> {
+    unsafe { asynchronous::spawn::<Smol, T>(entry).await }
+}

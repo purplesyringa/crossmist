@@ -1,12 +1,11 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use crossmist::{
-    func, lambda,
-    tokio::{duplex, Child, Duplex},
-    BindValue, FnOnceObject, Object,
+    BindValue, FnOnceObject, Object, func, lambda,
+    tokio::{Child, Duplex, duplex},
 };
 use std::any::Any;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 // Simulate trait intersection
 trait AnyObject: Any + Object {}

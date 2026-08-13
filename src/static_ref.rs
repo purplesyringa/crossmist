@@ -69,7 +69,7 @@
 //! }
 //! ```
 
-use crate::{relocation::RelocatablePtr, Object};
+use crate::{Object, relocation::RelocatablePtr};
 use std::fmt;
 use std::ops::Deref;
 

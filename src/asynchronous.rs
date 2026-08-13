@@ -42,10 +42,11 @@
 //! ```
 
 #[cfg(unix)]
-use crate::internals::{socketpair, SingleObjectReceiver, SingleObjectSender};
+use crate::internals::{SingleObjectReceiver, SingleObjectSender, socketpair};
 use crate::{
+    FnOnceObject, Object, Serializer,
     handles::{AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle},
-    imp, subprocess, FnOnceObject, Object, Serializer,
+    imp, subprocess,
 };
 use std::fmt;
 use std::future::Future;
@@ -180,8 +181,8 @@ pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, R
 }
 
 /// Create a bidirectional channel.
-pub fn duplex<Stream: AsyncStream, A: Object, B: Object>(
-) -> Result<(Duplex<Stream, A, B>, Duplex<Stream, B, A>)> {
+pub fn duplex<Stream: AsyncStream, A: Object, B: Object>()
+-> Result<(Duplex<Stream, A, B>, Duplex<Stream, B, A>)> {
     #[cfg(unix)]
     {
         let (tx, rx) = socketpair()?;
@@ -619,38 +620,40 @@ impl fmt::Debug for KillHandle {
 
 pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
-) -> Result<Child<Stream, T>> { unsafe {
-    imp::perform_sanity_checks();
+) -> Result<Child<Stream, T>> {
+    unsafe {
+        imp::perform_sanity_checks();
 
-    let mut s = Serializer::new();
-    s.serialize(&entry);
+        let mut s = Serializer::new();
+        s.serialize(&entry);
 
-    let handles = s.drain_handles();
-    let raw_handles = handles.iter().map(AsRawHandle::as_raw_handle).collect();
+        let handles = s.drain_handles();
+        let raw_handles = handles.iter().map(AsRawHandle::as_raw_handle).collect();
 
-    let (local, child) = crate::duplex()?;
-    let mut local: Duplex<Stream, (Vec<u8>, Vec<RawHandle>), T> = local.try_into()?;
+        let (local, child) = crate::duplex()?;
+        let mut local: Duplex<Stream, (Vec<u8>, Vec<RawHandle>), T> = local.try_into()?;
 
-    let process_handle;
-    let receiver;
+        let process_handle;
+        let receiver;
 
-    #[cfg(unix)]
-    {
-        process_handle = subprocess::_spawn_child(child, &handles)?;
-        local.send(&(s.into_vec(), raw_handles)).await?;
-        receiver = Receiver::from_stream(local.fd);
+        #[cfg(unix)]
+        {
+            process_handle = subprocess::_spawn_child(child, &handles)?;
+            local.send(&(s.into_vec(), raw_handles)).await?;
+            receiver = Receiver::from_stream(local.fd);
+        }
+
+        #[cfg(windows)]
+        {
+            process_handle = subprocess::_spawn_child(
+                child.0.sender.fd.as_handle(),
+                child.0.receiver.fd.as_handle(),
+                handles,
+            )?;
+            local.send(&(s.into_vec(), raw_handles)).await?;
+            receiver = local.receiver;
+        }
+
+        Ok(Child::new(process_handle, receiver))
     }
-
-    #[cfg(windows)]
-    {
-        process_handle = subprocess::_spawn_child(
-            child.0.sender.fd.as_handle(),
-            child.0.receiver.fd.as_handle(),
-            handles,
-        )?;
-        local.send(&(s.into_vec(), raw_handles)).await?;
-        receiver = local.receiver;
-    }
-
-    Ok(Child::new(process_handle, receiver))
-}}
+}

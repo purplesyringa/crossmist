@@ -89,7 +89,7 @@
 //! }
 //! ```
 
-use crate::{relocation::RelocatablePtr, Object};
+use crate::{Object, relocation::RelocatablePtr};
 use paste::paste;
 use std::marker::PhantomData;
 use std::ops::Deref;

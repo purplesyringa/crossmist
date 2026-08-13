@@ -1,4 +1,4 @@
-use crate::{relocation::RelocatablePtr, Deserializer, NonTrivialObject, Object, Serializer};
+use crate::{Deserializer, NonTrivialObject, Object, Serializer, relocation::RelocatablePtr};
 use std::io::Result;
 
 #[repr(C)]
@@ -48,27 +48,29 @@ unsafe impl<T: Object + ?Sized> NonTrivialObject for Box<T> {
         self.as_ref().serialize_self(s);
     }
 
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        let mut pointer: *mut T = match TypeClass::of::<T>() {
-            TypeClass::Sized => std::mem::transmute_copy::<usize, *mut T>(&0usize),
-            TypeClass::Dyn => std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
-                data: std::ptr::null(),
-                vtable: d.deserialize::<RelocatablePtr<()>>()?.0,
-            }),
-        };
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe {
+            let mut pointer: *mut T = match TypeClass::of::<T>() {
+                TypeClass::Sized => std::mem::transmute_copy::<usize, *mut T>(&0usize),
+                TypeClass::Dyn => std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
+                    data: std::ptr::null(),
+                    vtable: d.deserialize::<RelocatablePtr<()>>()?.0,
+                }),
+            };
 
-        #[cfg(feature = "nightly")]
-        let pointer_thin_part = pointer.deserialize_on_heap_ptr(d)?;
-        #[cfg(not(feature = "nightly"))]
-        let pointer_thin_part = std::mem::transmute::<
-            RelocatablePtr<()>,
-            unsafe fn(&mut Deserializer) -> Result<*mut ()>,
-        >(d.deserialize::<RelocatablePtr<()>>()?)(d)?;
+            #[cfg(feature = "nightly")]
+            let pointer_thin_part = pointer.deserialize_on_heap_ptr(d)?;
+            #[cfg(not(feature = "nightly"))]
+            let pointer_thin_part = std::mem::transmute::<
+                RelocatablePtr<()>,
+                unsafe fn(&mut Deserializer) -> Result<*mut ()>,
+            >(d.deserialize::<RelocatablePtr<()>>()?)(d)?;
 
-        (&mut pointer as *mut *mut T as *mut *mut ()).write(pointer_thin_part);
+            (&mut pointer as *mut *mut T as *mut *mut ()).write(pointer_thin_part);
 
-        Ok(Box::from_raw(pointer))
-    }}
+            Ok(Box::from_raw(pointer))
+        }
+    }
 }
 
 unsafe impl<T: Object> NonTrivialObject for Box<[T]> {
@@ -76,7 +78,7 @@ unsafe impl<T: Object> NonTrivialObject for Box<[T]> {
         s.serialize_temporary(self.len());
         s.serialize_slice(self.as_ref());
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        Ok(d.deserialize::<Vec<T>>()?.into_boxed_slice())
-    }}
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe { Ok(d.deserialize::<Vec<T>>()?.into_boxed_slice()) }
+    }
 }

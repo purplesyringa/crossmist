@@ -1,4 +1,4 @@
-use crossmist::smol::{channel, duplex, Duplex, Receiver, Sender};
+use crossmist::smol::{Duplex, Receiver, Sender, channel, duplex};
 use crossmist::{FnOnceObject, Object};
 
 #[ctor::ctor(unsafe)]

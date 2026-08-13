@@ -1,8 +1,8 @@
 use crate::{
-    handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle},
     Deserializer, FnOnceObject, Receiver,
+    handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle},
 };
-use rustix::io::{fcntl_setfd, FdFlags};
+use rustix::io::{FdFlags, fcntl_setfd};
 
 pub(crate) fn start_root() {}
 
@@ -43,9 +43,9 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     std::process::exit(entry.call_object_once((handle.as_raw_handle(),)))
 }
 
-unsafe fn parse_handle(s: &str) -> OwnedHandle { unsafe {
-    OwnedHandle::from_raw_handle(s.parse().expect("Failed to parse fd"))
-}}
+unsafe fn parse_handle(s: &str) -> OwnedHandle {
+    unsafe { OwnedHandle::from_raw_handle(s.parse().expect("Failed to parse fd")) }
+}
 
 pub(crate) fn disable_cloexec(fd: BorrowedHandle<'_>) -> std::io::Result<()> {
     fcntl_setfd(fd, FdFlags::empty())?;

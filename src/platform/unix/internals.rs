@@ -1,9 +1,10 @@
-use crate::{imp::implements, pod::PlainOldData, Deserializer, Object, Serializer};
+use crate::{Deserializer, Object, Serializer, imp::implements, pod::PlainOldData};
 use rustix::{
     cmsg_space,
     net::{
-        self, recvmsg, sendmsg, AddressFamily, RecvAncillaryBuffer, RecvAncillaryMessage,
-        RecvFlags, SendAncillaryBuffer, SendAncillaryMessage, SendFlags, SocketFlags, SocketType,
+        self, AddressFamily, RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags,
+        SendAncillaryBuffer, SendAncillaryMessage, SendFlags, SocketFlags, SocketType, recvmsg,
+        sendmsg,
     },
 };
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};

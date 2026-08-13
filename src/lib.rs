@@ -479,7 +479,7 @@ pub mod tokio;
 
 #[doc(inline)]
 pub use asynchronous::KillHandle;
-pub use blocking::{channel, duplex, Child, Duplex, Receiver, Sender};
+pub use blocking::{Child, Duplex, Receiver, Sender, channel, duplex};
 
 pub(crate) mod relocation;
 

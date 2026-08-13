@@ -4,11 +4,11 @@
 //! to serialize not only data structures, but objects with real-world side-effects, e.g. files.
 
 use crate::{
-    handles::{BorrowedHandle, OwnedHandle},
     Object,
+    handles::{BorrowedHandle, OwnedHandle},
 };
 use std::any::Any;
-use std::collections::{hash_map, HashMap};
+use std::collections::{HashMap, hash_map};
 use std::fmt;
 use std::io::Result;
 use std::num::NonZeroUsize;
@@ -181,9 +181,9 @@ impl Deserializer {
     /// It is also sometimes safe to invoke deserialize with mismatched types if the two types have
     /// the exact same layout in crossmist's serde (not in Rust memory model!). For example,
     /// [`std::fs::File`] and [`crossmist::handles::OwnedHandle`] are compatible.
-    pub unsafe fn deserialize<T: Object>(&mut self) -> Result<T> { unsafe {
-        T::deserialize_self(self)
-    }}
+    pub unsafe fn deserialize<T: Object>(&mut self) -> Result<T> {
+        unsafe { T::deserialize_self(self) }
+    }
 
     /// Store a reference to a newly built potentially cyclic object.
     pub fn learn_cyclic<T: 'static>(&mut self, obj: T) {

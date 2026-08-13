@@ -1,6 +1,6 @@
 use crossmist::{
-    channel, duplex, static_ref, BindValue, Duplex, FnOnceObject, Object, Receiver, Sender,
-    StaticRef,
+    BindValue, Duplex, FnOnceObject, Object, Receiver, Sender, StaticRef, channel, duplex,
+    static_ref,
 };
 
 #[ctor::ctor(unsafe)]

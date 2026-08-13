@@ -3,9 +3,9 @@ use crate::handles::RawHandle;
 #[cfg(feature = "tokio")]
 use crate::handles::{FromRawHandle, IntoRawHandle};
 use crate::{
+    Deserializer, NonTrivialObject, Object, Serializer,
     handles::{AsHandle, OwnedHandle},
     pod::PlainOldData,
-    Deserializer, NonTrivialObject, Object, Serializer,
 };
 use paste::paste;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
@@ -188,13 +188,15 @@ unsafe impl<T: Object> NonTrivialObject for Option<T> {
             }
         }
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        if d.deserialize::<bool>()? {
-            d.deserialize().map(Some)
-        } else {
-            Ok(None)
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe {
+            if d.deserialize::<bool>()? {
+                d.deserialize().map(Some)
+            } else {
+                Ok(None)
+            }
         }
-    }}
+    }
 }
 unsafe impl<T: PlainOldData> PlainOldData for Option<T> {}
 
@@ -210,17 +212,19 @@ unsafe impl<T: 'static + Object> NonTrivialObject for Rc<T> {
             }
         }
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        let id = d.deserialize::<usize>()?;
-        match std::num::NonZeroUsize::new(id) {
-            None => {
-                let rc = Self::new(d.deserialize()?);
-                d.learn_cyclic(rc.clone());
-                Ok(rc)
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe {
+            let id = d.deserialize::<usize>()?;
+            match std::num::NonZeroUsize::new(id) {
+                None => {
+                    let rc = Self::new(d.deserialize()?);
+                    d.learn_cyclic(rc.clone());
+                    Ok(rc)
+                }
+                Some(id) => Ok(d.get_cyclic::<Rc<T>>(id).clone()),
             }
-            Some(id) => Ok(d.get_cyclic::<Rc<T>>(id).clone()),
         }
-    }}
+    }
 }
 
 unsafe impl<T: 'static + Object> NonTrivialObject for Arc<T> {
@@ -235,17 +239,19 @@ unsafe impl<T: 'static + Object> NonTrivialObject for Arc<T> {
             }
         }
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        let id = d.deserialize::<usize>()?;
-        match std::num::NonZeroUsize::new(id) {
-            None => {
-                let rc = Self::new(d.deserialize()?);
-                d.learn_cyclic(rc.clone());
-                Ok(rc)
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe {
+            let id = d.deserialize::<usize>()?;
+            match std::num::NonZeroUsize::new(id) {
+                None => {
+                    let rc = Self::new(d.deserialize()?);
+                    d.learn_cyclic(rc.clone());
+                    Ok(rc)
+                }
+                Some(id) => Ok(d.get_cyclic::<Arc<T>>(id).clone()),
             }
-            Some(id) => Ok(d.get_cyclic::<Arc<T>>(id).clone()),
         }
-    }}
+    }
 }
 
 unsafe impl NonTrivialObject for std::path::PathBuf {
@@ -254,32 +260,34 @@ unsafe impl NonTrivialObject for std::path::PathBuf {
         s.serialize_temporary(bytes.len());
         s.serialize_slice(bytes);
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        Ok(d.deserialize::<std::ffi::OsString>()?.into())
-    }}
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe { Ok(d.deserialize::<std::ffi::OsString>()?.into()) }
+    }
 }
 
 unsafe impl<T: Object, const N: usize> NonTrivialObject for [T; N] {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         s.serialize_slice(self);
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        // array::try_map is not stabilized yet
-        let mut array: MaybeUninit<[T; N]> = MaybeUninit::uninit();
-        let array_ptr: *mut T = array.as_mut_ptr() as *mut T;
-        for i in 0..N {
-            match d.deserialize() {
-                Ok(value) => array_ptr.add(i).write(value),
-                Err(e) => {
-                    for j in 0..i {
-                        array_ptr.add(j).drop_in_place();
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe {
+            // array::try_map is not stabilized yet
+            let mut array: MaybeUninit<[T; N]> = MaybeUninit::uninit();
+            let array_ptr: *mut T = array.as_mut_ptr() as *mut T;
+            for i in 0..N {
+                match d.deserialize() {
+                    Ok(value) => array_ptr.add(i).write(value),
+                    Err(e) => {
+                        for j in 0..i {
+                            array_ptr.add(j).drop_in_place();
+                        }
+                        return Err(e);
                     }
-                    return Err(e);
                 }
             }
+            Ok(array.assume_init())
         }
-        Ok(array.assume_init())
-    }}
+    }
 }
 unsafe impl<T: PlainOldData, const N: usize> PlainOldData for [T; N] {}
 
@@ -288,14 +296,16 @@ unsafe impl<T: Object> NonTrivialObject for Vec<T> {
         s.serialize_temporary(self.len());
         s.serialize_slice(self.as_slice())
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        let size: usize = d.deserialize()?;
-        let mut seq = Vec::with_capacity(size);
-        for _ in 0..size {
-            seq.push(d.deserialize()?);
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe {
+            let size: usize = d.deserialize()?;
+            let mut seq = Vec::with_capacity(size);
+            for _ in 0..size {
+                seq.push(d.deserialize()?);
+            }
+            Ok(seq)
         }
-        Ok(seq)
-    }}
+    }
 }
 
 macro_rules! impl_serialize_for_sequence {
@@ -418,13 +428,15 @@ unsafe impl<T: Object, E: Object> NonTrivialObject for std::result::Result<T, E>
             }
         }
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        Ok(if d.deserialize::<bool>()? {
-            Ok(d.deserialize()?)
-        } else {
-            Err(d.deserialize()?)
-        })
-    }}
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe {
+            Ok(if d.deserialize::<bool>()? {
+                Ok(d.deserialize()?)
+            } else {
+                Err(d.deserialize()?)
+            })
+        }
+    }
 }
 unsafe impl<T: PlainOldData, E: PlainOldData> PlainOldData for std::result::Result<T, E> {}
 
@@ -443,9 +455,9 @@ unsafe impl NonTrivialObject for std::fs::File {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         s.serialize_handle(self.as_handle());
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        Ok(d.deserialize::<OwnedHandle>()?.into())
-    }}
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe { Ok(d.deserialize::<OwnedHandle>()?.into()) }
+    }
 }
 
 #[cfg(feature = "tokio")]
@@ -467,9 +479,9 @@ unsafe impl NonTrivialObject for async_fs::File {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         s.serialize_handle(self.as_handle());
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        Ok(d.deserialize::<std::fs::File>()?.into())
-    }}
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe { Ok(d.deserialize::<std::fs::File>()?.into()) }
+    }
 }
 
 #[cfg(unix)]
@@ -477,9 +489,9 @@ unsafe impl NonTrivialObject for std::os::unix::net::UnixStream {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         s.serialize_handle(self.as_handle());
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        Ok(d.deserialize::<OwnedHandle>()?.into())
-    }}
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe { Ok(d.deserialize::<OwnedHandle>()?.into()) }
+    }
 }
 
 #[cfg(all(unix, feature = "tokio"))]
@@ -487,9 +499,9 @@ unsafe impl NonTrivialObject for tokio::net::UnixStream {
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         s.serialize_handle(self.as_handle());
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        Self::from_std(d.deserialize()?)
-    }}
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe { Self::from_std(d.deserialize()?) }
+    }
 }
 
 #[cfg(all(unix, feature = "smol"))]
@@ -497,9 +509,9 @@ unsafe impl<T: 'static + std::os::fd::AsFd + Object> NonTrivialObject for async_
     fn serialize_self_non_trivial<'a>(&'a self, s: &mut Serializer<'a>) {
         s.serialize(self.get_ref())
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        async_io::Async::new(d.deserialize::<T>()?)
-    }}
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe { async_io::Async::new(d.deserialize::<T>()?) }
+    }
 }
 
 #[cfg(windows)]

@@ -1,4 +1,4 @@
-use crossmist::{lambda, Deserializer, FnOnceObject, Object, Serializer};
+use crossmist::{Deserializer, FnOnceObject, Object, Serializer, lambda};
 use std::fmt::Debug;
 
 fn serde<T: Object>(x: &T) -> T {

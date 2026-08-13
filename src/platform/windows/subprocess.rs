@@ -6,11 +6,11 @@ use crate::{
 use std::ffi::c_void;
 use std::io::Result;
 use windows::{
-    core::{PCWSTR, PWSTR},
     Win32::{
         Foundation,
         System::{LibraryLoader, Threading},
     },
+    core::{PCWSTR, PWSTR},
 };
 
 pub(crate) unsafe fn _spawn_child<'a>(

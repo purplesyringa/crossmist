@@ -45,9 +45,8 @@
 //! returned value).
 
 use crate::{
-    asynchronous,
+    FnOnceObject, KillHandle, Object, asynchronous,
     handles::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle},
-    FnOnceObject, KillHandle, Object,
 };
 use std::future::Future;
 use std::io::Result;
@@ -169,11 +168,13 @@ impl<T: Object> std::os::windows::io::IntoRawHandle for Sender<T> {
 
 #[cfg(unix)]
 impl<T: Object> std::os::unix::io::FromRawFd for Sender<T> {
-    unsafe fn from_raw_fd(fd: RawHandle) -> Self { unsafe {
-        Self(asynchronous::Sender::from_stream(Blocking(
-            asynchronous::SyncStream::from_raw_fd(fd),
-        )))
-    }}
+    unsafe fn from_raw_fd(fd: RawHandle) -> Self {
+        unsafe {
+            Self(asynchronous::Sender::from_stream(Blocking(
+                asynchronous::SyncStream::from_raw_fd(fd),
+            )))
+        }
+    }
 }
 #[cfg(windows)]
 impl<T: Object> std::os::windows::io::FromRawHandle for Sender<T> {
@@ -221,11 +222,13 @@ impl<T: Object> std::os::windows::io::IntoRawHandle for Receiver<T> {
 
 #[cfg(unix)]
 impl<T: Object> std::os::unix::io::FromRawFd for Receiver<T> {
-    unsafe fn from_raw_fd(fd: RawHandle) -> Self { unsafe {
-        Self(asynchronous::Receiver::from_stream(Blocking(
-            asynchronous::SyncStream::from_raw_fd(fd),
-        )))
-    }}
+    unsafe fn from_raw_fd(fd: RawHandle) -> Self {
+        unsafe {
+            Self(asynchronous::Receiver::from_stream(Blocking(
+                asynchronous::SyncStream::from_raw_fd(fd),
+            )))
+        }
+    }
 }
 #[cfg(windows)]
 impl<T: Object> std::os::windows::io::FromRawHandle for Receiver<T> {
@@ -281,11 +284,13 @@ impl<S: Object, R: Object> std::os::unix::io::IntoRawFd for Duplex<S, R> {
 
 #[cfg(unix)]
 impl<S: Object, R: Object> std::os::unix::io::FromRawFd for Duplex<S, R> {
-    unsafe fn from_raw_fd(fd: RawHandle) -> Self { unsafe {
-        Self(asynchronous::Duplex::from_stream(Blocking(
-            asynchronous::SyncStream::from_raw_fd(fd),
-        )))
-    }}
+    unsafe fn from_raw_fd(fd: RawHandle) -> Self {
+        unsafe {
+            Self(asynchronous::Duplex::from_stream(Blocking(
+                asynchronous::SyncStream::from_raw_fd(fd),
+            )))
+        }
+    }
 }
 
 /// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
@@ -316,6 +321,6 @@ impl<T: Object> Child<T> {
 #[doc(hidden)]
 pub unsafe fn spawn<T: Object>(
     entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
-) -> Result<Child<T>> { unsafe {
-    block_on(asynchronous::spawn::<Blocking, T>(entry)).map(Child)
-}}
+) -> Result<Child<T>> {
+    unsafe { block_on(asynchronous::spawn::<Blocking, T>(entry)).map(Child) }
+}

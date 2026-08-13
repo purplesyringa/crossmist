@@ -1,9 +1,8 @@
 use crate::{
-    channel, func,
+    Deserializer, FnOnceObject, Receiver, Sender, channel, func,
     handles::{
         AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle,
     },
-    Deserializer, FnOnceObject, Receiver, Sender,
 };
 use std::default::Default;
 use std::sync::OnceLock;

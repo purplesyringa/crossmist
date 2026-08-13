@@ -1,4 +1,4 @@
-use crate::{imp::implements, Deserializer, NonTrivialObject, Serializer};
+use crate::{Deserializer, NonTrivialObject, Serializer, imp::implements};
 use std::io::Result;
 
 pub unsafe trait PlainOldData: NonTrivialObject {}
@@ -82,30 +82,32 @@ impl<T: NonTrivialObject> Object for T {
     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self>
     where
         Self: Sized,
-    { unsafe {
-        if implements!(T: PlainOldData) {
-            let mut val = std::mem::MaybeUninit::<T>::uninit();
-            d.read(std::slice::from_raw_parts_mut(
-                val.as_mut_ptr() as *mut u8,
-                std::mem::size_of::<T>(),
-            ));
-            Ok(val.assume_init())
-        } else {
-            T::deserialize_self_non_trivial(d)
+    {
+        unsafe {
+            if implements!(T: PlainOldData) {
+                let mut val = std::mem::MaybeUninit::<T>::uninit();
+                d.read(std::slice::from_raw_parts_mut(
+                    val.as_mut_ptr() as *mut u8,
+                    std::mem::size_of::<T>(),
+                ));
+                Ok(val.assume_init())
+            } else {
+                T::deserialize_self_non_trivial(d)
+            }
         }
-    }}
+    }
 
     unsafe fn deserialize_on_heap(d: &mut Deserializer) -> Result<*mut ()>
     where
         Self: Sized,
-    { unsafe {
-        Ok(Box::into_raw(Box::new(Self::deserialize_self(d)?)) as *mut ())
-    }}
+    {
+        unsafe { Ok(Box::into_raw(Box::new(Self::deserialize_self(d)?)) as *mut ()) }
+    }
 
     #[cfg(feature = "nightly")]
-    unsafe fn deserialize_on_heap_ptr(self: *const T, d: &mut Deserializer) -> Result<*mut ()> { unsafe {
-        Self::deserialize_on_heap(d)
-    }}
+    unsafe fn deserialize_on_heap_ptr(self: *const T, d: &mut Deserializer) -> Result<*mut ()> {
+        unsafe { Self::deserialize_on_heap(d) }
+    }
     #[cfg(not(feature = "nightly"))]
     fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
         Self::deserialize_on_heap

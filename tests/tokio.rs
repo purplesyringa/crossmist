@@ -1,4 +1,4 @@
-use crossmist::tokio::{channel, duplex, Duplex, Receiver, Sender};
+use crossmist::tokio::{Duplex, Receiver, Sender, channel, duplex};
 use crossmist::{FnOnceObject, Object};
 
 #[ctor::ctor(unsafe)]

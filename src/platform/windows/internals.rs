@@ -1,7 +1,6 @@
 use crate::{
-    entry,
+    Deserializer, Object, Serializer, entry,
     handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
-    Deserializer, Object, Serializer,
 };
 use std::default::Default;
 use std::io::Result;

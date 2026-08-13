@@ -27,7 +27,7 @@
 //! }
 //! ```
 
-use crate::{handles::OwnedHandle, Deserializer, NonTrivialObject, Object, Serializer};
+use crate::{Deserializer, NonTrivialObject, Object, Serializer, handles::OwnedHandle};
 use std::fmt;
 use std::io::Result;
 
@@ -85,14 +85,16 @@ unsafe impl<T: Object> NonTrivialObject for Delayed<T> {
             }
         }
     }
-    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> { unsafe {
-        let handles_len = d.deserialize()?;
-        let mut handles = Vec::with_capacity(handles_len);
-        for _ in 0..handles_len {
-            handles.push(d.deserialize::<OwnedHandle>()?);
+    unsafe fn deserialize_self_non_trivial(d: &mut Deserializer) -> Result<Self> {
+        unsafe {
+            let handles_len = d.deserialize()?;
+            let mut handles = Vec::with_capacity(handles_len);
+            for _ in 0..handles_len {
+                handles.push(d.deserialize::<OwnedHandle>()?);
+            }
+            Ok(Delayed {
+                inner: DelayedInner::Serialized(d.deserialize()?, handles),
+            })
         }
-        Ok(Delayed {
-            inner: DelayedInner::Serialized(d.deserialize()?, handles),
-        })
-    }}
+    }
 }
