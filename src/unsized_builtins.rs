@@ -1,6 +1,7 @@
 use crate::{Deserializer, NonTrivialObject, Object, Serializer, relocation::RelocatablePtr};
 use std::io::Result;
 
+// XXX: Rust doesn't guarantee the order of data and vtable pointers, so this can break.
 #[repr(C)]
 struct DynFatPtr {
     data: *const (),
