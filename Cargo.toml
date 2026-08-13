@@ -15,6 +15,7 @@ async-io = { version = "2", optional = true }
 async-fs = { version = "2", optional = true }
 crossmist-derive = { version = "=1.0.2", path = "crossmist-derive" }
 paste = "1.0"
+typeid = "1.0.3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.158"

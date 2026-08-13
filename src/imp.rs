@@ -83,10 +83,8 @@ pub(crate) use implements;
 /// }
 /// ```
 pub fn if_void<T>() -> Option<T> {
-    implements!(T: IsVoid).then(|| unsafe { std::ptr::NonNull::<T>::dangling().as_ptr().read() })
+    (typeid::of::<T>() == typeid::of::<()>()).then(|| unsafe { std::ptr::dangling::<T>().read() })
 }
-trait IsVoid {}
-impl IsVoid for () {}
 
 /// Initialize the crossmist runtime.
 ///
