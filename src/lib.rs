@@ -328,6 +328,10 @@ extern crate self as crossmist;
 /// async fn example_smol() {}
 /// ```
 ///
+/// With this syntax, the arguments to the functions are deserialized after the async runtime is
+/// initialized. Simply using `#[crossmist::func]` followed by `#[tokio::main]` would deserialize
+/// arguments before the runtime is started, leading to errors when deserializing channels.
+///
 /// You may pass operands to forward to `tokio::main` like this:
 ///
 /// ```rust
