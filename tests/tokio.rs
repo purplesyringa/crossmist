@@ -1,10 +1,8 @@
 use crossmist::tokio::{Duplex, Receiver, Sender, channel, duplex};
 use crossmist::{FnOnceObject, Object};
 
-#[ctor::ctor(unsafe)]
-fn ctor() {
-    crossmist::init();
-}
+mod testing;
+testing::setup!();
 
 #[derive(Debug, PartialEq, Object)]
 struct SimplePair {
@@ -12,7 +10,7 @@ struct SimplePair {
     y: i32,
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn simple() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner() -> i64 {
@@ -25,7 +23,7 @@ async fn simple() {
     );
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn add_with_arguments() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(x: i32, y: i32) -> i32 {
@@ -38,7 +36,7 @@ async fn add_with_arguments() {
     );
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn swap_complex_argument() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(pair: SimplePair) -> SimplePair {
@@ -59,7 +57,7 @@ async fn swap_complex_argument() {
     );
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn with_passed_rx() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(mut rx: Receiver<i32>) -> i32 {
@@ -74,7 +72,7 @@ async fn with_passed_rx() {
     assert_eq!(child.join().await.unwrap(), -2);
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn with_passed_tx() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(mut tx: Sender<i32>) {
@@ -90,7 +88,7 @@ async fn with_passed_tx() {
     child.join().await.unwrap();
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn with_passed_duplex() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(mut chan: Duplex<i32, (i32, i32)>) {
@@ -108,7 +106,7 @@ async fn with_passed_duplex() {
     child.join().await.unwrap();
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn with_passed_nested_channel() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(mut chan: Receiver<Receiver<i32>>) -> i32 {
@@ -122,7 +120,7 @@ async fn with_passed_nested_channel() {
     assert_eq!(inner.run_tokio(rx1).await.unwrap(), 5);
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn with_async_write() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(mut tx_data: Sender<i32>, mut tx_signal: Sender<()>) {
@@ -144,7 +142,7 @@ async fn with_async_write() {
     child.join().await.unwrap();
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[macro_rules_attribute::apply(tokio_test!)]
 async fn exitting() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner() {

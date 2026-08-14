@@ -9,6 +9,7 @@ repository = "https://github.com/purplesyringa/crossmist/"
 license = "MIT"
 keywords = ["multiprocessing"]
 categories = ["asynchronous", "concurrency"]
+autotests = false
 
 [dependencies]
 async-io = { version = "2", optional = true }
@@ -36,7 +37,8 @@ windows = { version = "0.62.2", features = [
 
 [dev-dependencies]
 anyhow = "1"
-ctor = "1"
+libtest-mimic = "0.8.2"
+linkme = "0.3.37"
 macro_rules_attribute = "0.2"
 smol = "2"
 smol-macros = "0.1"
@@ -49,14 +51,17 @@ nightly = []
 [[test]]
 name = "sync"
 path = "tests/main.rs"
+harness = false
 
 [[test]]
 name = "tokio"
 path = "tests/tokio.rs"
+harness = false
 
 [[test]]
 name = "smol"
 path = "tests/smol.rs"
+harness = false
 
 [[test]]
 name = "serde"

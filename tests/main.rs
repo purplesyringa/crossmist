@@ -3,10 +3,8 @@ use crossmist::{
     static_ref,
 };
 
-#[ctor::ctor(unsafe)]
-fn ctor() {
-    crossmist::init();
-}
+mod testing;
+testing::setup!();
 
 #[derive(Debug, PartialEq, Object)]
 struct SimplePair {
@@ -14,7 +12,7 @@ struct SimplePair {
     y: i32,
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn simple() {
     #[crossmist::func]
     fn inner() -> i64 {
@@ -23,7 +21,7 @@ fn simple() {
     assert_eq!(inner.run().unwrap(), 0x123456789abcdef);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn ret_string() {
     #[crossmist::func]
     fn inner() -> String {
@@ -37,7 +35,7 @@ fn add_with_arguments_impl(x: i32, y: i32) -> i32 {
     x + y
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn add_with_arguments_spawn() {
     assert_eq!(
         add_with_arguments_impl.spawn(5, 7).unwrap().join().unwrap(),
@@ -45,14 +43,14 @@ fn add_with_arguments_spawn() {
     );
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn add_with_arguments_call() {
     assert_eq!(add_with_arguments_impl.call_object_once((5, 7)), 12);
     #[cfg(feature = "nightly")]
     assert_eq!(add_with_arguments_impl(5, 7), 12);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn add_with_template() {
     #[crossmist::func]
     fn inner<T: std::ops::Add<Output = T> + Object + 'static>(x: T, y: T) -> T {
@@ -61,7 +59,7 @@ fn add_with_template() {
     assert_eq!(inner.spawn(5, 7).unwrap().join().unwrap(), 12);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn swap_complex_argument() {
     #[crossmist::func]
     fn inner(pair: SimplePair) -> SimplePair {
@@ -80,7 +78,7 @@ fn swap_complex_argument() {
     );
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn inc_with_boxed() {
     #[crossmist::func]
     #[expect(clippy::boxed_local, reason = "intended")]
@@ -90,7 +88,7 @@ fn inc_with_boxed() {
     assert_eq!(*inner.spawn(Box::new(7)).unwrap().join().unwrap(), 8);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn inc_with_vec_and_box() {
     #[crossmist::func]
     #[expect(clippy::boxed_local, reason = "intended")]
@@ -135,7 +133,7 @@ impl Trait for bool {
     }
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_passed_trait() {
     #[crossmist::func]
     fn inner(arg: Box<dyn Trait>) -> String {
@@ -159,7 +157,7 @@ fn with_passed_trait() {
     );
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_passed_fn() {
     #[crossmist::func]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
@@ -182,7 +180,7 @@ fn with_passed_fn() {
     );
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_passed_bound_fn() {
     #[crossmist::func]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(i32,), Output = i32>>) -> i32 {
@@ -205,7 +203,7 @@ fn with_passed_bound_fn() {
     );
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_passed_double_bound_fn() {
     #[crossmist::func]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(), Output = i32>>) -> i32 {
@@ -230,7 +228,7 @@ fn with_passed_double_bound_fn() {
     );
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_passed_rx() {
     #[crossmist::func]
     fn inner(mut rx: Receiver<i32>) -> i32 {
@@ -245,7 +243,7 @@ fn with_passed_rx() {
     assert_eq!(child.join().unwrap(), -2);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_passed_tx() {
     #[crossmist::func]
     fn inner(mut tx: Sender<i32>) {
@@ -261,7 +259,7 @@ fn with_passed_tx() {
     child.join().unwrap();
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_passed_duplex() {
     #[crossmist::func]
     fn inner(mut chan: Duplex<i32, (i32, i32)>) {
@@ -279,7 +277,7 @@ fn with_passed_duplex() {
     child.join().unwrap();
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_passed_nested_channel() {
     #[crossmist::func]
     fn inner(mut chan: Receiver<Receiver<i32>>) -> i32 {
@@ -293,7 +291,7 @@ fn with_passed_nested_channel() {
     assert_eq!(inner.run(rx1).unwrap(), 5);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn exitting() {
     #[crossmist::func]
     fn inner() {
@@ -302,7 +300,7 @@ fn exitting() {
     inner.run().unwrap();
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn with_static_ref() {
     #[crossmist::func]
     fn inner(a: StaticRef<&'static str>) -> String {

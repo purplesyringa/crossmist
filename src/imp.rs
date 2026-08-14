@@ -72,8 +72,9 @@ pub fn if_void<T>() -> Option<T> {
 /// }
 /// ```
 ///
-/// [`init`] should not be invoked before `main`, e.g. with crates like `ctor`, since it ends up
-/// running user code that may rely on `std` being fully initialized.
+/// [`init`] should not be invoked before `main`, e.g. with crates like `ctor`, since it assumes
+/// `std` has been fully initialized. Attempting to do so may result in anything from misbehaving
+/// user code to recursively re-executing the same program instead of running a function.
 pub fn init() {
     if INITIALIZED.swap(true, Ordering::AcqRel) {
         return;
