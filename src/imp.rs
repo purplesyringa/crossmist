@@ -6,11 +6,11 @@ pub use async_io;
 use crate::entry;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub static INITIALIZED: AtomicBool = AtomicBool::new(false);
+static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn perform_sanity_checks() {
     assert!(
-        INITIALIZED.load(Ordering::Acquire),
+        INITIALIZED.load(Ordering::Relaxed),
         "crossmist::init() wasn't called"
     );
 }
@@ -78,15 +78,13 @@ pub fn if_void<T>() -> Option<T> {
 /// `crossmist` from tests requires [a custom harness](https://www.unwoundstack.com/blog/integration-testing-rust-binaries.html)
 /// with a global setup hook calling [`init`].
 pub fn init() {
-    if INITIALIZED.swap(true, Ordering::AcqRel) {
-        return;
+    if INITIALIZED.swap(true, Ordering::Relaxed) {
+        panic!("crossmist::init() is called twice");
     }
 
     let mut args = std::env::args();
-    if let Some(s) = args.next() {
-        if s == "_crossmist_" {
-            entry::crossmist_main(args);
-        }
+    if args.next().as_deref() == Some("_crossmist_") {
+        entry::crossmist_main(args);
     }
 
     entry::start_root();
