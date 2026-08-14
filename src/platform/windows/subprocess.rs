@@ -66,7 +66,12 @@ pub(crate) unsafe fn _spawn_child<'a>(
 
         let n_attrs = 1;
         let mut size = 0;
-        Threading::InitializeProcThreadAttributeList(None, n_attrs, None, &mut size as *mut usize)?;
+        let _ = Threading::InitializeProcThreadAttributeList(
+            None,
+            n_attrs,
+            None,
+            &mut size as *mut usize,
+        ); // errors by design according to MSDN
         let mut attrs = vec![0u8; size];
         let attrs = Threading::LPPROC_THREAD_ATTRIBUTE_LIST(attrs.as_mut_ptr() as *mut c_void);
         Threading::InitializeProcThreadAttributeList(
