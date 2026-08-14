@@ -89,7 +89,7 @@ impl<'fd> Serializer<'fd> {
 
 impl fmt::Debug for Serializer<'_> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        // Outputting the data is unsound, as it may contain uninitialized bytes
+        // Omit internal state because it's not user-friendly.
         fmt.debug_struct("Serializer").finish()
     }
 }
@@ -201,10 +201,8 @@ impl Deserializer {
 
 impl fmt::Debug for Deserializer {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        // Outputting the data is unsound, as it may contain uninitialized bytes
-        fmt.debug_struct("Deserializer")
-            .field("pos", &self.pos)
-            .finish()
+        // Omit internal state because it's not user-friendly.
+        fmt.debug_struct("Deserializer").finish()
     }
 }
 
