@@ -15,9 +15,9 @@ enum TypeClass {
 }
 impl TypeClass {
     const fn of<T: ?Sized>() -> Self {
-        if std::mem::size_of::<&T>() == std::mem::size_of::<usize>() {
+        if size_of::<&T>() == size_of::<usize>() {
             Self::Sized
-        } else if std::mem::size_of::<&T>() == std::mem::size_of::<DynFatPtr>() {
+        } else if size_of::<&T>() == size_of::<DynFatPtr>() {
             Self::Dyn
         } else {
             panic!(

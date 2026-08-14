@@ -900,7 +900,7 @@ impl<F: FnPtr> StaticFn<F> {
     }
 
     const _F_IS_POINTER_SIZED: () = assert!(
-        std::mem::size_of::<*const ()>() == std::mem::size_of::<F>(),
+        size_of::<*const ()>() == size_of::<F>(),
         "An instance of FnPtr has a size not equal to the size of *const (). This should have \
          been impossible."
     );

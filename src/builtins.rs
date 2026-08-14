@@ -18,24 +18,21 @@ macro_rules! impl_pod {
         unsafe impl$(<$($generics)*>)? Object for $t {
             fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
                 s.write(unsafe {
-                    std::slice::from_raw_parts(
-                        self as *const Self as *const u8,
-                        std::mem::size_of::<Self>(),
-                    )
+                    std::slice::from_raw_parts(self as *const Self as *const u8, size_of::<Self>())
                 });
             }
             fn serialize_slice<'a>(elements: &'a [Self], s: &mut Serializer<'a>) {
                 s.write(unsafe {
                     std::slice::from_raw_parts(
                         elements.as_ptr() as *const u8,
-                        std::mem::size_of_val(elements),
+                        size_of_val(elements),
                     )
                 });
             }
             #[allow(unreachable_code)]
             unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
                 unsafe {
-                    d.read(std::mem::size_of::<Self>()).as_ptr().cast::<Self>().read_unaligned()
+                    d.read(size_of::<Self>()).as_ptr().cast::<Self>().read_unaligned()
                 }
             }
         }

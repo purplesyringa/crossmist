@@ -279,7 +279,7 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
         }
         #[cfg(windows)]
         {
-            let mut len = [0u8; std::mem::size_of::<usize>()];
+            let mut len = [0u8; size_of::<usize>()];
             if let Err(e) = self.fd.read(&mut len).await {
                 if e.kind() == ErrorKind::UnexpectedEof {
                     return Ok(None);

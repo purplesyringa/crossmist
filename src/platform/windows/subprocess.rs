@@ -85,13 +85,13 @@ pub(crate) unsafe fn _spawn_child<'a>(
             0,
             Threading::PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
             Some(inherited_handles.as_ptr() as *const c_void),
-            inherited_handles.len() * std::mem::size_of::<RawHandle>(),
+            inherited_handles.len() * size_of::<RawHandle>(),
             None,
             None,
         )?;
 
         let mut startup_info = Threading::STARTUPINFOEXW::default();
-        startup_info.StartupInfo.cb = std::mem::size_of::<Threading::STARTUPINFOEXW>() as u32;
+        startup_info.StartupInfo.cb = size_of::<Threading::STARTUPINFOEXW>() as u32;
         startup_info.lpAttributeList = attrs;
 
         let mut process_info = Threading::PROCESS_INFORMATION::default();
