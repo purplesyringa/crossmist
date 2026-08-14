@@ -74,7 +74,9 @@ pub fn if_void<T>() -> Option<T> {
 ///
 /// [`init`] should not be invoked before `main`, e.g. with crates like `ctor`, since it assumes
 /// `std` has been fully initialized. Attempting to do so may result in anything from misbehaving
-/// user code to recursively re-executing the same program instead of running a function.
+/// user code to recursively re-executing the same program instead of running a function. Using
+/// `crossmist` from tests requires [a custom harness](https://www.unwoundstack.com/blog/integration-testing-rust-binaries.html)
+/// with a global setup hook calling [`init`].
 pub fn init() {
     if INITIALIZED.swap(true, Ordering::AcqRel) {
         return;
