@@ -37,8 +37,8 @@ windows = { version = "0.62.2", features = [
 
 [dev-dependencies]
 anyhow = "1"
+inventory = "0.3.24"
 libtest-mimic = "0.8.2"
-linkme = "0.3.37"
 macro_rules_attribute = "0.2"
 smol = "2"
 smol-macros = "0.1"

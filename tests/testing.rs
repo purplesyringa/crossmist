@@ -6,16 +6,17 @@ pub struct Test {
     pub test_fn: fn(),
 }
 
-#[linkme::distributed_slice]
-pub static TESTS: [Test];
+// I'd much rather use `linkme`, but it's broken on windows-gnu targets.
+inventory::collect!(Test);
 
 macro_rules! register {
     ($name:ident) => {
         const _: () = {
-            #[linkme::distributed_slice(testing::TESTS)]
-            static TEST: testing::Test = testing::Test {
-                name: stringify!($name),
-                test_fn: $name,
+            inventory::submit! {
+                testing::Test {
+                    name: stringify!($name),
+                    test_fn: $name,
+                }
             };
         };
     };
@@ -54,8 +55,7 @@ pub(crate) use tokio_test;
 pub fn main() {
     crossmist::init();
     let args = Arguments::from_args();
-    let tests = TESTS
-        .iter()
+    let tests = inventory::iter::<Test>()
         .map(|test| Trial::test(test.name, || Ok((test.test_fn)())))
         .collect();
     libtest_mimic::run(&args, tests).exit();
