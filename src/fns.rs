@@ -829,7 +829,8 @@ pub trait FnPtr: Copy + Clone + fn_ptr_private::Sealed {
 /// These examples require the `nightly` feature to be enabled. [`FnObject::call_object`] can be
 /// used instead of direct calls on stable.
 ///
-/// ```rust
+#[cfg_attr(feature = "nightly", doc = " ```")]
+#[cfg_attr(not(feature = "nightly"), doc = " ```ignore")]
 /// # use crossmist::fns::{FnObject, StaticFn};
 /// fn add(a: i32, b: i32) -> i32 {
 ///     a + b
@@ -839,7 +840,8 @@ pub trait FnPtr: Copy + Clone + fn_ptr_private::Sealed {
 /// assert_eq!(add(5, 7), 12);
 /// ```
 ///
-/// ```rust
+#[cfg_attr(feature = "nightly", doc = " ```")]
+#[cfg_attr(not(feature = "nightly"), doc = " ```ignore")]
 /// # use crossmist::fns::{FnObject, StaticFn};
 /// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new(|a, b| a + b) };
 /// let add: Box<dyn FnObject<(i32, i32), Output = i32>> = Box::new(add);
@@ -862,7 +864,8 @@ pub trait FnPtr: Copy + Clone + fn_ptr_private::Sealed {
 ///
 /// This example requires `nightly` because of references.
 ///
-/// ```rust
+#[cfg_attr(feature = "nightly", doc = " ```")]
+#[cfg_attr(not(feature = "nightly"), doc = " ```ignore")]
 /// # use crossmist::fns::{FnObject, StaticFn};
 /// fn safe_read(p: &i32) -> i32 {
 ///     *p
