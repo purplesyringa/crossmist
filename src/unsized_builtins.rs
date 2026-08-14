@@ -1,5 +1,4 @@
 use crate::{Deserializer, Object, Serializer, relocation::RelocatablePtr};
-use std::io::Result;
 
 // XXX: Rust doesn't guarantee the order of data and vtable pointers, so this can break. This should
 // eventually be replaced with the metadata API.
@@ -54,29 +53,29 @@ unsafe impl<T: Object + ?Sized> Object for Box<T> {
         self.as_ref().serialize_self(s);
     }
 
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe {
             let mut pointer: *mut T = match TypeClass::of::<T>() {
                 // `std::ptr::null_mut` doesn't work for `T: ?Sized`.
                 TypeClass::Sized => std::mem::transmute_copy::<usize, *mut T>(&0usize),
                 TypeClass::Dyn => std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
                     data: std::ptr::null(),
-                    vtable: d.deserialize::<RelocatablePtr<()>>()?.0,
+                    vtable: d.deserialize::<RelocatablePtr<()>>().0,
                 }),
             };
 
             #[cfg(feature = "nightly")]
-            let data = pointer.deserialize_on_heap_ptr(d)?;
+            let data = pointer.deserialize_on_heap_ptr(d);
             #[cfg(not(feature = "nightly"))]
             let data = std::mem::transmute::<
                 RelocatablePtr<()>,
-                unsafe fn(&mut Deserializer) -> Result<*mut ()>,
-            >(d.deserialize::<RelocatablePtr<()>>()?)(d)?;
+                unsafe fn(&mut Deserializer) -> *mut (),
+            >(d.deserialize::<RelocatablePtr<()>>())(d);
 
             // Patch the data part of the pointer without checking whether it's thin or fat.
             (&raw mut pointer).cast::<*mut ()>().write(data);
 
-            Ok(Box::from_raw(pointer))
+            Box::from_raw(pointer)
         }
     }
 }
@@ -86,7 +85,7 @@ unsafe impl<T: Object> Object for Box<[T]> {
         s.serialize_temporary(self.len());
         s.serialize_slice(self.as_ref());
     }
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
-        Ok(unsafe { d.deserialize::<Vec<T>>() }?.into_boxed_slice())
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+        unsafe { d.deserialize::<Vec<T>>() }.into_boxed_slice()
     }
 }

@@ -10,7 +10,7 @@ fn serde<T: Object>(x: &T) -> T {
         .map(|handle| handle.try_clone_to_owned().unwrap())
         .collect();
     let mut d = Deserializer::new(data, handles);
-    unsafe { d.deserialize() }.expect("Deserialization failed")
+    unsafe { d.deserialize() }
 }
 
 fn test_idempotency<T: Object + PartialEq + Debug>(x: T) {

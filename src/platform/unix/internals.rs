@@ -7,7 +7,7 @@ use rustix::{
         sendmsg,
     },
 };
-use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
+use std::io::{Error, IoSlice, IoSliceMut, Result};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::os::unix::{
@@ -177,14 +177,7 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
             let buffer = std::mem::take(&mut self.buffer);
             let fds = std::mem::take(&mut self.fds);
             let mut d = Deserializer::new(buffer, fds);
-            return match unsafe { d.deserialize() } {
-                Ok(value) => Ok(Some(value)),
-                Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    // Prevent this error from being interpreted as a "wait for socket" signal
-                    Err(std::io::Error::other("Unexpected blocking event"))
-                }
-                Err(e) => Err(e),
-            };
+            return Ok(Some(unsafe { d.deserialize() }));
         }
     }
 }

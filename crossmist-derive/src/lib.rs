@@ -165,7 +165,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         body = quote! {
             #async_attribute
             async fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                entry.func.deserialize().expect("Failed to deserialize entry").call_object_box(()).await
+                entry.func.deserialize().call_object_box(()).await
             }
         };
     } else if let Some(arg) = smol_argument {
@@ -177,13 +177,13 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         }
         body = quote! {
             fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                ::crossmist::imp::async_io::block_on(entry.func.deserialize().expect("Failed to deserialize entry").call_object_box(()))
+                ::crossmist::imp::async_io::block_on(entry.func.deserialize().call_object_box(()))
             }
         };
     } else {
         body = quote! {
             fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                entry.func.deserialize().expect("Failed to deserialize entry").call_object_box(())
+                entry.func.deserialize().call_object_box(())
             }
         };
     }
@@ -352,21 +352,21 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                     let deserialize_fields = fields.named.iter().map(|field| {
                         let ident = &field.ident;
                         quote! {
-                            #ident: unsafe { d.deserialize() }?,
+                            #ident: unsafe { d.deserialize() },
                         }
                     });
-                    quote! { Ok(Self { #(#deserialize_fields)* }) }
+                    quote! { Self { #(#deserialize_fields)* } }
                 }
                 syn::Fields::Unnamed(ref fields) => {
                     let deserialize_fields = fields.unnamed.iter().map(|_| {
                         quote! {
-                            unsafe { d.deserialize() }?,
+                            unsafe { d.deserialize() },
                         }
                     });
-                    quote! { Ok(Self (#(#deserialize_fields)*)) }
+                    quote! { Self (#(#deserialize_fields)*) }
                 }
                 syn::Fields::Unit => {
-                    quote! { Ok(Self) }
+                    quote! { Self }
                 }
             };
 
@@ -375,7 +375,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                     fn serialize_self<'serde>(&'serde self, s: &mut ::crossmist::Serializer<'serde>) {
                         #(#serialize_fields)*
                     }
-                    unsafe fn deserialize_self(d: &mut ::crossmist::Deserializer) -> ::std::io::Result<Self> {
+                    unsafe fn deserialize_self(d: &mut ::crossmist::Deserializer) -> Self {
                         #deserialize_fields
                     }
                 }
@@ -435,14 +435,14 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                             .iter()
                             .map(|field| {
                                 let ident = &field.ident;
-                                quote! { #ident: unsafe { d.deserialize() }? }
+                                quote! { #ident: unsafe { d.deserialize() } }
                             })
                             .collect();
                         quote! { #i => Ok(Self::#ident{ #(#des,)* }) }
                     }
                     syn::Fields::Unnamed(fields) => {
                         let des: Vec<_> = (0..fields.unnamed.len())
-                            .map(|_| quote! { unsafe { d.deserialize() }? })
+                            .map(|_| quote! { unsafe { d.deserialize() } })
                             .collect();
                         quote! { #i => Ok(Self::#ident(#(#des,)*)) }
                     }
@@ -460,7 +460,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                         }
                     }
                     unsafe fn deserialize_self(d: &mut ::crossmist::Deserializer) -> ::std::io::Result<Self> {
-                        match d.deserialize::<usize>()? {
+                        match d.deserialize::<usize>() {
                             #(#deserialize_variants,)*
                             _ => panic!("Unexpected enum variant"),
                         }

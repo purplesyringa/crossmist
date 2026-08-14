@@ -1,6 +1,5 @@
 use crate::{Deserializer, Object, Serializer, handles::OwnedHandle};
 use std::fmt;
-use std::io::Result;
 
 /// A wrapper for objects that require global state to be configured before deserialization.
 pub struct Delayed<T: Object> {
@@ -22,7 +21,7 @@ impl<T: Object> Delayed<T> {
     }
 
     /// Unwrap an object. Use this in the child process after initialization.
-    pub fn deserialize(self) -> Result<T> {
+    pub fn deserialize(self) -> T {
         match self.inner {
             DelayedInner::Serialized(data, handles) => unsafe {
                 Deserializer::new(data, handles).deserialize()
@@ -56,16 +55,16 @@ unsafe impl<T: Object> Object for Delayed<T> {
             }
         }
     }
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe {
-            let handles_len = d.deserialize()?;
+            let handles_len = d.deserialize();
             let mut handles = Vec::with_capacity(handles_len);
             for _ in 0..handles_len {
-                handles.push(d.deserialize::<OwnedHandle>()?);
+                handles.push(d.deserialize::<OwnedHandle>());
             }
-            Ok(Delayed {
-                inner: DelayedInner::Serialized(d.deserialize()?, handles),
-            })
+            Delayed {
+                inner: DelayedInner::Serialized(d.deserialize(), handles),
+            }
         }
     }
 }

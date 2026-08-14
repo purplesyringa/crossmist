@@ -7,7 +7,6 @@ use crate::handles::{BorrowedHandle, OwnedHandle};
 use std::any::Any;
 use std::collections::{HashMap, hash_map};
 use std::fmt;
-use std::io::Result;
 use std::num::NonZeroUsize;
 
 /// Stateful serialization.
@@ -154,8 +153,8 @@ impl Deserializer {
     /// serializer.serialize(&2u16);
     /// let mut deserializer = Deserializer::new(serializer.into_parts().0, Vec::new());
     /// unsafe {
-    ///     assert_eq!(deserializer.deserialize::<u8>().unwrap(), 1);
-    ///     assert_eq!(deserializer.deserialize::<u16>().unwrap(), 2);
+    ///     assert_eq!(deserializer.deserialize::<u8>(), 1);
+    ///     assert_eq!(deserializer.deserialize::<u16>(), 2);
     /// }
     /// ```
     ///
@@ -169,15 +168,15 @@ impl Deserializer {
     /// serializer.serialize(&2u16);
     /// let mut deserializer = Deserializer::new(serializer.into_parts().0, Vec::new());
     /// unsafe {
-    ///     deserializer.deserialize::<u16>().unwrap();
-    ///     deserializer.deserialize::<u8>().unwrap();
+    ///     deserializer.deserialize::<u16>();
+    ///     deserializer.deserialize::<u8>();
     /// }
     /// ```
     ///
     /// It is also sometimes safe to invoke deserialize with mismatched types if the two types have
     /// the exact same layout in crossmist's serde (not in Rust memory model!). For example,
     /// [`std::fs::File`] and [`crossmist::handles::OwnedHandle`] are compatible.
-    pub unsafe fn deserialize<T: Object>(&mut self) -> Result<T> {
+    pub unsafe fn deserialize<T: Object>(&mut self) -> T {
         unsafe { T::deserialize_self(self) }
     }
 
@@ -234,10 +233,10 @@ impl fmt::Debug for Deserializer {
 ///         s.serialize(&self.first);
 ///         s.serialize(&self.second);
 ///     }
-///     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
-///         let first = d.deserialize::<T>()?;
-///         let second = d.deserialize::<U>()?;
-///         Ok(Self { first, second })
+///     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+///         let first = d.deserialize::<T>();
+///         let second = d.deserialize::<U>();
+///         Self { first, second }
 ///     }
 /// }
 /// ```
@@ -274,13 +273,13 @@ impl fmt::Debug for Deserializer {
 ///             }
 ///         }
 ///     }
-///     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
-///         let id = d.deserialize::<usize>()?;
+///     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+///         let id = d.deserialize::<usize>();
 ///         match std::num::NonZeroUsize::new(id) {
 ///             None => {
 ///                 // If 0 is stored, this is the first time we see this object -- decode its
 ///                 // contents
-///                 let rc = Rc::<T>::new(d.deserialize()?);
+///                 let rc = Rc::<T>::new(d.deserialize());
 ///                 // Tell the deserializer about this object. Note that you don't specify the ID:
 ///                 // learn_cyclic infers it automatically. To make sure numeration is consistent
 ///                 // with the serializer, call learn_cyclic in the same order in both. For
@@ -290,14 +289,14 @@ impl fmt::Debug for Deserializer {
 ///                 // have to store the exact object you are deserializing in: in this case, we
 ///                 // store the Rc itself, not CustomRc.
 ///                 d.learn_cyclic(rc.clone());
-///                 Ok(Self(rc))
+///                 Self(rc)
 ///             }
 ///             Some(id) => {
 ///                 // If a non-zero value is stored, this is an ID of an already existing object.
 ///                 // Notice that you must specify the type of the object you expect to be stored.
 ///                 // get_cyclic returns a reference to the object. In case of Rc, cloning it is
 ///                 // sufficient.
-///                 Ok(Self(d.get_cyclic::<Rc<T>>(id).clone()))
+///                 Self(d.get_cyclic::<Rc<T>>(id).clone())
 ///             }
 ///         }
 ///     }
@@ -325,10 +324,10 @@ impl fmt::Debug for Deserializer {
 ///         // serialize_handle adds the handle (fd)
 ///         s.serialize_handle(self.0.as_handle());
 ///     }
-///     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
+///     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
 ///         // Deserializing OwnedHandle results in the ID being resolved into the handle, which can
 ///         // then be used to create the instance of the object we are deserializing
-///         Ok(Self(d.deserialize::<OwnedHandle>()?.into()))
+///         Self(d.deserialize::<OwnedHandle>().into())
 ///     }
 /// }
 /// ```
@@ -354,17 +353,14 @@ pub unsafe trait Object: BaseObject {
     }
     /// Deserialize a single object from a deserializer.
     ///
-    /// This function may assume the input data is produced by [`Self::serialize_self`]. You are
-    /// supposed to return `Err(_)` to indicate that converting parsed data to Rust data structures
-    /// failed, e.g. on allocation failures or when OS limits are exceeded, not to indicate the data
-    /// is corrupted.
+    /// This function may assume the input data is produced by [`Self::serialize_self`].
     ///
     /// # Safety
     ///
     /// This function is safe to call if the order of serialized types during serialization and
     /// deserialization matches, up to serialization layout. See the documentation of
     /// [`Deserializer::deserialize`] for more details.
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self>
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self
     where
         Self: Sized;
 }
@@ -374,22 +370,22 @@ pub unsafe trait Object: BaseObject {
 // blanket-implemented in a supertrait.
 pub(crate) trait BaseObject {
     #[cfg(feature = "nightly")]
-    unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> Result<*mut ()>;
+    unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> *mut ();
     #[cfg(not(feature = "nightly"))]
-    fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()>;
+    fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> *mut ();
 }
 
 impl<T: Object> BaseObject for T {
     #[cfg(feature = "nightly")]
-    unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> Result<*mut ()> {
+    unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> *mut () {
         unsafe { deserialize_on_heap::<T>(d) }
     }
     #[cfg(not(feature = "nightly"))]
-    fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
+    fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> *mut () {
         deserialize_on_heap::<T>
     }
 }
 
-unsafe fn deserialize_on_heap<T: Object>(d: &mut Deserializer) -> Result<*mut ()> {
-    Ok(Box::into_raw(Box::new(unsafe { T::deserialize_self(d) }?)).cast())
+unsafe fn deserialize_on_heap<T: Object>(d: &mut Deserializer) -> *mut () {
+    Box::into_raw(Box::new(unsafe { T::deserialize_self(d) })).cast()
 }
