@@ -55,12 +55,13 @@ impl<'fd> Serializer<'fd> {
     /// Panics if the object contains file handles.
     pub fn serialize_temporary<T: Object>(&mut self, data: T) {
         let mut s1 = Serializer::new();
+        core::mem::swap(&mut self.data, &mut s1.data);
         s1.serialize(&data);
         assert!(
             s1.handles.is_empty(),
             "serialize_temporary invoked with an object containing file handles"
         );
-        self.write(&s1.into_vec());
+        core::mem::swap(&mut self.data, &mut s1.data);
     }
 
     /// Store a file handle.
