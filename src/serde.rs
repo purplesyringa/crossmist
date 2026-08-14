@@ -260,7 +260,7 @@ impl fmt::Debug for Deserializer {
 ///     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
 ///         // Any unique identifier works, but it must be *globally* unique, not just for objects
 ///         // of the same type.
-///         match s.learn_cyclic(Rc::as_ptr(&self.0) as *const ()) {
+///         match s.learn_cyclic(Rc::as_ptr(&self.0).cast()) {
 ///             None => {
 ///                 // This is the first time we see this object -- encode a marker followed by its
 ///                 // contents. Under the hood, learn_cyclic remembers this object.
@@ -269,7 +269,7 @@ impl fmt::Debug for Deserializer {
 ///             }
 ///             Some(id) => {
 ///                 // We have seen this object before -- store its ID instead
-///                 s.serialize_temporary(id);
+///                 s.serialize_temporary(id.get());
 ///             }
 ///         }
 ///     }
