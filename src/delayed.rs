@@ -47,12 +47,12 @@ unsafe impl<T: Object> Object for Delayed<T> {
             DelayedInner::Deserialized(ref value) => {
                 let mut s1 = Serializer::new();
                 s1.serialize(value);
-                let handles = s1.drain_handles();
+                let (data, handles) = s1.into_parts();
                 s.serialize_temporary(handles.len());
                 for handle in handles {
                     s.serialize_handle(handle);
                 }
-                s.serialize_temporary(s1.into_vec());
+                s.serialize_temporary(data);
             }
         }
     }

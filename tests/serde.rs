@@ -4,12 +4,11 @@ use std::fmt::Debug;
 fn serde<T: Object>(x: &T) -> T {
     let mut s = Serializer::new();
     s.serialize(x);
-    let handles = s
-        .drain_handles()
+    let (data, handles) = s.into_parts();
+    let handles = handles
         .into_iter()
         .map(|handle| handle.try_clone_to_owned().unwrap())
         .collect();
-    let data = s.into_vec();
     let mut d = Deserializer::new(data, handles);
     unsafe { d.deserialize() }.expect("Deserialization failed")
 }

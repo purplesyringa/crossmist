@@ -69,11 +69,6 @@ impl<'fd> Serializer<'fd> {
         self.handles.push(handle);
     }
 
-    /// Get a list of added file handles.
-    pub fn drain_handles(&mut self) -> Vec<BorrowedHandle<'fd>> {
-        std::mem::take(&mut self.handles)
-    }
-
     /// Check if an object has already been serialized in this session and return its index.
     pub fn learn_cyclic(&mut self, ptr: *const ()) -> Option<NonZeroUsize> {
         let len_before = self.cyclic_ids.len();
@@ -86,9 +81,9 @@ impl<'fd> Serializer<'fd> {
         }
     }
 
-    /// Extract serialized data.
-    pub fn into_vec(self) -> Vec<u8> {
-        self.data
+    /// Extract serialized data and file handles.
+    pub fn into_parts(self) -> (Vec<u8>, Vec<BorrowedHandle<'fd>>) {
+        (self.data, self.handles)
     }
 }
 
@@ -157,7 +152,7 @@ impl Deserializer {
     /// let mut serializer = Serializer::new();
     /// serializer.serialize(&1u8);
     /// serializer.serialize(&2u16);
-    /// let mut deserializer = Deserializer::new(serializer.into_vec(), Vec::new());
+    /// let mut deserializer = Deserializer::new(serializer.into_parts().0, Vec::new());
     /// unsafe {
     ///     assert_eq!(deserializer.deserialize::<u8>().unwrap(), 1);
     ///     assert_eq!(deserializer.deserialize::<u16>().unwrap(), 2);
@@ -172,7 +167,7 @@ impl Deserializer {
     /// let mut serializer = Serializer::new();
     /// serializer.serialize(&1u8);
     /// serializer.serialize(&2u16);
-    /// let mut deserializer = Deserializer::new(serializer.into_vec(), Vec::new());
+    /// let mut deserializer = Deserializer::new(serializer.into_parts().0, Vec::new());
     /// unsafe {
     ///     deserializer.deserialize::<u16>().unwrap();
     ///     deserializer.deserialize::<u8>().unwrap();

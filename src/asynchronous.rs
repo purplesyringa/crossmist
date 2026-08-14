@@ -604,8 +604,8 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
 
         let mut s = Serializer::new();
         s.serialize(&entry);
+        let (data, handles) = s.into_parts();
 
-        let handles = s.drain_handles();
         let raw_handles = handles.iter().map(AsRawHandle::as_raw_handle).collect();
 
         let (local, child) = crate::duplex()?;
@@ -617,7 +617,7 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
         #[cfg(unix)]
         {
             process_handle = subprocess::_spawn_child(child, &handles)?;
-            local.send(&(s.into_vec(), raw_handles)).await?;
+            local.send(&(data, raw_handles)).await?;
             receiver = Receiver::from_stream(local.fd);
         }
 
@@ -628,7 +628,7 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
                 child.0.receiver.fd.as_handle(),
                 handles,
             )?;
-            local.send(&(s.into_vec(), raw_handles)).await?;
+            local.send(&(data, raw_handles)).await?;
             receiver = local.receiver;
         }
 

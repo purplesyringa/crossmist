@@ -10,7 +10,7 @@ pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
     let mut s = Serializer::new();
     s.serialize(value);
 
-    let handles = s.drain_handles();
+    let (data, handles) = s.into_parts();
     let mut dup_handles = Vec::new();
     if !handles.is_empty() {
         let handle_broker = entry::HANDLE_BROKER
@@ -37,8 +37,8 @@ pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
 
     let mut s1 = Serializer::new();
     s1.serialize(&dup_handles);
-    s1.write(&s.into_vec());
-    Ok(s1.into_vec())
+    s1.write(&data);
+    Ok(s1.into_parts().0)
 }
 
 pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result<T> {

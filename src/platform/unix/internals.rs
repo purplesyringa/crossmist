@@ -42,8 +42,7 @@ impl<'a> SingleObjectSender<'a> {
     pub(crate) fn new<T: Object>(socket_fd: BorrowedFd<'a>, value: &'a T, blocking: bool) -> Self {
         let mut s = Serializer::new();
         s.serialize(value);
-        let fds = s.drain_handles();
-        let buffer = s.into_vec();
+        let (buffer, fds) = s.into_parts();
 
         Self {
             socket_fd,
