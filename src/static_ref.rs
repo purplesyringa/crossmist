@@ -95,6 +95,9 @@ pub struct StaticRef<T: 'static> {
     ptr: RelocatablePtr<T>,
 }
 
+unsafe impl<T: Sync> Send for StaticRef<T> {}
+unsafe impl<T: Sync> Sync for StaticRef<T> {}
+
 // Implement Clone/Copy even for T: !Clone/Copy
 impl<T> Clone for StaticRef<T> {
     fn clone(&self) -> Self {
