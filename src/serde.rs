@@ -248,8 +248,8 @@ impl fmt::Debug for Deserializer {
 /// # Cyclic structures
 ///
 /// Occasionally, you might need to serialize recursive structures that might contain loops. You're
-/// probably better of using [`std::rc::Rc`] or [`std::sync::Arc`] or rewriting your structures, but
-/// if nothing better comes to your mind, you can do the same thing that `Rc` does:
+/// probably better off using [`std::rc::Rc`] or [`std::sync::Arc`] or redesigning your structures,
+/// but if nothing better comes to your mind, you can do the same thing that `Rc` does:
 ///
 /// ```rust
 /// # use crossmist::{Deserializer, Object, Serializer};
@@ -349,7 +349,7 @@ pub unsafe trait Object: BaseObject {
         Self: Sized,
     {
         for element in elements {
-            element.serialize_self(s)
+            element.serialize_self(s);
         }
     }
     /// Deserialize a single object from a deserializer.
@@ -367,13 +367,6 @@ pub unsafe trait Object: BaseObject {
     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self>
     where
         Self: Sized;
-    #[doc(hidden)]
-    unsafe fn deserialize_on_heap(d: &mut Deserializer) -> Result<*mut ()>
-    where
-        Self: Sized,
-    {
-        unsafe { Ok(Box::into_raw(Box::new(Self::deserialize_self(d)?)) as *mut ()) }
-    }
 }
 
 // These methods need to be dyn-compatible, but can only be implemented for `Self: Sized`, so they
@@ -389,10 +382,14 @@ pub(crate) trait BaseObject {
 impl<T: Object> BaseObject for T {
     #[cfg(feature = "nightly")]
     unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> Result<*mut ()> {
-        unsafe { Self::deserialize_on_heap(d) }
+        unsafe { deserialize_on_heap::<T>(d) }
     }
     #[cfg(not(feature = "nightly"))]
     fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> Result<*mut ()> {
-        Self::deserialize_on_heap
+        deserialize_on_heap::<T>
     }
+}
+
+unsafe fn deserialize_on_heap<T: Object>(d: &mut Deserializer) -> Result<*mut ()> {
+    Ok(Box::into_raw(Box::new(unsafe { T::deserialize_self(d) }?)).cast())
 }
