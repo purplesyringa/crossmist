@@ -16,7 +16,7 @@ pub trait FromRawHandle: io::FromRawHandle {
     where
         Self: Sized,
     {
-        <Self as io::FromRawHandle>::from_raw_handle(handle.0 as io::RawHandle)
+        unsafe { <Self as io::FromRawHandle>::from_raw_handle(handle.0 as io::RawHandle) }
     }
 }
 pub trait IntoRawHandle: io::IntoRawHandle {

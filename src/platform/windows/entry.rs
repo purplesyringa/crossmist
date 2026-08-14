@@ -106,10 +106,12 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
 }
 
 unsafe fn parse_handle(s: &str) -> OwnedHandle {
-    use windows::Win32::Foundation;
-    OwnedHandle::from_raw_handle(Foundation::HANDLE(core::ptr::without_provenance_mut(
-        s.parse().expect("Failed to parse handle"),
-    )))
+    unsafe {
+        use windows::Win32::Foundation;
+        OwnedHandle::from_raw_handle(Foundation::HANDLE(core::ptr::without_provenance_mut(
+            s.parse().expect("Failed to parse handle"),
+        )))
+    }
 }
 
 pub(crate) fn disable_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<()> {

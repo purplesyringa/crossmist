@@ -179,9 +179,11 @@ impl<T: Object> std::os::unix::io::FromRawFd for Sender<T> {
 #[cfg(windows)]
 impl<T: Object> std::os::windows::io::FromRawHandle for Sender<T> {
     unsafe fn from_raw_handle(fd: std::os::windows::io::RawHandle) -> Self {
-        Self(asynchronous::Sender::from_stream(Blocking(
-            asynchronous::SyncStream::from_raw_handle(fd),
-        )))
+        unsafe {
+            Self(asynchronous::Sender::from_stream(Blocking(
+                asynchronous::SyncStream::from_raw_handle(fd),
+            )))
+        }
     }
 }
 
@@ -233,9 +235,11 @@ impl<T: Object> std::os::unix::io::FromRawFd for Receiver<T> {
 #[cfg(windows)]
 impl<T: Object> std::os::windows::io::FromRawHandle for Receiver<T> {
     unsafe fn from_raw_handle(fd: std::os::windows::io::RawHandle) -> Self {
-        Self(asynchronous::Receiver::from_stream(Blocking(
-            asynchronous::SyncStream::from_raw_handle(fd),
-        )))
+        unsafe {
+            Self(asynchronous::Receiver::from_stream(Blocking(
+                asynchronous::SyncStream::from_raw_handle(fd),
+            )))
+        }
     }
 }
 
