@@ -79,6 +79,6 @@ unsafe impl<T: Object> Object for Box<[T]> {
         s.serialize_slice(self.as_ref());
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
-        unsafe { Ok(d.deserialize::<Vec<T>>()?.into_boxed_slice()) }
+        Ok(unsafe { d.deserialize::<Vec<T>>() }?.into_boxed_slice())
     }
 }
