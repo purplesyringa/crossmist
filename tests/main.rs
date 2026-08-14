@@ -307,9 +307,7 @@ fn with_static_ref() {
         a.to_string()
     }
     assert_eq!(
-        inner
-            .run(static_ref!(&'static str, &"Hello, world!"))
-            .unwrap(),
+        inner.run(static_ref!(&"Hello, world!")).unwrap(),
         "Hello, world!"
     );
 }

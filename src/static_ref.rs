@@ -1,13 +1,12 @@
 //! Serializing references to constant objects.
 //!
-//! Sometimes it's useful to serialize objects that *you know* are already present in each process,
-//! typically because they are stored in a global static/const variable. For example, you might have
-//! several unit structs implementing a trait, and you wish to serialize the `dyn Trait` without
-//! wrapping it in a box. Or you might have a limited list of "actions" you wish to ask a subprocess
-//! to perform, and these actions are stored in a constant array or several constant variables.
+//! Serializing objects that are already present in each process in a `static` is wasteful. For
+//! example, if you store a list of "actions" subprocesses may perform in a `static` array, you
+//! likely want to send across references to the actions instead of deserializing them and dealing
+//! with temporary lifetimes.
 //!
-//! [`StaticRef`] is a type similar to `&'static T` that implements [`Object`] and stores a plain
-//! reference to the underlying value instead of serializing it as an object:
+//! [`StaticRef`] is similar to `&'static T`, but implements [`Object`] by serializing a pointer. It
+//! can be created from a constant value of type `T` with [`static_ref!`] and sent over:
 //!
 //! ```rust
 //! use crossmist::{StaticRef, static_ref};
@@ -22,7 +21,7 @@
 //!
 //! fn main() {
 //!     crossmist::init();
-//!     test.run(static_ref!(Configuration, CAT));
+//!     test.run(static_ref!(CAT)); // sends a referene to an anonymous `static` with value `CAT`
 //! }
 //!
 //! #[crossmist::func]
@@ -33,9 +32,8 @@
 //! ```
 //!
 //! Here's a more complicated example featuring `StaticRef<&'static dyn Trait>` (similar to
-//! `&'static &'static dyn Trait`). The double indirection is required because `dyn Trait` is
-//! unsized, and thus `&dyn Trait` is more than just a pointer, which `StaticRef` does not support
-//! directly.
+//! `&'static &'static dyn Trait`). The double indirection is required because [`StaticRef`] can
+//! only reference sized values, and `dyn Trait` is unsized.
 //!
 //! ```rust
 //! use crossmist::{StaticRef, static_ref};
@@ -60,7 +58,7 @@
 //!
 //! fn main() {
 //!     crossmist::init();
-//!     test.run(static_ref!(&'static dyn Speak, &Cat));
+//!     test.run(static_ref!(&Cat as &dyn Speak));
 //! }
 //!
 //! #[crossmist::func]
@@ -77,17 +75,15 @@ use std::ops::Deref;
 ///
 /// See the documentation for [`mod@crossmist::static_ref`] for a tutorial-grade explanation.
 ///
-/// This type can be created via one of the following two ways:
-///
-/// - Safely, via [`static_ref!`]
-/// - Unsafely, via [`StaticRef::new_unchecked`]
+/// [`StaticRef`] can be created safely with [`static_ref!`] or unsafely with
+/// [`StaticRef::new_unchecked`].
 ///
 /// # Example
 ///
 /// ```rust
 /// use crossmist::{StaticRef, static_ref};
 ///
-/// let num = static_ref!(i32, 123);
+/// let num = static_ref!(123);
 /// assert_eq!(*num, 123);
 /// ```
 #[derive(Object)]
@@ -109,14 +105,13 @@ impl<T> Copy for StaticRef<T> {}
 impl<T> StaticRef<T> {
     /// Create [`StaticRef`] from a `'static` reference.
     ///
-    /// This is an unsafe function -- consider using the safe wrapper [`static_ref!`] instead.
+    /// This is an unsafe function -- you should almost always use [`static_ref!`] instead.
     ///
     /// # Safety
     ///
-    /// This function is safe to call if:
-    /// - The referenced value must have existed since the beginning of the program execution (e.g.
-    ///   the return value of `Box::leak` won't work), and
-    /// - The referenced value is located outside of a dynamic library.
+    /// The referenced value must exist since the beginning of the program execution. For example,
+    /// the return value of `Box::leak` or the innards of a lazily initialized `static`s won't work.
+    /// It must also be located outside of a dynamic library.
     ///
     /// # Example
     ///
@@ -127,16 +122,17 @@ impl<T> StaticRef<T> {
     /// let num = unsafe { StaticRef::new_unchecked(&NUM) };
     /// assert_eq!(*num, 123);
     /// ```
-    pub unsafe fn new_unchecked(reference: &'static T) -> Self {
+    pub const unsafe fn new_unchecked(reference: &'static T) -> Self {
         Self {
-            ptr: RelocatablePtr(reference as *const T),
+            ptr: RelocatablePtr(core::ptr::from_ref(reference)),
         }
     }
 
     /// Extract the underlying reference.
     ///
-    /// [`StaticRef<T>`] implements [`Deref`], so this function is only provided for completeness
-    /// and should seldom be used: instead of `static_ref.get().<...>` just do `static_ref.<...>`.
+    /// [`StaticRef<T>`] implements [`Deref`], so this function should seldom be used: instead of
+    /// `static_ref.get().<...>` just do `static_ref.<...>`. It is only useful to get a reference
+    /// with a `'static` lifetime.
     pub fn get(self) -> &'static T {
         unsafe { &*self.ptr.0 }
     }
@@ -157,9 +153,8 @@ impl<T> Deref for StaticRef<T> {
 
 /// Create a [`StaticRef`] safely.
 ///
-/// This macro takes `T, value` and returns [`StaticRef<T>`] referencing the given value. The value
-/// must be a compile-time constant: this is the only way to ensure soundness. If you need to
-/// reference a `static`, non-compile-time constant, use [`StaticRef::new_unchecked`].
+/// This macro takes a compile-time constant and returns a [`StaticRef`] to an anonymous `static`
+/// initialized to that value.
 ///
 /// # Example
 ///
@@ -167,14 +162,14 @@ impl<T> Deref for StaticRef<T> {
 /// use crossmist::{StaticRef, static_ref};
 ///
 /// const NUM: i32 = 123;
-/// let num = static_ref!(i32, NUM);
+/// let num = static_ref!(NUM);
 /// assert_eq!(*num, 123);
 /// ```
 #[macro_export]
 macro_rules! static_ref {
-    ($type:ty, $value:expr_2021) => {{
-        const VALUE: $type = $value;
-        unsafe { $crate::StaticRef::new_unchecked(&VALUE) }
+    ($value:expr) => {{
+        let r = &const { $value }; // const promotion
+        unsafe { $crate::StaticRef::new_unchecked(r) }
     }};
 }
 pub use static_ref;
