@@ -141,7 +141,7 @@ macro_rules! serialize_rev {
     }
 }
 
-#[cfg(docsrs)]
+#[cfg(all(doc, feature = "nightly"))]
 #[doc(cfg(true), fake_variadic)]
 /// This trait is implemented for tuples up to 20 items long.
 unsafe impl<T: Object> Object for (T,) {
@@ -157,7 +157,7 @@ macro_rules! impl_serialize_for_tuple {
     ($head:tt $($tail:tt)*) => {
         impl_serialize_for_tuple!($($tail)*);
 
-        #[cfg(not(docsrs))]
+        #[cfg(not(all(doc, feature = "nightly")))]
         paste! {
             unsafe impl<$([<T $tail>]: Object),*> Object for ($([<T $tail>],)*) {
                 #[allow(unused_variables)]
