@@ -176,7 +176,11 @@ jobs:
         run: rustup update nightly && rustup default nightly
       - name: Install rustfmt and clippy
         run: rustup component add rustfmt clippy
+      - name: Install Windows target
+        run: rustup target add x86_64-pc-windows-msvc
       - name: Rustfmt
         run: cargo fmt -- --check
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features --target x86_64-pc-windows-msvc -- -D warnings
