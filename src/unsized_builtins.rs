@@ -1,7 +1,8 @@
 use crate::{Deserializer, Object, Serializer, relocation::RelocatablePtr};
 use std::io::Result;
 
-// XXX: Rust doesn't guarantee the order of data and vtable pointers, so this can break.
+// XXX: Rust doesn't guarantee the order of data and vtable pointers, so this can break. This should
+// eventually be replaced with the metadata API.
 #[repr(C)]
 struct DynFatPtr {
     data: *const (),
@@ -40,6 +41,11 @@ unsafe impl<T: Object + ?Sized> Object for Box<T> {
             s.serialize_temporary(RelocatablePtr(fat_ptr.vtable));
         }
 
+        // On nightly, the vtable is sufficient to deserialize the object. On stable, we can't call
+        // any methods on `T: ?Sized` without having an instance of `T` (at least until `try_as_dyn`
+        // lands), forcing us to pass an explicit deserializer function. Even then, we still have to
+        // pass the vtable, since the deserializer function cannot know both the concrete type and
+        // the specific subtrait of `Object` to emit the vtable for at the same time.
         #[cfg(not(feature = "nightly"))]
         s.serialize_temporary(RelocatablePtr(
             self.as_ref().deserialize_on_heap_get() as *const ()
@@ -51,6 +57,7 @@ unsafe impl<T: Object + ?Sized> Object for Box<T> {
     unsafe fn deserialize_self(d: &mut Deserializer) -> Result<Self> {
         unsafe {
             let mut pointer: *mut T = match TypeClass::of::<T>() {
+                // `std::ptr::null_mut` doesn't work for `T: ?Sized`.
                 TypeClass::Sized => std::mem::transmute_copy::<usize, *mut T>(&0usize),
                 TypeClass::Dyn => std::mem::transmute_copy::<DynFatPtr, *mut T>(&DynFatPtr {
                     data: std::ptr::null(),
@@ -59,14 +66,15 @@ unsafe impl<T: Object + ?Sized> Object for Box<T> {
             };
 
             #[cfg(feature = "nightly")]
-            let pointer_thin_part = pointer.deserialize_on_heap_ptr(d)?;
+            let data = pointer.deserialize_on_heap_ptr(d)?;
             #[cfg(not(feature = "nightly"))]
-            let pointer_thin_part = std::mem::transmute::<
+            let data = std::mem::transmute::<
                 RelocatablePtr<()>,
                 unsafe fn(&mut Deserializer) -> Result<*mut ()>,
             >(d.deserialize::<RelocatablePtr<()>>()?)(d)?;
 
-            (&mut pointer as *mut *mut T as *mut *mut ()).write(pointer_thin_part);
+            // Patch the data part of the pointer without checking whether it's thin or fat.
+            (&raw mut pointer).cast::<*mut ()>().write(data);
 
             Ok(Box::from_raw(pointer))
         }
