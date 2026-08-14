@@ -2,7 +2,6 @@ use crate::{Deserializer, Object, Serializer};
 
 // This needs to be a singleton to prevent different codegen units from using different copies of
 // the function. See also: https://github.com/alecmocatta/relative/pull/2
-
 static BASE_ADDRESS: fn(()) = std::mem::drop::<()>;
 
 #[derive(Debug)]
@@ -19,9 +18,17 @@ impl<T> Copy for RelocatablePtr<T> {}
 
 unsafe impl<T> Object for RelocatablePtr<T> {
     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_temporary((self.0 as usize).wrapping_sub(BASE_ADDRESS as usize));
+        // Don't bother exposing provenance -- it won't work in another process anyway.
+        s.serialize_temporary(self.0.addr().wrapping_sub(BASE_ADDRESS as usize));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-        unsafe { Self((BASE_ADDRESS as usize).wrapping_add(d.deserialize()) as *const T) }
+        // `RelocatablePtr` is used either for function pointers or `static`s. The former don't have
+        // provenance in the AM, the latter are effectively pre-exposed by the as-if rule: they are
+        // visible via FFI and there is no proof that they weren't exposed by life-before-main.
+        unsafe {
+            Self(core::ptr::with_exposed_provenance(
+                (BASE_ADDRESS as usize).wrapping_add(d.deserialize()),
+            ))
+        }
     }
 }
