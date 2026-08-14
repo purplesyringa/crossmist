@@ -107,9 +107,9 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
 
 unsafe fn parse_handle(s: &str) -> OwnedHandle {
     use windows::Win32::Foundation;
-    OwnedHandle::from_raw_handle(Foundation::HANDLE(
-        s.parse::<isize>().expect("Failed to parse handle"),
-    ))
+    OwnedHandle::from_raw_handle(Foundation::HANDLE(core::ptr::without_provenance_mut(
+        s.parse().expect("Failed to parse handle"),
+    )))
 }
 
 pub(crate) fn disable_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<()> {
@@ -119,8 +119,7 @@ pub(crate) fn disable_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<()>
             handle.as_raw_handle(),
             Foundation::HANDLE_FLAG_INHERIT.0,
             Foundation::HANDLE_FLAG_INHERIT,
-        )
-        .ok()?
+        )?
     };
     Ok(())
 }
@@ -131,16 +130,13 @@ pub(crate) fn enable_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<()> 
             handle.as_raw_handle(),
             Foundation::HANDLE_FLAG_INHERIT.0,
             Foundation::HANDLE_FLAGS::default(),
-        )
-        .ok()?
+        )?
     };
     Ok(())
 }
 pub(crate) fn is_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<bool> {
     use windows::Win32::Foundation;
     let mut flags = 0u32;
-    unsafe {
-        Foundation::GetHandleInformation(handle.as_raw_handle(), &mut flags as *mut u32).ok()?
-    };
+    unsafe { Foundation::GetHandleInformation(handle.as_raw_handle(), &mut flags as *mut u32)? };
     Ok((flags & Foundation::HANDLE_FLAG_INHERIT.0) == 0)
 }

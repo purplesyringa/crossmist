@@ -26,13 +26,16 @@ pub(crate) unsafe fn _spawn_child<'a>(
             inherited_handles.push(handle_broker.process.as_handle());
             inherited_handles.push(handle_broker.holder.0.fd.as_handle());
             (
-                handle_broker.process.as_raw_handle().0,
-                handle_broker.holder.as_raw_handle().0,
+                handle_broker.process.as_raw_handle(),
+                handle_broker.holder.as_raw_handle(),
             )
         }
         None => {
             // HANDLE_BROKER is not initialized before the broker itself is started
-            (-1, 0)
+            (
+                Foundation::INVALID_HANDLE_VALUE,
+                Foundation::INVALID_HANDLE_VALUE,
+            )
         }
     };
 
@@ -52,36 +55,34 @@ pub(crate) unsafe fn _spawn_child<'a>(
 
     let mut cmd_line: Vec<u16> = format!(
         "_crossmist_ {} {} {} {}\0",
-        broker_process,
-        holder_handle,
-        child_tx.as_raw_handle().0,
-        child_rx.as_raw_handle().0,
+        broker_process.0.addr(),
+        holder_handle.0.addr(),
+        child_tx.as_raw_handle().0.addr(),
+        child_rx.as_raw_handle().0.addr(),
     )
     .encode_utf16()
     .collect();
 
     let n_attrs = 1;
     let mut size = 0;
-    Threading::InitializeProcThreadAttributeList(
-        Threading::LPPROC_THREAD_ATTRIBUTE_LIST::default(),
-        n_attrs,
-        0,
-        &mut size as *mut usize,
-    );
+    Threading::InitializeProcThreadAttributeList(None, n_attrs, None, &mut size as *mut usize);
     let mut attrs = vec![0u8; size];
     let attrs = Threading::LPPROC_THREAD_ATTRIBUTE_LIST(attrs.as_mut_ptr() as *mut c_void);
-    Threading::InitializeProcThreadAttributeList(attrs, n_attrs, 0, &mut size as *mut usize)
-        .ok()?;
+    Threading::InitializeProcThreadAttributeList(
+        Some(attrs),
+        n_attrs,
+        None,
+        &mut size as *mut usize,
+    )?;
     Threading::UpdateProcThreadAttribute(
         attrs,
         0,
         Threading::PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
-        inherited_handles.as_ptr() as *const c_void,
+        Some(inherited_handles.as_ptr() as *const c_void),
         inherited_handles.len() * std::mem::size_of::<RawHandle>(),
-        std::ptr::null_mut(),
-        std::ptr::null_mut(),
-    )
-    .ok()?;
+        None,
+        None,
+    )?;
 
     let mut startup_info = Threading::STARTUPINFOEXW::default();
     startup_info.StartupInfo.cb = std::mem::size_of::<Threading::STARTUPINFOEXW>() as u32;
@@ -99,12 +100,12 @@ pub(crate) unsafe fn _spawn_child<'a>(
 
     let res = Threading::CreateProcessW(
         PCWSTR::from_raw(module_name.as_ptr()),
-        PWSTR::from_raw(cmd_line.as_mut_ptr()),
-        std::ptr::null(),
-        std::ptr::null(),
+        Some(PWSTR::from_raw(cmd_line.as_mut_ptr())),
+        None,
+        None,
         true,
         Threading::EXTENDED_STARTUPINFO_PRESENT | Threading::INHERIT_PARENT_AFFINITY,
-        std::ptr::null(),
+        None,
         None,
         &startup_info as *const Threading::STARTUPINFOEXW as *const Threading::STARTUPINFOW,
         &mut process_info as *mut Threading::PROCESS_INFORMATION,
@@ -114,7 +115,7 @@ pub(crate) unsafe fn _spawn_child<'a>(
         entry::enable_cloexec(handle)?;
     }
 
-    res.ok()?;
+    res?;
 
     Foundation::CloseHandle(process_info.hThread);
     Ok(OwnedHandle::from_raw_handle(process_info.hProcess))

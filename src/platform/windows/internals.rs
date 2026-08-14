@@ -28,8 +28,7 @@ pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
                     0,
                     false,
                     Foundation::DUPLICATE_SAME_ACCESS,
-                )
-                .ok()?;
+                )?;
             }
             dup_handles.push(dup_handle);
         }
@@ -63,13 +62,12 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
                     0,
                     false,
                     Foundation::DUPLICATE_CLOSE_SOURCE | Foundation::DUPLICATE_SAME_ACCESS,
-                )
-                .ok()?;
+                )?;
             }
             let dup_handle = unsafe { OwnedHandle::from_raw_handle(dup_handle) };
             dup_handles.push(dup_handle);
         }
     }
 
-    Deserializer::new(serialized_contents, dup_handles).deserialize()
+    Ok(Deserializer::new(serialized_contents, dup_handles).deserialize())
 }

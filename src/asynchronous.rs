@@ -55,12 +55,9 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 #[cfg(windows)]
 use {
-    crate::{
-        imp::implements,
-        internals::{deserialize_with_handles, serialize_with_handles},
-    },
-    std::{mem::MaybeUninit, os::windows::io},
-    windows::Win32::System::{Pipes, Threading, WindowsProgramming},
+    crate::internals::{deserialize_with_handles, serialize_with_handles},
+    std::os::windows::io,
+    windows::Win32::System::{Pipes, Threading},
 };
 
 #[cfg(unix)]
@@ -160,10 +157,9 @@ pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, R
             Pipes::CreatePipe(
                 &mut rx as *mut RawHandle,
                 &mut tx as *mut RawHandle,
-                std::ptr::null(),
+                None,
                 0,
-            )
-            .ok()?;
+            )?;
         }
         let tx = unsafe { SyncStream::from_raw_handle(tx) };
         let rx = unsafe { SyncStream::from_raw_handle(rx) };
@@ -294,7 +290,7 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
 
             let mut serialized = vec![0u8; len];
             self.fd.read(&mut serialized).await?;
-            unsafe { deserialize_with_handles(serialized).map(Some) }
+            unsafe { deserialize_with_handles(serialized) }.map(Some)
         }
     }
 }
@@ -530,9 +526,10 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
             if unsafe {
                 Threading::WaitForSingleObject(
                     self.proc_handle.as_raw_handle(),
-                    WindowsProgramming::INFINITE,
+                    Threading::INFINITE,
                 )
-            } == u32::MAX
+            }
+            .0 == u32::MAX
             {
                 return Err(Error::last_os_error());
             }
@@ -541,8 +538,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
                 Threading::GetExitCodeProcess(
                     self.proc_handle.as_raw_handle(),
                     &mut code as *mut u32,
-                )
-                .ok()?;
+                )?;
             }
             if code == 0 {
                 value.ok_or_else(|| {
@@ -582,7 +578,7 @@ impl KillHandle {
         )?;
         #[cfg(windows)]
         unsafe {
-            Threading::TerminateProcess(self.proc_id, 1).ok()?;
+            Threading::TerminateProcess(self.proc_id, 1)?;
         }
         Ok(())
     }

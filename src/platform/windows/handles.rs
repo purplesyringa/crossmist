@@ -24,12 +24,12 @@ pub trait IntoRawHandle: io::IntoRawHandle {
     where
         Self: Sized,
     {
-        HANDLE(<Self as io::IntoRawHandle>::into_raw_handle(self) as isize)
+        HANDLE(<Self as io::IntoRawHandle>::into_raw_handle(self))
     }
 }
 pub trait AsRawHandle: io::AsRawHandle {
     fn as_raw_handle(&self) -> RawHandle {
-        HANDLE(<Self as io::AsRawHandle>::as_raw_handle(self) as isize)
+        HANDLE(<Self as io::AsRawHandle>::as_raw_handle(self))
     }
 }
 pub trait AsHandle: io::AsHandle {
