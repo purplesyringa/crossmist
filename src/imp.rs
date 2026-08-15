@@ -1,3 +1,4 @@
+pub use crate::asynchronous::EntryHandler;
 pub use crate::delayed::Delayed;
 
 #[cfg(feature = "smol")]
@@ -46,7 +47,7 @@ pub(crate) fn perform_sanity_checks() {
 ///     conjure_zst();
 /// }
 /// ```
-pub fn if_void<T>() -> Option<T> {
+pub(crate) fn if_void<T>() -> Option<T> {
     (typeid::of::<T>() == typeid::of::<()>()).then(|| unsafe { std::ptr::dangling::<T>().read() })
 }
 

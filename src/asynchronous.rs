@@ -592,6 +592,28 @@ impl fmt::Debug for KillHandle {
     }
 }
 
+#[allow(missing_debug_implementations)]
+#[derive(Object)]
+pub struct EntryHandler<F: Object>(pub F);
+
+impl<F: FnOnceObject<(), Output: Object>> crate::InternalFnOnce<(RawHandle,)> for EntryHandler<F> {
+    type Output = i32;
+
+    fn call_object_once(self, args: (RawHandle,)) -> Self::Output {
+        let output = self.0.call_object_once(());
+
+        // Avoid explicitly sending a () result
+        if imp::if_void::<F::Output>().is_none() {
+            // Even if the function was asynchronous, there shouldn't be any task running at this
+            // moment, so it is fine (and more efficient) to use a sync sender
+            let mut output_tx = unsafe { crate::Sender::from_raw_handle(args.0) };
+            output_tx.send(&output).expect("Failed to send subprocess output");
+        }
+
+        0
+    }
+}
+
 pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
     entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
 ) -> Result<Child<Stream, T>> {

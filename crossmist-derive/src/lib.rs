@@ -47,35 +47,6 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             .collect();
         quote! { <#(#params,)*> }
     };
-    let generic_phantom: Vec<_> = input
-        .sig
-        .generics
-        .params
-        .iter()
-        .enumerate()
-        .map(|(i, param)| {
-            let field = format_ident!("f{}", i);
-            match param {
-                syn::GenericParam::Type(ty) => {
-                    let ident = &ty.ident;
-                    quote! { #field: std::marker::PhantomData<fn(#ident) -> #ident> }
-                }
-                syn::GenericParam::Lifetime(lt) => {
-                    let lt = &lt.lifetime;
-                    quote! { #field: std::marker::PhantomData<& #lt ()> }
-                }
-                syn::GenericParam::Const(_con) => {
-                    unimplemented!()
-                }
-            }
-        })
-        .collect();
-    let generic_phantom_build: Vec<_> = (0..input.sig.generics.params.len())
-        .map(|i| {
-            let field = format_ident!("f{}", i);
-            quote! { #field: std::marker::PhantomData }
-        })
-        .collect();
 
     // Pray all &input are distinct
     let link_name = format!(
@@ -84,7 +55,6 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     );
 
     let type_ident = format_ident!("T_{}", link_name);
-    let entry_ident = format_ident!("E_{}", link_name);
 
     let ident = input.sig.ident;
     input.sig.ident = format_ident!("invoke");
@@ -98,10 +68,8 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut fn_args = Vec::new();
     let mut fn_types = Vec::new();
-    let mut extracted_args = Vec::new();
     let mut arg_names = Vec::new();
     let mut args_from_tuple = Vec::new();
-    let mut binding = Vec::new();
     let mut has_references = false;
     for (i, arg) in args.iter().enumerate() {
         let i = syn::Index::from(i);
@@ -112,10 +80,8 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
                 let ty = &pattype.ty;
                 fn_args.push(quote! { #ident #colon_token #ty });
                 fn_types.push(quote! { #ty });
-                extracted_args.push(quote! { crossmist_args.#ident });
                 arg_names.push(quote! { #ident });
                 args_from_tuple.push(quote! { args.#i });
-                binding.push(quote! { .bind_value(#ident) });
                 has_references = has_references
                     || matches!(**ty, syn::Type::Reference(_))
                     || matches!(
@@ -131,16 +97,11 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    let bound = if args.is_empty() {
-        quote! { #ident }
-    } else {
-        let head_ty = &fn_types[0];
-        let tail_ty = &fn_types[1..];
-        let head_arg = &arg_names[0];
-        let tail_binding = &binding[1..];
-        quote! {
-            BindValue::<#head_ty, (#(#tail_ty,)*)>::bind_value(::std::boxed::Box::new(#ident), #head_arg) #(#tail_binding)*
-        }
+    let bound = quote! {
+        ::crossmist::BindValue::bind_value(
+            unsafe { ::crossmist::StaticFn::new(#type_ident::entry::#generics as fn(_) -> _) },
+            ::crossmist::imp::Delayed::new((#(#arg_names,)*)),
+        )
     };
 
     let return_type_wrapped;
@@ -153,8 +114,10 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         pin = quote! {};
     }
 
-    let body;
-    if let Some(arg) = tokio_argument {
+    let entry;
+    if has_references {
+        entry = quote! {};
+    } else if let Some(arg) = tokio_argument {
         let async_attribute = match arg {
             Meta::Path(_) => quote! { #[tokio::main] },
             Meta::List(MetaList { nested, .. }) => quote! { #[tokio::main(#nested)] },
@@ -162,10 +125,12 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
                 return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'tokio' argument"); }.into();
             }
         };
-        body = quote! {
+        entry = quote! {
             #async_attribute
-            async fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                entry.func.deserialize().call_object_box(()).await
+            async fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
+                // `args` must be deserialized only after the reactor has started.
+                let args = args.deserialize();
+                Self::invoke(#(#args_from_tuple,)*).await
             }
         };
     } else if let Some(arg) = smol_argument {
@@ -175,15 +140,17 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
                 return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'smol' argument"); }.into();
             }
         }
-        body = quote! {
-            fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                ::crossmist::imp::async_io::block_on(entry.func.deserialize().call_object_box(()))
+        entry = quote! {
+            fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
+                let args = args.deserialize();
+                ::crossmist::imp::async_io::block_on(Self::invoke(#(#args_from_tuple,)*))
             }
         };
     } else {
-        body = quote! {
-            fn body #generic_params (entry: #entry_ident #generics) -> #return_type {
-                entry.func.deserialize().call_object_box(())
+        entry = quote! {
+            fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
+                let args = args.deserialize();
+                Self::invoke(#(#args_from_tuple,)*)
             }
         };
     }
@@ -193,8 +160,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     } else {
         quote! {
             pub fn spawn #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::Child<#return_type>> {
-                use ::crossmist::BindValue;
-                unsafe { ::crossmist::blocking::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))) }
+                unsafe { ::crossmist::blocking::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(::crossmist::imp::EntryHandler(#bound)))) }
             }
             pub fn run #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
                 self.spawn(#(#arg_names,)*)?.join()
@@ -202,8 +168,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
             ::crossmist::if_tokio! {
                 pub async fn spawn_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
-                    use ::crossmist::BindValue;
-                    unsafe { ::crossmist::tokio::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
+                    unsafe { ::crossmist::tokio::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(::crossmist::imp::EntryHandler(#bound)))).await }
                 }
                 pub async fn run_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
                     self.spawn_tokio(#(#arg_names,)*).await?.join().await
@@ -212,8 +177,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
             ::crossmist::if_smol! {
                 pub async fn spawn_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
-                    use ::crossmist::BindValue;
-                    unsafe { ::crossmist::smol::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(#entry_ident:: #generics ::new(::std::boxed::Box::new(#bound))))).await }
+                    unsafe { ::crossmist::smol::spawn(::std::boxed::Box::new(::crossmist::CallWrapper(::crossmist::imp::EntryHandler(#bound)))).await }
                 }
                 pub async fn run_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
                     self.spawn_smol(#(#arg_names,)*).await?.join().await
@@ -223,43 +187,6 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        #[derive(::crossmist::Object)]
-        struct #entry_ident #generic_params {
-            func: ::crossmist::imp::Delayed<::std::boxed::Box<dyn ::crossmist::FnOnceObject<(), Output = #return_type_wrapped>>>,
-            #(#generic_phantom,)*
-        }
-
-        impl #generic_params #entry_ident #generics {
-            fn new(func: ::std::boxed::Box<dyn ::crossmist::FnOnceObject<(), Output = #return_type_wrapped>>) -> Self {
-                Self {
-                    func: ::crossmist::imp::Delayed::new(func),
-                    #(#generic_phantom_build,)*
-                }
-            }
-        }
-
-        impl #generic_params ::crossmist::InternalFnOnce<(::crossmist::handles::RawHandle,)> for #entry_ident #generics {
-            type Output = i32;
-            #[allow(unreachable_code, clippy::diverging_sub_expression)] // If func returns !
-            fn call_object_once(self, args: (::crossmist::handles::RawHandle,)) -> Self::Output {
-                #body
-                let return_value = body(self);
-                // Avoid explicitly sending a () result
-                if ::crossmist::imp::if_void::<#return_type>().is_none() {
-                    use ::crossmist::handles::FromRawHandle;
-                    // If this function is async, there shouldn't be any task running at this
-                    // moment, so it is fine (and more efficient) to use a sync sender
-                    let output_tx_handle = args.0;
-                    let mut output_tx = unsafe {
-                        ::crossmist::Sender::<#return_type>::from_raw_handle(output_tx_handle)
-                    };
-                    output_tx.send(&return_value)
-                        .expect("Failed to send subprocess output");
-                }
-                0
-            }
-        }
-
         impl #generic_params ::crossmist::InternalFnOnce<(#(#fn_types,)*)> for #type_ident {
             type Output = #return_type_wrapped;
             fn call_object_once(self, args: (#(#fn_types,)*)) -> Self::Output {
@@ -284,6 +211,8 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         impl #type_ident {
             #[link_name = #link_name]
             #input
+
+            #entry
 
             // Putting these function in a module named `#ident` would be clearer, but results in
             // scoping issues: `use super::*` imports from the parent module and not the scope, so
