@@ -3,7 +3,7 @@
 //! Check out the docs at [`asynchronous`] for more information.
 
 use crate::{
-    Object, asynchronous,
+    Deserializer, Object, asynchronous,
     handles::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle},
 };
 use std::io::Result;
@@ -89,8 +89,9 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 }
 
 #[doc(hidden)]
-pub async unsafe fn spawn<T: Object>(
-    entry: Box<dyn asynchronous::EntryHandlerObject>,
-) -> Result<Child<T>> {
-    unsafe { asynchronous::spawn::<Tokio, T>(entry).await }
+pub async unsafe fn spawn<Func: FnOnce(Deserializer) -> Ret, Ret: Object>(
+    func: Func,
+    args: impl Object,
+) -> Result<Child<Ret>> {
+    unsafe { asynchronous::spawn::<Tokio, _, _>(func, args).await }
 }

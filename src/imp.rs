@@ -1,6 +1,3 @@
-pub use crate::asynchronous::EntryHandler;
-pub use crate::delayed::Delayed;
-
 #[cfg(feature = "smol")]
 pub use async_io;
 

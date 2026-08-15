@@ -33,6 +33,20 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let generic_params = &input.sig.generics;
+    let generics = {
+        let params: Vec<_> = input
+            .sig
+            .generics
+            .params
+            .iter()
+            .map(|param| match param {
+                syn::GenericParam::Type(ty) => ty.ident.to_token_stream(),
+                syn::GenericParam::Lifetime(lt) => lt.lifetime.to_token_stream(),
+                syn::GenericParam::Const(con) => con.ident.to_token_stream(),
+            })
+            .collect();
+        quote! { <#(#params,)*> }
+    };
 
     let type_ident = format_ident!(
         "T_crossmist_{}_{}",
@@ -100,10 +114,11 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             }
         };
         entry_code = quote! {
+            // Logically `unsafe`, but has to be safe because it's used as `impl FnOnce`.
             #async_attribute
-            async fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
+            async fn entry #generic_params(mut deserializer: ::crossmist::Deserializer) -> #return_type {
                 // `args` must be deserialized only after the reactor has started.
-                let args = args.deserialize();
+                let args: (#(#fn_types,)*) = unsafe { deserializer.deserialize() };
                 Self::invoke(#(#args_from_tuple,)*).await
             }
         };
@@ -112,17 +127,17 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'smol' argument"); }.into();
         }
         entry_code = quote! {
-            fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
+            fn entry #generic_params(mut deserializer: ::crossmist::Deserializer) -> #return_type {
                 ::crossmist::imp::async_io::block_on(async {
-                    let args = args.deserialize();
+                    let args: (#(#fn_types,)*) = unsafe { deserializer.deserialize() };
                     Self::invoke(#(#args_from_tuple,)*).await
                 })
             }
         };
     } else {
         entry_code = quote! {
-            fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
-                let args = args.deserialize();
+            fn entry #generic_params(mut deserializer: ::crossmist::Deserializer) -> #return_type {
+                let args: (#(#fn_types,)*) = unsafe { deserializer.deserialize() };
                 Self::invoke(#(#args_from_tuple,)*)
             }
         };
@@ -131,17 +146,11 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     let impl_code = if has_references {
         quote! {}
     } else {
-        let entry_handler = quote! {
-            ::std::boxed::Box::new(
-                unsafe {
-                    ::crossmist::imp::EntryHandler::new(#type_ident::entry, (#(#arg_names,)*))
-                }
-            )
-        };
+        let spawn = quote! { spawn(#type_ident::entry::#generics, (#(#arg_names,)*)) };
 
         quote! {
             pub fn spawn #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::Child<#return_type>> {
-                unsafe { ::crossmist::blocking::spawn(#entry_handler) }
+                unsafe { ::crossmist::blocking::#spawn }
             }
             pub fn run #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                 self.spawn(#(#arg_names,)*)?.join()
@@ -149,7 +158,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
             ::crossmist::if_tokio! {
                 pub async fn spawn_tokio #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
-                    unsafe { ::crossmist::tokio::spawn(#entry_handler).await }
+                    unsafe { ::crossmist::tokio::#spawn.await }
                 }
                 pub async fn run_tokio #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                     self.spawn_tokio(#(#arg_names,)*).await?.join().await
@@ -158,7 +167,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
             ::crossmist::if_smol! {
                 pub async fn spawn_smol #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
-                    unsafe { ::crossmist::smol::spawn(#entry_handler).await }
+                    unsafe { ::crossmist::smol::#spawn.await }
                 }
                 pub async fn run_smol #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                     self.spawn_smol(#(#arg_names,)*).await?.join().await

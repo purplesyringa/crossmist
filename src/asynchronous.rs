@@ -44,8 +44,7 @@
 #[cfg(unix)]
 use crate::internals::{SingleObjectReceiver, SingleObjectSender, socketpair};
 use crate::{
-    Deserializer, Object, Serializer,
-    delayed::Delayed,
+    Deserializer, Object, Serializer, StaticFn,
     handles::{AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle},
     imp, subprocess,
 };
@@ -593,60 +592,43 @@ impl fmt::Debug for KillHandle {
     }
 }
 
-#[allow(missing_debug_implementations)]
-#[derive(Object)]
-pub struct EntryHandler<Func: FnOnce(Delayed<Args>) -> Ret, Args: Object, Ret> {
-    func: PhantomData<Func>,
-    args: Delayed<Args>,
-}
-
-impl<Func: FnOnce(Delayed<Args>) -> Ret, Args: Object, Ret> EntryHandler<Func, Args, Ret> {
-    /// SAFETY: `Func` must be a function item ZST.
-    pub unsafe fn new(_func: Func, args: Args) -> Self {
-        Self {
-            func: PhantomData,
-            args: Delayed::new(args),
-        }
-    }
-}
-
-pub trait EntryHandlerObject: Object {
-    fn run(self: Box<Self>, tx_handle: RawHandle);
-}
-
-impl<Func: FnOnce(Delayed<Args>) -> Ret, Args: Object, Ret: Object> EntryHandlerObject
-    for EntryHandler<Func, Args, Ret>
-{
-    fn run(self: Box<Self>, tx_handle: RawHandle) {
-        let func = unsafe { core::ptr::dangling::<Func>().read() };
-        let output = func(self.args);
-
-        // Avoid explicitly sending a () result
-        if imp::if_void::<Ret>().is_none() {
-            // Even if the function was asynchronous, there shouldn't be any task running at this
-            // moment, so it is fine (and more efficient) to use a sync sender
-            let mut output_tx = unsafe { crate::Sender::from_raw_handle(tx_handle) };
-            output_tx
-                .send(&output)
-                .expect("Failed to send subprocess output");
-        }
-    }
-}
-
-pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
-    entry: Box<dyn EntryHandlerObject>,
-) -> Result<Child<Stream, T>> {
+pub(crate) async unsafe fn spawn<
+    Stream: AsyncStream,
+    Func: FnOnce(Deserializer) -> Ret,
+    Ret: Object,
+>(
+    _func: Func,
+    args: impl Object,
+) -> Result<Child<Stream, Ret>> {
     unsafe {
         imp::perform_sanity_checks();
 
+        let entrypoint = |deserializer, tx_handle| {
+            // Re-read `func` so that we don't borrow anything and `entrypoint` can be converted to
+            // a function pointer.
+            let func = core::ptr::dangling::<Func>().read();
+            let output = func(deserializer);
+
+            // Avoid explicitly sending a () result
+            if imp::if_void::<Ret>().is_none() {
+                // Even if the function was asynchronous, there shouldn't be any task running at
+                // this moment, so it is fine (and more efficient) to use a sync sender
+                let mut output_tx = crate::Sender::from_raw_handle(tx_handle);
+                output_tx
+                    .send(&output)
+                    .expect("Failed to send subprocess output");
+            }
+        };
+
         let mut s = Serializer::new();
-        s.serialize(&entry);
+        s.serialize_temporary(StaticFn::new(entrypoint as fn(_, _)));
+        s.serialize(&args);
         let (data, handles) = s.into_parts();
 
         let raw_handles = handles.iter().map(AsRawHandle::as_raw_handle).collect();
 
         let (local, child) = crate::duplex()?;
-        let mut local: Duplex<Stream, (Vec<u8>, Vec<RawHandle>), T> = local.try_into()?;
+        let mut local: Duplex<Stream, (Vec<u8>, Vec<RawHandle>), Ret> = local.try_into()?;
 
         let process_handle;
         let receiver;
@@ -674,7 +656,7 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
 }
 
 pub(crate) fn handle_entry(mut deserializer: Deserializer, tx_handle: RawHandle) -> ! {
-    let entry: Box<dyn EntryHandlerObject> = unsafe { deserializer.deserialize() };
-    entry.run(tx_handle);
+    let entry: StaticFn<fn(Deserializer, RawHandle)> = unsafe { deserializer.deserialize() };
+    (entry.get_fn())(deserializer, tx_handle);
     std::process::exit(0);
 }

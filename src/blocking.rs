@@ -45,7 +45,7 @@
 //! returned value).
 
 use crate::{
-    KillHandle, Object, asynchronous,
+    Deserializer, KillHandle, Object, asynchronous,
     handles::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle},
 };
 use std::future::Future;
@@ -323,8 +323,9 @@ impl<T: Object> Child<T> {
 }
 
 #[doc(hidden)]
-pub unsafe fn spawn<T: Object>(
-    entry: Box<dyn asynchronous::EntryHandlerObject>,
-) -> Result<Child<T>> {
-    unsafe { block_on(asynchronous::spawn::<Blocking, T>(entry)).map(Child) }
+pub unsafe fn spawn<Func: FnOnce(Deserializer) -> Ret, Ret: Object>(
+    func: Func,
+    args: impl Object,
+) -> Result<Child<Ret>> {
+    unsafe { block_on(asynchronous::spawn::<Blocking, _, _>(func, args)).map(Child) }
 }
