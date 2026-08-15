@@ -1,5 +1,7 @@
 use crate::{
-    Deserializer, FnOnceObject, Receiver, Sender, channel,
+    Deserializer, FnOnceObject, Receiver, Sender,
+    asynchronous::handle_entry,
+    channel,
     handles::{
         AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle,
     },
@@ -99,10 +101,10 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
             .expect("Failed to set O_CLOEXEC for the file descriptor");
     }
 
-    let mut deserializer = Deserializer::new(entry_data, entry_handles);
-    let entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>> =
-        unsafe { deserializer.deserialize() };
-    std::process::exit(entry.call_object_once((handle_tx.into_raw_handle(),)))
+    handle_entry(
+        Deserializer::new(entry_data, entry_handles),
+        handle_tx.as_raw_handle(),
+    );
 }
 
 unsafe fn parse_handle(s: &str) -> OwnedHandle {

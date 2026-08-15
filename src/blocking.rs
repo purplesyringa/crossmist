@@ -45,7 +45,7 @@
 //! returned value).
 
 use crate::{
-    FnOnceObject, KillHandle, Object, asynchronous,
+    KillHandle, Object, asynchronous,
     handles::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle},
 };
 use std::future::Future;
@@ -324,7 +324,7 @@ impl<T: Object> Child<T> {
 
 #[doc(hidden)]
 pub unsafe fn spawn<T: Object>(
-    entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
+    entry: Box<dyn asynchronous::EntryHandlerObject>,
 ) -> Result<Child<T>> {
     unsafe { block_on(asynchronous::spawn::<Blocking, T>(entry)).map(Child) }
 }

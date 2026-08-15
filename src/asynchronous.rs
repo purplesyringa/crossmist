@@ -44,7 +44,8 @@
 #[cfg(unix)]
 use crate::internals::{SingleObjectReceiver, SingleObjectSender, socketpair};
 use crate::{
-    FnOnceObject, Object, Serializer,
+    Deserializer, Object, Serializer,
+    delayed::Delayed,
     handles::{AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle},
     imp, subprocess,
 };
@@ -594,28 +595,46 @@ impl fmt::Debug for KillHandle {
 
 #[allow(missing_debug_implementations)]
 #[derive(Object)]
-pub struct EntryHandler<F: Object>(pub F);
+pub struct EntryHandler<Func: FnOnce(Delayed<Args>) -> Ret, Args: Object, Ret> {
+    func: PhantomData<Func>,
+    args: Delayed<Args>,
+}
 
-impl<F: FnOnceObject<(), Output: Object>> crate::InternalFnOnce<(RawHandle,)> for EntryHandler<F> {
-    type Output = i32;
+impl<Func: FnOnce(Delayed<Args>) -> Ret, Args: Object, Ret> EntryHandler<Func, Args, Ret> {
+    /// SAFETY: `Func` must be a function item ZST.
+    pub unsafe fn new(_func: Func, args: Args) -> Self {
+        Self {
+            func: PhantomData,
+            args: Delayed::new(args),
+        }
+    }
+}
 
-    fn call_object_once(self, args: (RawHandle,)) -> Self::Output {
-        let output = self.0.call_object_once(());
+pub trait EntryHandlerObject: Object {
+    fn run(self: Box<Self>, tx_handle: RawHandle);
+}
+
+impl<Func: FnOnce(Delayed<Args>) -> Ret, Args: Object, Ret: Object> EntryHandlerObject
+    for EntryHandler<Func, Args, Ret>
+{
+    fn run(self: Box<Self>, tx_handle: RawHandle) {
+        let func = unsafe { core::ptr::dangling::<Func>().read() };
+        let output = func(self.args);
 
         // Avoid explicitly sending a () result
-        if imp::if_void::<F::Output>().is_none() {
+        if imp::if_void::<Ret>().is_none() {
             // Even if the function was asynchronous, there shouldn't be any task running at this
             // moment, so it is fine (and more efficient) to use a sync sender
-            let mut output_tx = unsafe { crate::Sender::from_raw_handle(args.0) };
-            output_tx.send(&output).expect("Failed to send subprocess output");
+            let mut output_tx = unsafe { crate::Sender::from_raw_handle(tx_handle) };
+            output_tx
+                .send(&output)
+                .expect("Failed to send subprocess output");
         }
-
-        0
     }
 }
 
 pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
-    entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>>,
+    entry: Box<dyn EntryHandlerObject>,
 ) -> Result<Child<Stream, T>> {
     unsafe {
         imp::perform_sanity_checks();
@@ -652,4 +671,10 @@ pub(crate) async unsafe fn spawn<Stream: AsyncStream, T: Object>(
 
         Ok(Child::new(process_handle, receiver))
     }
+}
+
+pub(crate) fn handle_entry(mut deserializer: Deserializer, tx_handle: RawHandle) -> ! {
+    let entry: Box<dyn EntryHandlerObject> = unsafe { deserializer.deserialize() };
+    entry.run(tx_handle);
+    std::process::exit(0);
 }

@@ -1,5 +1,6 @@
 use crate::{
-    Deserializer, FnOnceObject, Receiver,
+    Deserializer, Receiver,
+    asynchronous::handle_entry,
     handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle},
 };
 use rustix::io::{FdFlags, fcntl_setfd};
@@ -37,10 +38,10 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
             .expect("Failed to set O_CLOEXEC for the file descriptor");
     }
 
-    let mut deserializer = Deserializer::new(entry_data, entry_handles);
-    let entry: Box<dyn FnOnceObject<(RawHandle,), Output = i32>> =
-        unsafe { deserializer.deserialize() };
-    std::process::exit(entry.call_object_once((handle.as_raw_handle(),)))
+    handle_entry(
+        Deserializer::new(entry_data, entry_handles),
+        handle.as_raw_handle(),
+    );
 }
 
 unsafe fn parse_handle(s: &str) -> OwnedHandle {
