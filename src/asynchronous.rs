@@ -594,20 +594,21 @@ impl fmt::Debug for KillHandle {
 
 pub(crate) async unsafe fn spawn<
     Stream: AsyncStream,
-    Func: FnOnce(Deserializer) -> Ret,
+    Func: FnOnce(Box<dyn FnOnce() -> Args>) -> Ret,
+    Args: Object,
     Ret: Object,
 >(
     _func: Func,
-    args: impl Object,
+    args: Args,
 ) -> Result<Child<Stream, Ret>> {
     unsafe {
         imp::perform_sanity_checks();
 
-        let entrypoint = |deserializer, tx_handle| {
+        let entrypoint = |mut deserializer: Deserializer, tx_handle| {
             // Re-read `func` so that we don't borrow anything and `entrypoint` can be converted to
             // a function pointer.
             let func = core::ptr::dangling::<Func>().read();
-            let output = func(deserializer);
+            let output = func(Box::new(move || deserializer.deserialize()));
 
             // Avoid explicitly sending a () result
             if imp::if_void::<Ret>().is_none() {

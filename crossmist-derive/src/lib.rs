@@ -114,11 +114,10 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             }
         };
         entry_code = quote! {
-            // Logically `unsafe`, but has to be safe because it's used as `impl FnOnce`.
             #async_attribute
-            async fn entry #generic_params(mut deserializer: ::crossmist::Deserializer) -> #return_type {
+            async fn entry #generic_params(args: Box<dyn ::core::ops::FnOnce() -> (#(#fn_types,)*)>) -> #return_type {
                 // `args` must be deserialized only after the reactor has started.
-                let args: (#(#fn_types,)*) = unsafe { deserializer.deserialize() };
+                let args = args();
                 Self::invoke(#(#args_from_tuple,)*).await
             }
         };
@@ -127,17 +126,17 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'smol' argument"); }.into();
         }
         entry_code = quote! {
-            fn entry #generic_params(mut deserializer: ::crossmist::Deserializer) -> #return_type {
+            fn entry #generic_params(args: Box<dyn ::core::ops::FnOnce() -> (#(#fn_types,)*)>) -> #return_type {
                 ::crossmist::imp::async_io::block_on(async {
-                    let args: (#(#fn_types,)*) = unsafe { deserializer.deserialize() };
+                    let args = args();
                     Self::invoke(#(#args_from_tuple,)*).await
                 })
             }
         };
     } else {
         entry_code = quote! {
-            fn entry #generic_params(mut deserializer: ::crossmist::Deserializer) -> #return_type {
-                let args: (#(#fn_types,)*) = unsafe { deserializer.deserialize() };
+            fn entry #generic_params(args: Box<dyn ::core::ops::FnOnce() -> (#(#fn_types,)*)>) -> #return_type {
+                let args = args();
                 Self::invoke(#(#args_from_tuple,)*)
             }
         };
