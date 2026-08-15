@@ -497,9 +497,10 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     /// type is `()`. In that case, `Ok(())` is returned.
     pub async fn join(mut self) -> Result<T> {
         let mut value = self.output_rx.recv().await?;
-        if let Some(void) = imp::if_void::<T>() {
-            // The value should be None at this moment
-            value = Some(void);
+        if typeid::of::<T>() == typeid::of::<()>() {
+            // Functions returning `()` don't submit their results explicitly; see the explanation
+            // in `spawn` for more detail. This read effectively transmutes `()` to `T`.
+            value = Some(unsafe { std::ptr::dangling::<T>().read() });
         }
         let mut guard = self.may_kill.lock().expect("Kill mutex is poisoned");
         *guard = false;
@@ -610,15 +611,20 @@ pub(crate) async unsafe fn spawn<
             let func = core::ptr::dangling::<Func>().read();
             let output = func(Box::new(move || deserializer.deserialize()));
 
-            // Avoid explicitly sending a () result
-            if imp::if_void::<Ret>().is_none() {
-                // Even if the function was asynchronous, there shouldn't be any task running at
-                // this moment, so it is fine (and more efficient) to use a sync sender
-                let mut output_tx = crate::Sender::from_raw_handle(tx_handle);
-                output_tx
-                    .send(&output)
-                    .expect("Failed to send subprocess output");
+            // Avoid explicitly sending a `()` result. This allows functions that call
+            // `std::process::exit(0)` to exit cleanly, and acts as an optimization as a bonus. We
+            // don't handle other ZSTs here, since some ZSTs cannot be constructed safely, while
+            // this interaction would allow them to be conjured.
+            if typeid::of::<Ret>() == typeid::of::<()>() {
+                return;
             }
+
+            // Even if the function was asynchronous, there shouldn't be any task running at this
+            // moment, so it is fine (and more efficient) to use a sync sender
+            let mut output_tx = crate::Sender::from_raw_handle(tx_handle);
+            output_tx
+                .send(&output)
+                .expect("Failed to send subprocess output");
         };
 
         let mut s = Serializer::new();
