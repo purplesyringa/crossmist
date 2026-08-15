@@ -34,13 +34,11 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
     let generic_params = &input.sig.generics;
 
-    // Pray all &input are distinct
-    let link_name = format!(
-        "crossmist_{}_{:?}",
-        input.sig.ident, &input as *const syn::ItemFn,
+    let type_ident = format_ident!(
+        "T_crossmist_{}_{}",
+        input.sig.ident,
+        format!("{:?}", &input as *const syn::ItemFn), // pray all &input are distinct
     );
-
-    let type_ident = format_ident!("T_{}", link_name);
 
     let ident = input.sig.ident;
     input.sig.ident = format_ident!("invoke");
@@ -196,7 +194,6 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         #vis struct #type_ident;
 
         impl #type_ident {
-            #[link_name = #link_name]
             #input
 
             #entry
