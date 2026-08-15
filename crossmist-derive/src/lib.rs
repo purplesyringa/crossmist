@@ -108,16 +108,15 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             }
         };
     } else if let Some(arg) = smol_argument {
-        match arg {
-            Meta::Path(_) => {}
-            _ => {
-                return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'smol' argument"); }.into();
-            }
+        if !matches!(arg, Meta::Path(_)) {
+            return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'smol' argument"); }.into();
         }
         entry = quote! {
             fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
-                let args = args.deserialize();
-                ::crossmist::imp::async_io::block_on(Self::invoke(#(#args_from_tuple,)*))
+                ::crossmist::imp::async_io::block_on(async {
+                    let args = args.deserialize();
+                    Self::invoke(#(#args_from_tuple,)*).await
+                })
             }
         };
     } else {
