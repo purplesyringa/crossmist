@@ -48,21 +48,18 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         pub_token: <syn::Token![pub] as std::default::Default>::default(),
     });
 
-    let args = &input.sig.inputs;
+    let fn_args = &input.sig.inputs;
 
-    let mut fn_args = Vec::new();
     let mut fn_types = Vec::new();
     let mut arg_names = Vec::new();
     let mut args_from_tuple = Vec::new();
     let mut has_references = false;
-    for (i, arg) in args.iter().enumerate() {
+    for (i, arg) in fn_args.iter().enumerate() {
         let i = syn::Index::from(i);
         if let syn::FnArg::Typed(pattype) = arg {
             if let syn::Pat::Ident(ref patident) = *pattype.pat {
                 let ident = &patident.ident;
-                let colon_token = &pattype.colon_token;
                 let ty = &pattype.ty;
-                fn_args.push(quote! { #ident #colon_token #ty });
                 fn_types.push(quote! { #ty });
                 arg_names.push(quote! { #ident });
                 args_from_tuple.push(quote! { args.#i });
@@ -144,27 +141,27 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         };
 
         quote! {
-            pub fn spawn #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::Child<#return_type>> {
+            pub fn spawn #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::Child<#return_type>> {
                 unsafe { ::crossmist::blocking::spawn(#entry_ref) }
             }
-            pub fn run #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
+            pub fn run #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                 self.spawn(#(#arg_names,)*)?.join()
             }
 
             ::crossmist::if_tokio! {
-                pub async fn spawn_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
+                pub async fn spawn_tokio #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
                     unsafe { ::crossmist::tokio::spawn(#entry_ref).await }
                 }
-                pub async fn run_tokio #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
+                pub async fn run_tokio #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                     self.spawn_tokio(#(#arg_names,)*).await?.join().await
                 }
             }
 
             ::crossmist::if_smol! {
-                pub async fn spawn_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
+                pub async fn spawn_smol #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
                     unsafe { ::crossmist::smol::spawn(#entry_ref).await }
                 }
-                pub async fn run_smol #generic_params(&self, #(#fn_args,)*) -> ::std::io::Result<#return_type> {
+                pub async fn run_smol #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                     self.spawn_smol(#(#arg_names,)*).await?.join().await
                 }
             }
@@ -193,6 +190,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(::crossmist::Object)]
         #vis struct #type_ident;
 
+        #[allow(unused_mut)]
         impl #type_ident {
             #input
 
