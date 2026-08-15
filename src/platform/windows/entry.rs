@@ -1,5 +1,5 @@
 use crate::{
-    Deserializer, FnOnceObject, Receiver, Sender,
+    Deserializer, Receiver, Sender,
     asynchronous::handle_entry,
     channel,
     handles::{
