@@ -88,9 +88,9 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         pin = quote! {};
     }
 
-    let entry;
+    let entry_code;
     if has_references {
-        entry = quote! {};
+        entry_code = quote! {};
     } else if let Some(arg) = tokio_argument {
         let async_attribute = match arg {
             Meta::Path(_) => quote! { #[tokio::main] },
@@ -99,7 +99,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
                 return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'tokio' argument"); }.into();
             }
         };
-        entry = quote! {
+        entry_code = quote! {
             #async_attribute
             async fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
                 // `args` must be deserialized only after the reactor has started.
@@ -111,7 +111,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         if !matches!(arg, Meta::Path(_)) {
             return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'smol' argument"); }.into();
         }
-        entry = quote! {
+        entry_code = quote! {
             fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
                 ::crossmist::imp::async_io::block_on(async {
                     let args = args.deserialize();
@@ -120,7 +120,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             }
         };
     } else {
-        entry = quote! {
+        entry_code = quote! {
             fn entry #generic_params(args: ::crossmist::imp::Delayed<(#(#fn_types,)*)>) -> #return_type {
                 let args = args.deserialize();
                 Self::invoke(#(#args_from_tuple,)*)
@@ -131,7 +131,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     let impl_code = if has_references {
         quote! {}
     } else {
-        let entry_ref = quote! {
+        let entry_handler = quote! {
             ::std::boxed::Box::new(
                 unsafe {
                     ::crossmist::imp::EntryHandler::new(#type_ident::entry, (#(#arg_names,)*))
@@ -141,7 +141,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
         quote! {
             pub fn spawn #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::Child<#return_type>> {
-                unsafe { ::crossmist::blocking::spawn(#entry_ref) }
+                unsafe { ::crossmist::blocking::spawn(#entry_handler) }
             }
             pub fn run #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                 self.spawn(#(#arg_names,)*)?.join()
@@ -149,7 +149,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
             ::crossmist::if_tokio! {
                 pub async fn spawn_tokio #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
-                    unsafe { ::crossmist::tokio::spawn(#entry_ref).await }
+                    unsafe { ::crossmist::tokio::spawn(#entry_handler).await }
                 }
                 pub async fn run_tokio #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                     self.spawn_tokio(#(#arg_names,)*).await?.join().await
@@ -158,7 +158,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
 
             ::crossmist::if_smol! {
                 pub async fn spawn_smol #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
-                    unsafe { ::crossmist::smol::spawn(#entry_ref).await }
+                    unsafe { ::crossmist::smol::spawn(#entry_handler).await }
                 }
                 pub async fn run_smol #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                     self.spawn_smol(#(#arg_names,)*).await?.join().await
@@ -193,7 +193,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         impl #type_ident {
             #input
 
-            #entry
+            #entry_code
 
             // Putting these function in a module named `#ident` would be clearer, but results in
             // scoping issues: `use super::*` imports from the parent module and not the scope, so
