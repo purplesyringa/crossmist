@@ -285,6 +285,9 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             #[link_name = #link_name]
             #input
 
+            // Putting these function in a module named `#ident` would be clearer, but results in
+            // scoping issues: `use super::*` imports from the parent module and not the scope, so
+            // `#[func]`tions defined inside a block wouldn't compile.
             #impl_code
         }
 
