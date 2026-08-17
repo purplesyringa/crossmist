@@ -1,9 +1,8 @@
 use crate::{
     asynchronous::AsyncStream,
     entry,
-    handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle},
+    handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle},
 };
-use std::ffi::c_void;
 use std::io::Result;
 use windows::{
     Win32::{
@@ -66,32 +65,22 @@ pub(crate) unsafe fn _spawn_child<'a>(
 
         let n_attrs = 1;
         let mut size = 0;
-        let _ = Threading::InitializeProcThreadAttributeList(
-            None,
-            n_attrs,
-            None,
-            &mut size as *mut usize,
-        ); // errors by design according to MSDN
+        let _ = Threading::InitializeProcThreadAttributeList(None, n_attrs, None, &raw mut size); // errors by design according to MSDN
         let mut attrs = vec![0u8; size];
-        let attrs = Threading::LPPROC_THREAD_ATTRIBUTE_LIST(attrs.as_mut_ptr() as *mut c_void);
-        Threading::InitializeProcThreadAttributeList(
-            Some(attrs),
-            n_attrs,
-            None,
-            &mut size as *mut usize,
-        )?;
+        let attrs = Threading::LPPROC_THREAD_ATTRIBUTE_LIST(attrs.as_mut_ptr().cast());
+        Threading::InitializeProcThreadAttributeList(Some(attrs), n_attrs, None, &raw mut size)?;
         Threading::UpdateProcThreadAttribute(
             attrs,
             0,
             Threading::PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
-            Some(inherited_handles.as_ptr() as *const c_void),
-            inherited_handles.len() * size_of::<RawHandle>(),
+            Some(inherited_handles.as_ptr().cast()),
+            size_of_val(&*inherited_handles),
             None,
             None,
         )?;
 
         let mut startup_info = Threading::STARTUPINFOEXW::default();
-        startup_info.StartupInfo.cb = size_of::<Threading::STARTUPINFOEXW>() as u32;
+        startup_info.StartupInfo.cb = size_of_val(&startup_info) as u32;
         startup_info.lpAttributeList = attrs;
 
         let mut process_info = Threading::PROCESS_INFORMATION::default();
@@ -113,8 +102,8 @@ pub(crate) unsafe fn _spawn_child<'a>(
             Threading::EXTENDED_STARTUPINFO_PRESENT | Threading::INHERIT_PARENT_AFFINITY,
             None,
             None,
-            &startup_info as *const Threading::STARTUPINFOEXW as *const Threading::STARTUPINFOW,
-            &mut process_info as *mut Threading::PROCESS_INFORMATION,
+            (&raw const startup_info).cast(),
+            &raw mut process_info,
         );
 
         for handle in enabled_handles {
