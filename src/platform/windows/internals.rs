@@ -1,5 +1,6 @@
 use crate::{
-    Deserializer, Object, Serializer, entry,
+    Deserializer, Object, Serializer,
+    entry::HANDLE_BROKER,
     handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
 };
 use std::default::Default;
@@ -11,63 +12,63 @@ pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
     s.serialize(value);
 
     let (data, handles) = s.into_parts();
-    let mut dup_handles = Vec::new();
+    let mut remote_handles = Vec::new();
     if !handles.is_empty() {
-        let handle_broker = entry::HANDLE_BROKER
+        let broker = HANDLE_BROKER
             .get()
-            .expect("HANDLE_BROKER has not been initialized yet");
+            .expect("broker has not been initialized");
 
         for handle in handles {
-            let mut dup_handle: RawHandle = Default::default();
+            let mut remote_handle: RawHandle = Default::default();
             unsafe {
                 Foundation::DuplicateHandle(
                     Threading::GetCurrentProcess(),
                     handle.as_raw_handle(),
-                    handle_broker.process.as_raw_handle(),
-                    &mut dup_handle,
+                    broker.process.as_raw_handle(),
+                    &mut remote_handle,
                     0,
                     false,
                     Foundation::DUPLICATE_SAME_ACCESS,
                 )?;
             }
-            dup_handles.push(dup_handle);
+            remote_handles.push(remote_handle);
         }
     }
 
     let mut s1 = Serializer::new();
-    s1.serialize(&dup_handles);
+    s1.serialize(&remote_handles);
     s1.write(&data);
     Ok(s1.into_parts().0)
 }
 
 pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result<T> {
     let mut d = Deserializer::new(serialized, Vec::new());
-    let handles: Vec<RawHandle> = unsafe { d.deserialize() };
+    let remote_handles: Vec<RawHandle> = unsafe { d.deserialize() };
     let serialized_contents: Vec<u8> = Vec::from(d.get_rest());
 
-    let mut dup_handles = Vec::new();
-    if !handles.is_empty() {
-        let handle_broker = entry::HANDLE_BROKER
+    let mut handles = Vec::new();
+    if !remote_handles.is_empty() {
+        let broker = HANDLE_BROKER
             .get()
-            .expect("HANDLE_BROKER has not been initialized yet");
+            .expect("broker has not been initialized");
 
-        for handle in handles {
-            let mut dup_handle: RawHandle = Default::default();
+        for remote_handle in remote_handles {
+            let mut handle: RawHandle = Default::default();
             unsafe {
                 Foundation::DuplicateHandle(
-                    handle_broker.process.as_raw_handle(),
-                    handle,
+                    broker.process.as_raw_handle(),
+                    remote_handle,
                     Threading::GetCurrentProcess(),
-                    &mut dup_handle,
+                    &mut handle,
                     0,
                     false,
                     Foundation::DUPLICATE_CLOSE_SOURCE | Foundation::DUPLICATE_SAME_ACCESS,
                 )?;
             }
-            let dup_handle = unsafe { OwnedHandle::from_raw_handle(dup_handle) };
-            dup_handles.push(dup_handle);
+            let handle = unsafe { OwnedHandle::from_raw_handle(handle) };
+            handles.push(handle);
         }
     }
 
-    Ok(unsafe { Deserializer::new(serialized_contents, dup_handles).deserialize() })
+    Ok(unsafe { Deserializer::new(serialized_contents, handles).deserialize() })
 }
