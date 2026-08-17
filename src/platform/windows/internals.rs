@@ -1,7 +1,7 @@
 use crate::{
     Deserializer, Object, Serializer,
-    entry::HANDLE_BROKER,
     handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
+    subprocess::HANDLE_BROKER,
 };
 use std::default::Default;
 use std::io::Result;

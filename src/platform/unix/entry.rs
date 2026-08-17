@@ -5,8 +5,6 @@ use crate::{
 };
 use rustix::io::{FdFlags, fcntl_setfd};
 
-pub(crate) fn start_root() {}
-
 pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     let handle = unsafe {
         parse_handle(

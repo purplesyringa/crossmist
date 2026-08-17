@@ -1,16 +1,25 @@
 use crate::{
-    asynchronous::AsyncStream,
     entry,
     handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle},
 };
+use std::ffi::c_void;
 use std::io::Result;
+use std::sync::OnceLock;
 use windows::{
     Win32::{
         Foundation,
-        System::{LibraryLoader, Threading},
+        System::{JobObjects, LibraryLoader, Threading},
     },
     core::{PCWSTR, PWSTR},
 };
+
+// An empty process holding in-flight handles.
+pub(crate) struct Broker {
+    pub(crate) process: OwnedHandle,
+    job: OwnedHandle,
+}
+
+pub(crate) static HANDLE_BROKER: OnceLock<Broker> = OnceLock::new();
 
 fn get_own_name() -> Result<Vec<u16>> {
     let mut module_name = vec![0u16; 256];
@@ -29,37 +38,99 @@ fn get_own_name() -> Result<Vec<u16>> {
     }
 }
 
+pub(crate) fn start_broker() -> Result<()> {
+    unsafe {
+        // Create the broker in a kill-on-close job so that it doesn't linger around after every
+        // user dies. The job handles acts as a keep-alive, similarly to how holding the write end
+        // of the pipe keeps the reader hanging on Linux, but without wasting resources on actually
+        // populating the process with an executable image.
+        let job = OwnedHandle::from_raw_handle(JobObjects::CreateJobObjectW(
+            None,
+            PCWSTR(core::ptr::null()),
+        )?);
+
+        let mut limit_info = JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limit_info.BasicLimitInformation.LimitFlags =
+            JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        JobObjects::SetInformationJobObject(
+            job.as_raw_handle(),
+            JobObjects::JobObjectExtendedLimitInformation,
+            (&raw const limit_info).cast(),
+            size_of_val(&limit_info) as u32,
+        )?;
+
+        let n_attrs = 1;
+        let mut size = 0;
+        let _ = Threading::InitializeProcThreadAttributeList(None, n_attrs, None, &raw mut size); // errors by design according to MSDN
+        let mut attrs = vec![0u8; size];
+        let attrs = Threading::LPPROC_THREAD_ATTRIBUTE_LIST(attrs.as_mut_ptr().cast());
+        Threading::InitializeProcThreadAttributeList(Some(attrs), n_attrs, None, &raw mut size)?;
+        Threading::UpdateProcThreadAttribute(
+            attrs,
+            0,
+            Threading::PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+            Some(&raw const job as *const c_void),
+            size_of_val(&job),
+            None,
+            None,
+        )?;
+
+        let mut startup_info = Threading::STARTUPINFOEXW::default();
+        startup_info.StartupInfo.cb = size_of_val(&startup_info) as u32;
+        startup_info.lpAttributeList = attrs;
+
+        let mut process_info = Threading::PROCESS_INFORMATION::default();
+
+        let module_name = get_own_name()?;
+        Threading::CreateProcessW(
+            PCWSTR::from_raw(module_name.as_ptr()),
+            None,
+            None,
+            None,
+            false,
+            Threading::CREATE_SUSPENDED | Threading::EXTENDED_STARTUPINFO_PRESENT,
+            None,
+            None,
+            (&raw const startup_info).cast(),
+            &raw mut process_info,
+        )?;
+        let process = OwnedHandle::from_raw_handle(process_info.hProcess);
+        Foundation::CloseHandle(process_info.hThread)?;
+
+        HANDLE_BROKER
+            .set(Broker { process, job })
+            .ok()
+            .expect("broker already initialized");
+        Ok(())
+    }
+}
+
+pub(crate) fn set_broker(process: OwnedHandle, job: OwnedHandle) {
+    HANDLE_BROKER
+        .set(Broker { process, job })
+        .ok()
+        .expect("broker already initialized");
+}
+
 pub(crate) unsafe fn _spawn_child<'a>(
     child_tx: BorrowedHandle<'a>,
     child_rx: BorrowedHandle<'a>,
     mut inherited_handles: Vec<BorrowedHandle<'a>>,
 ) -> Result<OwnedHandle> {
     unsafe {
-        inherited_handles.push(child_tx);
-        inherited_handles.push(child_rx);
+        let broker = HANDLE_BROKER.get().expect("broker not initialized");
 
-        let (broker_process, holder_handle) = match entry::HANDLE_BROKER.get() {
-            Some(handle_broker) => {
-                inherited_handles.push(handle_broker.process.as_handle());
-                inherited_handles.push(handle_broker.holder.0.fd.as_handle());
-                (
-                    handle_broker.process.as_raw_handle(),
-                    handle_broker.holder.as_raw_handle(),
-                )
-            }
-            None => {
-                // HANDLE_BROKER is not initialized before the broker itself is started
-                (
-                    Foundation::INVALID_HANDLE_VALUE,
-                    Foundation::INVALID_HANDLE_VALUE,
-                )
-            }
-        };
+        inherited_handles.extend([
+            broker.process.as_handle(),
+            broker.job.as_handle(),
+            child_tx,
+            child_rx,
+        ]);
 
         let mut cmd_line: Vec<u16> = format!(
             "_crossmist_ {} {} {} {}\0",
-            broker_process.0.addr(),
-            holder_handle.0.addr(),
+            broker.process.as_raw_handle().0.addr(),
+            broker.job.as_raw_handle().0.addr(),
             child_tx.as_raw_handle().0.addr(),
             child_rx.as_raw_handle().0.addr(),
         )

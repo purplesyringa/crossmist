@@ -5,6 +5,10 @@ use std::ffi::{CStr, CString};
 use std::io::Result;
 use std::os::unix::io::{AsRawFd, BorrowedFd};
 
+pub(crate) fn start_broker() -> Result<()> {
+    Ok(())
+}
+
 struct CloneArg<'a> {
     child_fd: BorrowedFd<'a>,
     child_fd_str: &'a CStr,
