@@ -41,12 +41,15 @@
 //! let child = my_process.spawn_tokio().await?;
 //! ```
 
-#[cfg(unix)]
-use crate::internals::{SingleObjectReceiver, SingleObjectSender, socketpair};
 use crate::{
-    Deserializer, Object, Serializer, StaticFn,
+    Deserializer, Object, StaticFn,
     handles::{AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle},
     imp, subprocess,
+};
+#[cfg(unix)]
+use crate::{
+    Serializer,
+    internals::{SingleObjectReceiver, SingleObjectSender, socketpair},
 };
 use std::fmt;
 use std::future::Future;
@@ -627,34 +630,38 @@ pub(crate) async unsafe fn spawn<
                 .expect("Failed to send subprocess output");
         };
 
-        let mut s = Serializer::new();
-        s.serialize_temporary(StaticFn::new(entrypoint as fn(_, _)));
-        s.serialize(&args);
-        let (data, handles) = s.into_parts();
-
-        let raw_handles = handles.iter().map(AsRawHandle::as_raw_handle).collect();
+        let entrypoint = StaticFn::new(entrypoint as fn(_, _));
 
         let (local, child) = crate::duplex()?;
-        let mut local: Duplex<Stream, (Vec<u8>, Vec<RawHandle>), Ret> = local.try_into()?;
+        let mut local: Duplex<Stream, _, Ret> = local.try_into()?;
 
         let process_handle;
         let receiver;
 
         #[cfg(unix)]
         {
+            let mut s = Serializer::new();
+            s.serialize_temporary(entrypoint);
+            s.serialize(&args);
+            let (data, handles) = s.into_parts();
             process_handle = subprocess::_spawn_child(child, &handles)?;
+            let raw_handles = handles
+                .iter()
+                .map(AsRawHandle::as_raw_handle)
+                .collect::<Vec<_>>();
             local.send(&(data, raw_handles)).await?;
             receiver = Receiver::from_stream(local.fd);
         }
 
         #[cfg(windows)]
         {
+            // Windows offers no good way to inherit handles safely, so we pass them via the broker,
+            // just like when sending handles over channels.
             process_handle = subprocess::_spawn_child(
                 child.0.sender.fd.as_handle(),
                 child.0.receiver.fd.as_handle(),
-                handles,
             )?;
-            local.send(&(data, raw_handles)).await?;
+            local.send(&(entrypoint, args)).await?;
             receiver = local.receiver;
         }
 

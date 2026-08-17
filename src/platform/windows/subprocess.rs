@@ -115,17 +115,16 @@ pub(crate) fn set_broker(process: OwnedHandle, job: OwnedHandle) {
 pub(crate) unsafe fn _spawn_child<'a>(
     child_tx: BorrowedHandle<'a>,
     child_rx: BorrowedHandle<'a>,
-    mut inherited_handles: Vec<BorrowedHandle<'a>>,
 ) -> Result<OwnedHandle> {
     unsafe {
         let broker = HANDLE_BROKER.get().expect("broker not initialized");
 
-        inherited_handles.extend([
+        let inherited_handles = [
             broker.process.as_handle(),
             broker.job.as_handle(),
             child_tx,
             child_rx,
-        ]);
+        ];
 
         let mut cmd_line: Vec<u16> = format!(
             "_crossmist_ {} {} {} {}\0",
@@ -147,8 +146,8 @@ pub(crate) unsafe fn _spawn_child<'a>(
             attrs,
             0,
             Threading::PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
-            Some(inherited_handles.as_ptr().cast()),
-            size_of_val(&*inherited_handles),
+            Some((&raw const inherited_handles).cast()),
+            size_of_val(&inherited_handles),
             None,
             None,
         )?;
@@ -159,12 +158,8 @@ pub(crate) unsafe fn _spawn_child<'a>(
 
         let mut process_info = Threading::PROCESS_INFORMATION::default();
 
-        let mut enabled_handles = Vec::new();
-        for &handle in &inherited_handles {
-            if entry::is_cloexec(handle)? {
-                enabled_handles.push(handle);
-                entry::disable_cloexec(handle)?;
-            }
+        for handle in inherited_handles {
+            entry::disable_cloexec(handle)?;
         }
 
         let module_name = get_own_name()?;
@@ -181,7 +176,7 @@ pub(crate) unsafe fn _spawn_child<'a>(
             &raw mut process_info,
         );
 
-        for handle in enabled_handles {
+        for handle in inherited_handles {
             entry::enable_cloexec(handle)?;
         }
 

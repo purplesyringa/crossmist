@@ -1,12 +1,24 @@
 use crate::{
-    Deserializer, Receiver,
+    Deserializer, Object, Receiver, Serializer,
     asynchronous::handle_entry,
-    handles::{
-        AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle,
-    },
+    handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, OwnedHandle},
     subprocess::set_broker,
 };
 use windows::Win32::Foundation;
+
+// XXX: very hacky
+struct FakeDeserializer(Deserializer);
+unsafe impl Object for FakeDeserializer {
+    fn serialize_self<'a>(&'a self, _serializer: &mut Serializer<'a>) {
+        unreachable!()
+    }
+    unsafe fn deserialize_self(deserializer: &mut Deserializer) -> Self {
+        Self(core::mem::replace(
+            deserializer,
+            Deserializer::new(Vec::new(), Vec::new()),
+        ))
+    }
+}
 
 pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     let [broker_process, broker_job, handle_tx, handle_rx] = core::array::from_fn(|_| unsafe {
@@ -22,31 +34,13 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     enable_cloexec(handle_tx.as_handle()).expect("Failed to set O_CLOEXEC for the file descriptor");
     enable_cloexec(handle_rx.as_handle()).expect("Failed to set O_CLOEXEC for the file descriptor");
 
-    let mut entry_rx = unsafe {
-        Receiver::<(Vec<u8>, Vec<RawHandle>)>::from_raw_handle(handle_rx.into_raw_handle())
-    };
-
-    let (entry_data, entry_handles) = entry_rx
-        .recv()
-        .expect("Failed to read entry for crossmist")
-        .expect("No entry passed");
-
-    drop(entry_rx);
-
-    let entry_handles = entry_handles
-        .into_iter()
-        .map(|handle| unsafe { OwnedHandle::from_raw_handle(handle) })
-        .collect::<Vec<_>>();
-
-    for handle in &entry_handles {
-        enable_cloexec(handle.as_handle())
-            .expect("Failed to set O_CLOEXEC for the file descriptor");
-    }
-
-    handle_entry(
-        Deserializer::new(entry_data, entry_handles),
-        handle_tx.as_raw_handle(),
-    );
+    let deserializer =
+        unsafe { Receiver::<FakeDeserializer>::from_raw_handle(handle_rx.into_raw_handle()) }
+            .recv()
+            .expect("failed to read entry for crossmist")
+            .expect("no entry passed")
+            .0;
+    handle_entry(deserializer, handle_tx.as_raw_handle());
 }
 
 unsafe fn parse_handle(s: &str) -> OwnedHandle {
@@ -75,9 +69,4 @@ pub(crate) fn enable_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<()> 
         )
     }?;
     Ok(())
-}
-pub(crate) fn is_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<bool> {
-    let mut flags = 0u32;
-    unsafe { Foundation::GetHandleInformation(handle.as_raw_handle(), &mut flags as *mut u32) }?;
-    Ok((flags & Foundation::HANDLE_FLAG_INHERIT.0) == 0)
 }
