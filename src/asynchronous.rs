@@ -464,6 +464,9 @@ pub struct KillHandle {
     may_kill: Arc<Mutex<bool>>,
 }
 
+unsafe impl Send for KillHandle {}
+unsafe impl Sync for KillHandle {}
+
 impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     fn new(proc_handle: ProcHandle, output_rx: Receiver<Stream, T>) -> Child<Stream, T> {
         Child {
