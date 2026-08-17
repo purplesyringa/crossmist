@@ -26,7 +26,7 @@
 //!     add.spawn(theirs).expect("Failed to spawn child");
 //!     for i in 1..=5 {
 //!         for j in 1..=5 {
-//!             println!("{i} + {j} = {}", ours.request(&vec![i, j]).unwrap());
+//!             println!("{i} + {j} = {}", ours.request(vec![i, j]).unwrap());
 //!         }
 //!     }
 //! }
@@ -34,7 +34,7 @@
 //! #[crossmist::func]
 //! fn add(mut chan: crossmist::Duplex<i32, Vec<i32>>) {
 //!     while let Some(nums) = chan.recv().unwrap() {
-//!         chan.send(&nums.into_iter().sum());
+//!         chan.send(nums.into_iter().sum());
 //!     }
 //! }
 //! ```
@@ -421,6 +421,8 @@ pub use imp::init;
 
 pub mod serde;
 pub use serde::*;
+
+mod owning_ref;
 
 mod platform {
     #[cfg_attr(feature = "nightly", doc(cfg(all())))]

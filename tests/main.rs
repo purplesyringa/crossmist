@@ -238,8 +238,8 @@ fn with_passed_rx() {
     }
     let (mut tx, rx) = channel::<i32>().unwrap();
     let child = inner.spawn(rx).unwrap();
-    tx.send(&5).unwrap();
-    tx.send(&7).unwrap();
+    tx.send(5).unwrap();
+    tx.send(7).unwrap();
     assert_eq!(child.join().unwrap(), -2);
 }
 
@@ -247,8 +247,8 @@ fn with_passed_rx() {
 fn with_passed_tx() {
     #[crossmist::func]
     fn inner(mut tx: Sender<i32>) {
-        tx.send(&5).unwrap();
-        tx.send(&7).unwrap();
+        tx.send(5).unwrap();
+        tx.send(7).unwrap();
     }
     let (tx, mut rx) = channel::<i32>().unwrap();
     let child = inner.spawn(tx).unwrap();
@@ -264,13 +264,13 @@ fn with_passed_duplex() {
     #[crossmist::func]
     fn inner(mut chan: Duplex<i32, (i32, i32)>) {
         while let Some((x, y)) = chan.recv().unwrap() {
-            chan.send(&(x - y)).unwrap();
+            chan.send(x - y).unwrap();
         }
     }
     let (mut local, downstream) = duplex::<(i32, i32), i32>().unwrap();
     let child = inner.spawn(downstream).unwrap();
     for (x, y) in [(5, 7), (100, -1), (53, 2354)] {
-        local.send(&(x, y)).unwrap();
+        local.send((x, y)).unwrap();
         assert_eq!(local.recv().unwrap().unwrap(), x - y);
     }
     drop(local);
@@ -286,8 +286,8 @@ fn with_passed_nested_channel() {
     }
     let (mut tx, rx) = channel::<i32>().unwrap();
     let (mut tx1, rx1) = channel::<Receiver<i32>>().unwrap();
-    tx.send(&5).unwrap();
-    tx1.send(&rx).unwrap();
+    tx.send(5).unwrap();
+    tx1.send(rx).unwrap();
     assert_eq!(inner.run(rx1).unwrap(), 5);
 }
 

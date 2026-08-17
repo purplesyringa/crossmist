@@ -31,7 +31,7 @@ pub(crate) fn socketpair() -> Result<(UnixStream, UnixStream)> {
 
 pub(crate) struct SingleObjectSender<'a> {
     socket_fd: BorrowedFd<'a>,
-    fds: Vec<BorrowedFd<'a>>,
+    fds: Vec<OwnedFd>,
     buffer: Vec<u8>,
     data_pos: usize,
     fds_pos: usize,
@@ -39,7 +39,7 @@ pub(crate) struct SingleObjectSender<'a> {
 }
 
 impl<'a> SingleObjectSender<'a> {
-    pub(crate) fn new<T: Object>(socket_fd: BorrowedFd<'a>, value: &'a T, blocking: bool) -> Self {
+    pub(crate) fn new<T: Object>(socket_fd: BorrowedFd<'a>, value: T, blocking: bool) -> Self {
         let mut s = Serializer::new();
         s.serialize(value);
         let (buffer, fds) = s.into_parts();
@@ -69,9 +69,9 @@ impl<'a> SingleObjectSender<'a> {
             let is_last = buffer_end == self.buffer.len() && fds_end == self.fds.len();
 
             cmsg_buffer.clear();
-            assert!(cmsg_buffer.push(SendAncillaryMessage::ScmRights(
-                &self.fds[self.fds_pos..fds_end],
-            )));
+            let fds = &self.fds[self.fds_pos..fds_end];
+            let fds = unsafe { core::slice::from_raw_parts(fds.as_ptr().cast(), fds.len()) };
+            assert!(cmsg_buffer.push(SendAncillaryMessage::ScmRights(fds)));
 
             let n_written = sendmsg(
                 self.socket_fd,

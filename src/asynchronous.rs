@@ -216,7 +216,7 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
     }
 
     /// Send a value to the other side.
-    pub async fn send(&mut self, value: &T) -> Result<()> {
+    pub async fn send(&mut self, value: T) -> Result<()> {
         #[cfg(unix)]
         {
             let mut sender =
@@ -338,7 +338,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     }
 
     /// Send a value to the other side.
-    pub async fn send(&mut self, value: &S) -> Result<()> {
+    pub async fn send(&mut self, value: S) -> Result<()> {
         #[cfg(unix)]
         {
             let mut sender =
@@ -366,7 +366,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     /// Send a value from the other side and wait for a response immediately.
     ///
     /// If the other side closes the channel before responding, an error is returned.
-    pub async fn request(&mut self, value: &S) -> Result<R> {
+    pub async fn request(&mut self, value: S) -> Result<R> {
         self.send(value).await?;
         self.recv().await?.ok_or_else(|| {
             Error::new(
@@ -626,7 +626,7 @@ pub(crate) async unsafe fn spawn<
             // moment, so it is fine (and more efficient) to use a sync sender
             let mut output_tx = crate::Sender::from_raw_handle(tx_handle);
             output_tx
-                .send(&output)
+                .send(output)
                 .expect("Failed to send subprocess output");
         };
 
@@ -641,15 +641,15 @@ pub(crate) async unsafe fn spawn<
         #[cfg(unix)]
         {
             let mut s = Serializer::new();
-            s.serialize_temporary(entrypoint);
-            s.serialize(&args);
+            s.serialize(entrypoint);
+            s.serialize(args);
             let (data, handles) = s.into_parts();
             process_handle = subprocess::_spawn_child(child, &handles)?;
             let raw_handles = handles
                 .iter()
                 .map(AsRawHandle::as_raw_handle)
                 .collect::<Vec<_>>();
-            local.send(&(data, raw_handles)).await?;
+            local.send((data, raw_handles)).await?;
             receiver = Receiver::from_stream(local.fd);
         }
 
@@ -664,7 +664,7 @@ pub(crate) async unsafe fn spawn<
             // Wait for a response that the handles have been copied successfully before continuing.
             let mut signal = Receiver::<Stream, ()>::from_stream(local.receiver.fd);
             signal.recv().await?;
-            local.sender.send(&(entrypoint, args)).await?;
+            local.sender.send((entrypoint, args)).await?;
             receiver = Receiver::from_stream(signal.fd);
         }
 

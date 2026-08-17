@@ -3,19 +3,19 @@
 //! This is *not* the well-known `serde` crate. We use custom serialization methods because we need
 //! to serialize not only data structures, but objects with real-world side-effects, e.g. files.
 
-use crate::handles::{BorrowedHandle, OwnedHandle};
+use crate::{handles::OwnedHandle, owning_ref::OwningRef};
 use std::fmt;
 
 /// Stateful serialization.
 ///
-/// The serializer stores binary data corresponding to the serialized object and also borrowes file
-/// descriptors inside the object for `'fd`.
-pub struct Serializer<'fd> {
+/// The serializer stores binary data corresponding to the serialized object and file descriptors
+/// inside it.
+pub struct Serializer {
     data: Vec<u8>,
-    handles: Vec<BorrowedHandle<'fd>>,
+    pub(crate) handles: Vec<OwnedHandle>,
 }
 
-impl<'fd> Serializer<'fd> {
+impl Serializer {
     /// Create a new serializer.
     pub fn new() -> Self {
         Serializer {
@@ -31,62 +31,39 @@ impl<'fd> Serializer<'fd> {
 
     /// Append serialized data of an object.
     ///
-    /// The object is borrowed for the lifetime of the serializer so that file descriptors can be
-    /// transmitted. Temporary objects that cannot be borrowed for this long can be serialized with
-    /// [`serialize_temporary`](Serializer::serialize_temporary).
-    pub fn serialize<T: Object>(&mut self, data: &'fd T) {
+    /// The object is consumed so that unique resources owned by the object (e.g. file descriptors)
+    /// are not duplicated.
+    pub fn serialize<T: Object>(&mut self, data: T) {
         data.serialize_self(self);
     }
 
+    /// Append serialized data of an object taken by an owning reference to support unsized types.
+    pub(crate) fn serialize_ref<T: Object + ?Sized>(&mut self, data: OwningRef<'_, T>) {
+        unsafe { data.leak().serialize_taking(self) };
+    }
+
     /// Append serialized data of a slice of objects, as if calling [`Serializer::serialize`] for
-    /// each element.
-    pub fn serialize_slice<T: Object>(&mut self, data: &'fd [T]) {
+    /// each element, but more optimized.
+    pub(crate) fn serialize_slice<T: Object>(&mut self, data: OwningRef<'_, [T]>) {
         Object::serialize_slice(data, self);
     }
 
-    /// Append serialized data of a temporary object free of file handles, without a long borrow.
-    ///
-    /// Panics if the object contains file handles.
-    pub fn serialize_temporary<T: Object>(&mut self, data: T) {
-        let mut s1 = Serializer::new();
-        core::mem::swap(&mut self.data, &mut s1.data);
-        s1.serialize(&data);
-        assert!(
-            s1.handles.is_empty(),
-            "serialize_temporary invoked with an object containing file handles"
-        );
-        core::mem::swap(&mut self.data, &mut s1.data);
-    }
-
-    /// Store a file handle.
-    pub fn serialize_handle(&mut self, handle: BorrowedHandle<'fd>) {
-        self.handles.push(handle);
-    }
-
     /// Extract serialized data and file handles.
-    pub fn into_parts(self) -> (Vec<u8>, Vec<BorrowedHandle<'fd>>) {
+    pub fn into_parts(self) -> (Vec<u8>, Vec<OwnedHandle>) {
         (self.data, self.handles)
     }
 }
 
-impl fmt::Debug for Serializer<'_> {
+impl fmt::Debug for Serializer {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         // Omit internal state because it's not user-friendly.
         fmt.debug_struct("Serializer").finish()
     }
 }
 
-impl Default for Serializer<'_> {
+impl Default for Serializer {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl IntoIterator for Serializer<'_> {
-    type Item = u8;
-    type IntoIter = <Vec<u8> as IntoIterator>::IntoIter;
-    fn into_iter(self) -> Self::IntoIter {
-        self.data.into_iter()
     }
 }
 
@@ -130,9 +107,10 @@ impl Deserializer {
     /// use crossmist::{Deserializer, Serializer};
     ///
     /// let mut serializer = Serializer::new();
-    /// serializer.serialize(&1u8);
-    /// serializer.serialize(&2u16);
-    /// let mut deserializer = Deserializer::new(serializer.into_parts().0, Vec::new());
+    /// serializer.serialize(1u8);
+    /// serializer.serialize(2u16);
+    /// let (data, handles) = serializer.into_parts();
+    /// let mut deserializer = Deserializer::new(data, handles);
     /// unsafe {
     ///     assert_eq!(deserializer.deserialize::<u8>(), 1);
     ///     assert_eq!(deserializer.deserialize::<u16>(), 2);
@@ -145,9 +123,10 @@ impl Deserializer {
     /// use crossmist::{Deserializer, Serializer};
     ///
     /// let mut serializer = Serializer::new();
-    /// serializer.serialize(&1u8);
-    /// serializer.serialize(&2u16);
-    /// let mut deserializer = Deserializer::new(serializer.into_parts().0, Vec::new());
+    /// serializer.serialize(1u8);
+    /// serializer.serialize(2u16);
+    /// let (data, handles) = serializer.into_parts();
+    /// let mut deserializer = Deserializer::new(data, handles);
     /// unsafe {
     ///     deserializer.deserialize::<u16>();
     ///     deserializer.deserialize::<u8>();
@@ -198,13 +177,13 @@ impl fmt::Debug for Deserializer {
 /// }
 ///
 /// unsafe impl<T: Object, U: Object> Object for SimplePair<T, U> {
-///     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-///         s.serialize(&self.first);
-///         s.serialize(&self.second);
+///     fn serialize_self(self, s: &mut Serializer) {
+///         s.serialize(self.first);
+///         s.serialize(self.second);
 ///     }
 ///     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-///         let first = d.deserialize::<T>();
-///         let second = d.deserialize::<U>();
+///         let first = unsafe { d.deserialize::<T>() };
+///         let second = unsafe { d.deserialize::<U>() };
 ///         Self { first, second }
 ///     }
 /// }
@@ -216,27 +195,24 @@ impl fmt::Debug for Deserializer {
 /// # File descriptors
 ///
 /// Sometimes, you might need to serialize objects that store references to files. This is done
-/// automatically for [`std::fs::File`], [`OwnedHandle`] and related types, but if you have a
-/// different runtime, things might get a bit complicated.
+/// automatically for [`std::fs::File`] and a couple other types, but if necessary, you can use
+/// [`OwnedHandle`] to represent a file descriptor or a Windows handle in a cross-platform manner.
 ///
-/// In this case, the following example should be of help:
+/// The following example should be of help:
 ///
 /// ```rust
-/// use crossmist::{handles::{AsHandle, OwnedHandle}, Deserializer, Object, Serializer};
+/// use crossmist::{handles::{IntoRawHandle, FromRawHandle, OwnedHandle}, Deserializer, Object, Serializer};
 /// use std::fs::File;
 /// use std::io::Result;
 ///
 /// struct CustomFile(std::fs::File);
 ///
 /// unsafe impl Object for CustomFile {
-///     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-///         // serialize_handle adds the handle (fd)
-///         s.serialize_handle(self.0.as_handle());
+///     fn serialize_self(self, s: &mut Serializer) {
+///         s.serialize(unsafe { OwnedHandle::from_raw_handle(self.0.into_raw_handle()) });
 ///     }
 ///     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-///         // Deserializing OwnedHandle results in the ID being resolved into the handle, which can
-///         // then be used to create the instance of the object we are deserializing
-///         Self(d.deserialize::<OwnedHandle>().into())
+///         Self(unsafe { d.deserialize::<OwnedHandle>() }.into())
 ///     }
 /// }
 /// ```
@@ -250,14 +226,15 @@ impl fmt::Debug for Deserializer {
 #[allow(private_bounds)]
 pub unsafe trait Object: BaseObject {
     /// Serialize a single object into a serializer.
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>);
+    fn serialize_self(self, s: &mut Serializer);
     /// Serialize an array of objects into a serializer.
-    fn serialize_slice<'a>(elements: &'a [Self], s: &mut Serializer<'a>)
+    #[doc(hidden)]
+    fn serialize_slice(elements: OwningRef<'_, [Self]>, s: &mut Serializer)
     where
         Self: Sized,
     {
         for element in elements {
-            element.serialize_self(s);
+            s.serialize(element);
         }
     }
     /// Deserialize a single object from a deserializer.
@@ -278,6 +255,8 @@ pub unsafe trait Object: BaseObject {
 // can't go into the `Object` trait as a default implementation directly. Instead they're
 // blanket-implemented in a supertrait.
 pub(crate) trait BaseObject {
+    // We can't use `*mut Self` or `OwningRef<'_, Self>` as the receiver, so hack around.
+    unsafe fn serialize_taking(&mut self, s: &mut Serializer);
     #[cfg(feature = "nightly")]
     unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> *mut ();
     #[cfg(not(feature = "nightly"))]
@@ -285,6 +264,11 @@ pub(crate) trait BaseObject {
 }
 
 impl<T: Object> BaseObject for T {
+    unsafe fn serialize_taking(&mut self, s: &mut Serializer) {
+        unsafe { OwningRef::from_leaked(self) }
+            .take()
+            .serialize_self(s);
+    }
     #[cfg(feature = "nightly")]
     unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> *mut () {
         unsafe { deserialize_on_heap::<T>(d) }

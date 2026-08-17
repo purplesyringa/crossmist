@@ -67,8 +67,8 @@ async fn with_passed_rx() {
     }
     let (mut tx, rx) = channel::<i32>().unwrap();
     let child = inner.spawn_tokio(rx).await.unwrap();
-    tx.send(&5).await.unwrap();
-    tx.send(&7).await.unwrap();
+    tx.send(5).await.unwrap();
+    tx.send(7).await.unwrap();
     assert_eq!(child.join().await.unwrap(), -2);
 }
 
@@ -76,8 +76,8 @@ async fn with_passed_rx() {
 async fn with_passed_tx() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(mut tx: Sender<i32>) {
-        tx.send(&5).await.unwrap();
-        tx.send(&7).await.unwrap();
+        tx.send(5).await.unwrap();
+        tx.send(7).await.unwrap();
     }
     let (tx, mut rx) = channel::<i32>().unwrap();
     let child = inner.spawn_tokio(tx).await.unwrap();
@@ -93,13 +93,13 @@ async fn with_passed_duplex() {
     #[crossmist::func(tokio(flavor = "current_thread"))]
     async fn inner(mut chan: Duplex<i32, (i32, i32)>) {
         while let Some((x, y)) = chan.recv().await.unwrap() {
-            chan.send(&(x - y)).await.unwrap();
+            chan.send(x - y).await.unwrap();
         }
     }
     let (mut local, downstream) = duplex::<(i32, i32), i32>().unwrap();
     let child = inner.spawn_tokio(downstream).await.unwrap();
     for (x, y) in [(5, 7), (100, -1), (53, 2354)] {
-        local.send(&(x, y)).await.unwrap();
+        local.send((x, y)).await.unwrap();
         assert_eq!(local.recv().await.unwrap().unwrap(), x - y);
     }
     drop(local);
@@ -115,8 +115,8 @@ async fn with_passed_nested_channel() {
     }
     let (mut tx, rx) = channel::<i32>().unwrap();
     let (mut tx1, rx1) = channel::<Receiver<i32>>().unwrap();
-    tx.send(&5).await.unwrap();
-    tx1.send(&rx).await.unwrap();
+    tx.send(5).await.unwrap();
+    tx1.send(rx).await.unwrap();
     assert_eq!(inner.run_tokio(rx1).await.unwrap(), 5);
 }
 
@@ -126,10 +126,10 @@ async fn with_async_write() {
     async fn inner(mut tx_data: Sender<i32>, mut tx_signal: Sender<()>) {
         let future = tokio::spawn(async move {
             for i in 0..1000 {
-                tx_data.send(&i).await.unwrap();
+                tx_data.send(i).await.unwrap();
             }
         });
-        tx_signal.send(&()).await.unwrap();
+        tx_signal.send(()).await.unwrap();
         future.await.unwrap();
     }
     let (tx_data, mut rx_data) = channel().unwrap();

@@ -65,7 +65,7 @@ impl WorkerPool {
             .await
             .ok_or_else(|| anyhow!("All workers are dead"))?;
         drop(workers_receiver);
-        let output = worker_obj.channel.request(&wrapped_function).await?;
+        let output = worker_obj.channel.request(wrapped_function).await?;
         let output = *(output as Box<dyn Any>).downcast().unwrap();
         if workers_sender.send(worker_obj).is_err() {
             bail!("Failed to put worker back to queue");
@@ -99,7 +99,7 @@ async fn worker(
     mut channel: Duplex<TypeErased, Box<dyn FnOnceObject<(), Output = TypeErased> + Send + Sync>>,
 ) {
     while let Some(func) = channel.recv().await.unwrap() {
-        channel.send(&func.call_object_once(())).await.unwrap();
+        channel.send(func.call_object_once(())).await.unwrap();
     }
 }
 

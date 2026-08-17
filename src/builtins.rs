@@ -2,7 +2,8 @@
 use crate::handles::RawHandle;
 use crate::{
     Deserializer, Object, Serializer,
-    handles::{AsHandle, OwnedHandle},
+    handles::OwnedHandle,
+    owning_ref::{OwningRef, WithOwningRef},
 };
 use paste::paste;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
@@ -12,14 +13,14 @@ use std::time::{Duration, SystemTime};
 macro_rules! impl_pod {
     ($([$($generics:tt)*])? for $t:ty) => {
         unsafe impl$(<$($generics)*>)? Object for $t {
-            fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+            fn serialize_self(self, s: &mut Serializer) {
                 s.write(unsafe {
-                    std::slice::from_raw_parts(core::ptr::from_ref(self).cast(), size_of::<Self>())
+                    std::slice::from_raw_parts((&raw const self).cast(), size_of::<Self>())
                 });
             }
-            fn serialize_slice<'a>(elements: &'a [Self], s: &mut Serializer<'a>) {
+            fn serialize_slice(elements: OwningRef<'_, [Self]>, s: &mut Serializer) {
                 s.write(unsafe {
-                    std::slice::from_raw_parts(elements.as_ptr().cast(), size_of_val(elements))
+                    std::slice::from_raw_parts(elements.as_ptr().cast(), size_of_val(&*elements))
                 });
             }
             #[allow(unreachable_code)]
@@ -66,8 +67,8 @@ impl_pod!(for std::num::NonZeroU128);
 impl_pod!(for std::num::NonZeroUsize);
 
 unsafe impl Object for Duration {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_temporary(self.as_nanos());
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.as_nanos());
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         Duration::from_nanos_u128(unsafe { d.deserialize() })
@@ -75,13 +76,13 @@ unsafe impl Object for Duration {
 }
 // `Instant` cannot implement `Object` because it may be relative to the process start time.
 unsafe impl Object for SystemTime {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+    fn serialize_self(self, s: &mut Serializer) {
         // `SystemTime::MIN` is nightly-only, so for now we store the sign bit separately.
         let (is_negative, duration) = match self.duration_since(SystemTime::UNIX_EPOCH) {
             Ok(duration) => (false, duration),
             Err(err) => (true, err.duration()),
         };
-        s.serialize_temporary((is_negative, duration));
+        s.serialize((is_negative, duration));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         let (is_negative, duration) = unsafe { d.deserialize::<(bool, Duration)>() };
@@ -94,9 +95,8 @@ unsafe impl Object for SystemTime {
 }
 
 unsafe impl Object for String {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_temporary(self.len());
-        s.serialize_slice(self.as_bytes());
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.into_bytes());
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe { String::from_utf8_unchecked(d.deserialize::<Vec<u8>>()) }
@@ -104,10 +104,8 @@ unsafe impl Object for String {
 }
 
 unsafe impl Object for std::ffi::CString {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        let bytes = self.as_bytes();
-        s.serialize_temporary(bytes.len());
-        s.serialize_slice(bytes);
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.into_bytes());
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe { Self::from_vec_unchecked(d.deserialize::<Vec<u8>>()) }
@@ -115,10 +113,8 @@ unsafe impl Object for std::ffi::CString {
 }
 
 unsafe impl Object for std::ffi::OsString {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        let bytes = self.as_encoded_bytes();
-        s.serialize_temporary(bytes.len());
-        s.serialize_slice(bytes);
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.into_encoded_bytes());
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe { Self::from_encoded_bytes_unchecked(d.deserialize()) }
@@ -129,7 +125,7 @@ macro_rules! serialize_rev {
     ($s:tt,) => {};
     ($s:tt, $head:expr, $($tail:tt)*) => {
         serialize_rev!($s, $($tail)*);
-        $s.serialize(&$head);
+        $s.serialize($head);
     };
 }
 
@@ -137,7 +133,7 @@ macro_rules! serialize_rev {
 #[doc(cfg(true), fake_variadic)]
 /// This trait is implemented for tuples up to 20 items long.
 unsafe impl<T: Object> Object for (T,) {
-    fn serialize_self<'a>(&'a self, _s: &mut Serializer<'a>) {}
+    fn serialize_self(self, _s: &mut Serializer) {}
     unsafe fn deserialize_self(_d: &mut Deserializer) -> Self {
         unimplemented!()
     }
@@ -152,7 +148,7 @@ macro_rules! impl_tuple {
         paste! {
             unsafe impl<$([<T $tail>]: Object),*> Object for ($([<T $tail>],)*) {
                 #[allow(unused_variables)]
-                fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+                fn serialize_self(self, s: &mut Serializer) {
                     serialize_rev!(s, $(self.$tail,)*);
                 }
                 #[allow(unused_variables, clippy::unused_unit)]
@@ -169,11 +165,11 @@ macro_rules! impl_tuple {
 impl_tuple!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 
 unsafe impl<T: Object> Object for Option<T> {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+    fn serialize_self(self, s: &mut Serializer) {
         match self {
-            None => s.serialize_temporary(false),
+            None => s.serialize(false),
             Some(x) => {
-                s.serialize_temporary(true);
+                s.serialize(true);
                 s.serialize(x);
             }
         }
@@ -184,10 +180,8 @@ unsafe impl<T: Object> Object for Option<T> {
 }
 
 unsafe impl Object for std::path::PathBuf {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        let bytes = self.as_os_str().as_encoded_bytes();
-        s.serialize_temporary(bytes.len());
-        s.serialize_slice(bytes);
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.into_os_string());
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe { d.deserialize::<std::ffi::OsString>() }.into()
@@ -195,8 +189,8 @@ unsafe impl Object for std::path::PathBuf {
 }
 
 unsafe impl<T: Object, const N: usize> Object for [T; N] {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_slice(self);
+    fn serialize_self(self, s: &mut Serializer) {
+        self.with_owning_ref(|slice| s.serialize_slice(slice));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         core::array::from_fn(|_| unsafe { d.deserialize() })
@@ -210,9 +204,9 @@ macro_rules! impl_sequence {
             T: Object,
             $($($bounds)*)?
         {
-            fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-                s.serialize_temporary(self.len());
-                for item in self.iter() {
+            fn serialize_self(self, s: &mut Serializer) {
+                s.serialize(self.len());
+                for item in self {
                     s.serialize(item);
                 }
             }
@@ -232,9 +226,9 @@ macro_rules! impl_map {
             V: Object,
             $($($bounds)*)?
         {
-            fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-                s.serialize_temporary(self.len());
-                for (key, value) in self.iter() {
+            fn serialize_self(self, s: &mut Serializer) {
+                s.serialize(self.len());
+                for (key, value) in self {
                     s.serialize(key);
                     s.serialize(value);
                 }
@@ -257,14 +251,14 @@ impl_map!(BTreeMap<K, V> where K: Ord);
 impl_map!(HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher + Default);
 
 unsafe impl<T: Object, E: Object> Object for Result<T, E> {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+    fn serialize_self(self, s: &mut Serializer) {
         match self {
             Ok(ok) => {
-                s.serialize_temporary(true);
+                s.serialize(true);
                 s.serialize(ok);
             }
             Err(err) => {
-                s.serialize_temporary(false);
+                s.serialize(false);
                 s.serialize(err);
             }
         }
@@ -281,8 +275,8 @@ unsafe impl<T: Object, E: Object> Object for Result<T, E> {
 }
 
 unsafe impl Object for OwnedHandle {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_handle(self.as_handle());
+    fn serialize_self(self, s: &mut Serializer) {
+        s.handles.push(self);
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         d.handles
@@ -292,8 +286,8 @@ unsafe impl Object for OwnedHandle {
 }
 
 unsafe impl Object for std::fs::File {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_handle(self.as_handle());
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(OwnedHandle::from(self));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe { d.deserialize::<OwnedHandle>() }.into()
@@ -302,28 +296,29 @@ unsafe impl Object for std::fs::File {
 
 #[cfg(feature = "tokio")]
 unsafe impl Object for tokio::fs::File {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_handle(self.as_handle());
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.try_into_std().expect("cannot serialize File"));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe { d.deserialize::<std::fs::File>() }.into()
     }
 }
 
-#[cfg(feature = "smol")]
-unsafe impl Object for async_fs::File {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_handle(self.as_handle());
-    }
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-        unsafe { d.deserialize::<std::fs::File>() }.into()
-    }
-}
+// https://github.com/smol-rs/async-fs/issues/49
+// #[cfg(feature = "smol")]
+// unsafe impl Object for async_fs::File {
+//     fn serialize_self(self, s: &mut Serializer) {
+//         s.serialize(std::fs::File::from(self));
+//     }
+//     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+//         unsafe { d.deserialize::<std::fs::File>() }.into()
+//     }
+// }
 
 #[cfg(unix)]
 unsafe impl Object for std::os::unix::net::UnixStream {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_handle(self.as_handle());
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(OwnedHandle::from(self));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe { d.deserialize::<OwnedHandle>() }.into()
@@ -332,8 +327,8 @@ unsafe impl Object for std::os::unix::net::UnixStream {
 
 #[cfg(all(unix, feature = "tokio"))]
 unsafe impl Object for tokio::net::UnixStream {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize_handle(self.as_handle());
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.into_std().expect("cannot serialize UnixStream"));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         Self::from_std(unsafe { d.deserialize() }).expect("cannot deserialize UnixStream")
@@ -342,8 +337,8 @@ unsafe impl Object for tokio::net::UnixStream {
 
 #[cfg(all(unix, feature = "smol"))]
 unsafe impl<T: std::os::fd::AsFd + Object> Object for async_io::Async<T> {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        s.serialize(self.get_ref())
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.into_inner().expect("cannot serialize Async"))
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         async_io::Async::new(unsafe { d.deserialize() }).expect("cannot deserialize Async")

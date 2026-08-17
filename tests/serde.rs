@@ -1,23 +1,19 @@
 use crossmist::{Deserializer, FnOnceObject, Object, Serializer, lambda};
 use std::fmt::Debug;
 
-fn serde<T: Object>(x: &T) -> T {
+fn serde<T: Object>(x: T) -> T {
     let mut s = Serializer::new();
     s.serialize(x);
     let (data, handles) = s.into_parts();
-    let handles = handles
-        .into_iter()
-        .map(|handle| handle.try_clone_to_owned().unwrap())
-        .collect();
     let mut d = Deserializer::new(data, handles);
     unsafe { d.deserialize() }
 }
 
-fn test_idempotency<T: Object + PartialEq + Debug>(x: T) {
-    assert_eq!(serde(&x), x);
+fn test_idempotency<T: Object + Clone + PartialEq + Debug>(x: T) {
+    assert_eq!(serde(x.clone()), x);
 }
 
-#[derive(Debug, PartialEq, Object)]
+#[derive(Clone, Debug, PartialEq, Object)]
 struct SimplePair {
     x: i32,
     y: i32,
@@ -84,15 +80,15 @@ impl Trait for bool {
 #[test]
 fn box_trait() {
     assert_eq!(
-        serde(&(Box::new(ImplA("hello".to_string())) as Box<dyn Trait>)).say(),
+        serde(Box::new(ImplA("hello".to_string())) as Box<dyn Trait>).say(),
         "ImplA says: hello"
     );
     assert_eq!(
-        serde(&(Box::new(ImplB(5)) as Box<dyn Trait>)).say(),
+        serde(Box::new(ImplB(5)) as Box<dyn Trait>).say(),
         "ImplB says: 5"
     );
     assert_eq!(
-        serde(&(Box::new(true) as Box<dyn Trait>)).say(),
+        serde(Box::new(true) as Box<dyn Trait>).say(),
         "bool says: true"
     );
 }
@@ -101,7 +97,7 @@ fn box_trait() {
 fn function() {
     let func: Box<dyn FnOnceObject<(i32, i32), Output = i32>> =
         lambda! { |a: i32, b: i32| -> i32 { a + b } };
-    assert_eq!(serde(&func).call_object_box((5, 7)), 12);
+    assert_eq!(serde(func).call_object_box((5, 7)), 12);
 }
 
 #[test]
@@ -109,7 +105,7 @@ fn bound_function() {
     let a = 5;
     let func: Box<dyn FnOnceObject<(i32,), Output = i32>> =
         lambda! { move(a: i32) |b: i32| -> i32 { a + b } };
-    assert_eq!(serde(&func).call_object_box((7,)), 12);
+    assert_eq!(serde(func).call_object_box((7,)), 12);
 }
 
 #[test]
@@ -117,7 +113,7 @@ fn ref_bound_function() {
     let s = "abc".to_string();
     let func: Box<dyn FnOnceObject<(), Output = usize>> =
         lambda! { move(&s: &String) || -> usize { s.len() } };
-    assert_eq!(serde(&func).call_object_box(()), 3);
+    assert_eq!(serde(func).call_object_box(()), 3);
 }
 
 #[test]
@@ -126,16 +122,16 @@ fn double_bound_function() {
     let b = 7;
     let func: Box<dyn FnOnceObject<(), Output = i32>> =
         lambda! { move(a: i32, b: i32) || -> i32 { a + b } };
-    assert_eq!(serde(&func).call_object_box(()), 12);
+    assert_eq!(serde(func).call_object_box(()), 12);
 }
 
 #[test]
 #[cfg(not(miri))]
 fn test_rx() {
     let (mut tx, rx) = crossmist::channel::<i32>().unwrap();
-    let mut rx = serde(&rx);
-    tx.send(&5).unwrap();
-    tx.send(&7).unwrap();
+    let mut rx = serde(rx);
+    tx.send(5).unwrap();
+    tx.send(7).unwrap();
     assert_eq!(rx.recv().unwrap().unwrap(), 5);
     assert_eq!(rx.recv().unwrap().unwrap(), 7);
 }
@@ -144,9 +140,9 @@ fn test_rx() {
 #[cfg(not(miri))]
 fn test_tx() {
     let (tx, mut rx) = crossmist::channel::<i32>().unwrap();
-    let mut tx = serde(&tx);
-    tx.send(&5).unwrap();
-    tx.send(&7).unwrap();
+    let mut tx = serde(tx);
+    tx.send(5).unwrap();
+    tx.send(7).unwrap();
     assert_eq!(rx.recv().unwrap().unwrap(), 5);
     assert_eq!(rx.recv().unwrap().unwrap(), 7);
 }
@@ -155,11 +151,11 @@ fn test_tx() {
 #[cfg(not(miri))]
 fn test_duplex() {
     let (mut local, downstream) = crossmist::duplex::<(i32, i32), i32>().unwrap();
-    let mut downstream = serde(&downstream);
+    let mut downstream = serde(downstream);
     for (x, y) in [(5, 7), (100, -1), (53, 2354)] {
-        local.send(&(x, y)).unwrap();
+        local.send((x, y)).unwrap();
         let (x1, y1) = downstream.recv().unwrap().unwrap();
-        downstream.send(&(x1 - y1)).unwrap();
+        downstream.send(x1 - y1).unwrap();
         assert_eq!(local.recv().unwrap().unwrap(), x1 - y1);
     }
     drop(local);

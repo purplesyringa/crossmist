@@ -3,7 +3,7 @@ use libc::{c_char, c_int, c_void};
 use rustix::process::Pid;
 use std::ffi::{CStr, CString};
 use std::io::Result;
-use std::os::unix::io::{AsRawFd, BorrowedFd};
+use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
 pub(crate) fn start_broker() -> Result<()> {
     Ok(())
@@ -12,12 +12,12 @@ pub(crate) fn start_broker() -> Result<()> {
 struct CloneArg<'a> {
     child_fd: BorrowedFd<'a>,
     child_fd_str: &'a CStr,
-    inherited_fds: &'a [BorrowedFd<'a>],
+    inherited_fds: &'a [OwnedFd],
 }
 
 pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     child_fd: Duplex<S, R>,
-    inherited_fds: &[BorrowedFd<'_>],
+    inherited_fds: &[OwnedFd],
 ) -> Result<Pid> {
     unsafe {
         let child_fd_str = CString::new(child_fd.as_raw_fd().to_string()).unwrap();
@@ -62,7 +62,7 @@ fn fork_child_main(arg: &CloneArg) -> Result<()> {
     // No heap allocations are allowed here.
     entry::disable_cloexec(arg.child_fd)?;
     for fd in arg.inherited_fds {
-        entry::disable_cloexec(*fd)?;
+        entry::disable_cloexec(fd.as_fd())?;
     }
 
     unsafe {

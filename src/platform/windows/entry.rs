@@ -9,7 +9,7 @@ use windows::Win32::{Foundation, System::Threading};
 // XXX: very hacky
 struct FakeDeserializer(Deserializer);
 unsafe impl Object for FakeDeserializer {
-    fn serialize_self<'a>(&'a self, _serializer: &mut Serializer<'a>) {
+    fn serialize_self(self, _serializer: &mut Serializer) {
         unreachable!()
     }
     unsafe fn deserialize_self(deserializer: &mut Deserializer) -> Self {
@@ -46,7 +46,7 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
 
     // Notify the parent that they can stop keeping the handles alive
     let mut output_tx = unsafe { Sender::from_raw_handle(handle_tx.into_raw_handle()) };
-    output_tx.send(&()).expect("Failed to signal");
+    output_tx.send(()).expect("Failed to signal");
     let handle_tx = unsafe { OwnedHandle::from_raw_handle(output_tx.into_raw_handle()) };
 
     set_broker(broker_process, broker_job);

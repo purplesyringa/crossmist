@@ -7,7 +7,7 @@
 //! ```rust
 //! # use crossmist::{channel, Receiver, Sender};
 //! let (mut sender, mut receiver): (Sender<i32>, Receiver<i32>) = channel::<i32>()?;
-//! sender.send(&57)?;
+//! sender.send(57)?;
 //! drop(sender);
 //! assert_eq!(receiver.recv()?, Some(57));
 //! assert_eq!(receiver.recv()?, None);
@@ -19,9 +19,9 @@
 //! ```rust
 //! # use crossmist::{duplex, Duplex};
 //! let (mut side1, mut side2) = duplex::<i32, (i32, i32)>()?;
-//! side1.send(&57)?;
+//! side1.send(57)?;
 //! assert_eq!(side2.recv()?, Some(57));
-//! side2.send(&(1, 2))?;
+//! side2.send((1, 2))?;
 //! assert_eq!(side1.recv()?, Some((1, 2)));
 //! drop(side1);
 //! assert_eq!(side2.recv()?, None);
@@ -135,7 +135,7 @@ pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
 
 impl<T: Object> Sender<T> {
     /// Send a value to the other side.
-    pub fn send(&mut self, value: &T) -> Result<()> {
+    pub fn send(&mut self, value: T) -> Result<()> {
         block_on(self.0.send(value))
     }
 }
@@ -245,7 +245,7 @@ impl<T: Object> std::os::windows::io::FromRawHandle for Receiver<T> {
 
 impl<S: Object, R: Object> Duplex<S, R> {
     /// Send a value to the other side.
-    pub fn send(&mut self, value: &S) -> Result<()> {
+    pub fn send(&mut self, value: S) -> Result<()> {
         block_on(self.0.send(value))
     }
 
@@ -259,7 +259,7 @@ impl<S: Object, R: Object> Duplex<S, R> {
     /// Send a value from the other side and wait for a response immediately.
     ///
     /// If the other side closes the channel before responding, an error is returned.
-    pub fn request(&mut self, value: &S) -> Result<R> {
+    pub fn request(&mut self, value: S) -> Result<R> {
         block_on(self.0.request(value))
     }
 

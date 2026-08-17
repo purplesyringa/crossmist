@@ -7,7 +7,7 @@ use std::default::Default;
 use std::io::Result;
 use windows::Win32::{Foundation, System::Threading};
 
-pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
+pub(crate) fn serialize_with_handles<T: Object>(value: T) -> Result<Vec<u8>> {
     let mut s = Serializer::new();
     s.serialize(value);
 
@@ -36,7 +36,7 @@ pub(crate) fn serialize_with_handles<T: Object>(value: &T) -> Result<Vec<u8>> {
     }
 
     let mut s1 = Serializer::new();
-    s1.serialize(&remote_handles);
+    s1.serialize(remote_handles);
     s1.write(&data);
     Ok(s1.into_parts().0)
 }

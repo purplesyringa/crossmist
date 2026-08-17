@@ -17,9 +17,9 @@ impl<T> Clone for RelocatablePtr<T> {
 impl<T> Copy for RelocatablePtr<T> {}
 
 unsafe impl<T> Object for RelocatablePtr<T> {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
+    fn serialize_self(self, s: &mut Serializer) {
         // Don't bother exposing provenance -- it won't work in another process anyway.
-        s.serialize_temporary(self.0.addr().wrapping_sub(BASE_ADDRESS as usize));
+        s.serialize(self.0.addr().wrapping_sub(BASE_ADDRESS as usize));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         // `RelocatablePtr` is used either for function pointers or `static`s. The former don't have
