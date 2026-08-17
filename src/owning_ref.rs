@@ -67,25 +67,21 @@ impl<'a, T> Iterator for OwningRefIter<'a, T> {
     }
 }
 
-pub trait WithOwningRef<T: ?Sized> {
-    fn with_owning_ref<R>(self, f: impl for<'a> FnOnce(OwningRef<'a, T>) -> R) -> R;
+pub trait WithOwningRef {
+    type Target: ?Sized;
+    fn with_owning_ref<R>(self, f: impl for<'a> FnOnce(OwningRef<'a, Self::Target>) -> R) -> R;
 }
 
-impl<T> WithOwningRef<T> for T {
-    fn with_owning_ref<R>(self, f: impl for<'a> FnOnce(OwningRef<'a, T>) -> R) -> R {
-        let mut value = ManuallyDrop::new(self);
-        f(OwningRef { r: &mut value })
-    }
-}
-
-impl<T: ?Sized> WithOwningRef<T> for Box<T> {
+impl<T: ?Sized> WithOwningRef for Box<T> {
+    type Target = T;
     fn with_owning_ref<R>(self, f: impl for<'a> FnOnce(OwningRef<'a, T>) -> R) -> R {
         let mut boxed = unsafe { Box::from_raw(Box::into_raw(self) as *mut ManuallyDrop<T>) };
         f(OwningRef { r: &mut *boxed })
     }
 }
 
-impl<T> WithOwningRef<[T]> for Vec<T> {
+impl<T> WithOwningRef for Vec<T> {
+    type Target = [T];
     fn with_owning_ref<R>(self, f: impl for<'a> FnOnce(OwningRef<'a, [T]>) -> R) -> R {
         let (ptr, len, cap) = self.into_raw_parts();
         let mut vec: Vec<ManuallyDrop<T>> = unsafe { Vec::from_raw_parts(ptr.cast(), len, cap) };
@@ -97,7 +93,8 @@ impl<T> WithOwningRef<[T]> for Vec<T> {
     }
 }
 
-impl<T, const N: usize> WithOwningRef<[T]> for [T; N] {
+impl<T, const N: usize> WithOwningRef for [T; N] {
+    type Target = [T];
     fn with_owning_ref<R>(self, f: impl for<'a> FnOnce(OwningRef<'a, [T]>) -> R) -> R {
         let mut arr = ManuallyDrop::new(self);
         f(OwningRef { r: &mut arr })

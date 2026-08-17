@@ -1,7 +1,5 @@
 use crate::{
-    Deserializer, Object, Serializer,
-    owning_ref::{OwningRef, WithOwningRef},
-    relocation::RelocatablePtr,
+    Deserializer, Object, Serializer, owning_ref::WithOwningRef, relocation::RelocatablePtr,
 };
 
 // XXX: Rust doesn't guarantee the order of data and vtable pointers, so this can break. This should
@@ -54,7 +52,7 @@ unsafe impl<T: Object + ?Sized> Object for Box<T> {
             self.as_ref().deserialize_on_heap_get() as *const ()
         ));
 
-        self.with_owning_ref(|r: OwningRef<'_, T>| s.serialize_ref(r));
+        self.with_owning_ref(|r| s.serialize_ref(r));
     }
 
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
