@@ -12,6 +12,23 @@ use windows::{
     core::{PCWSTR, PWSTR},
 };
 
+fn get_own_name() -> Result<Vec<u16>> {
+    let mut module_name = vec![0u16; 256];
+    let mut module_name_len;
+    loop {
+        module_name_len =
+            unsafe { LibraryLoader::GetModuleFileNameW(None, &mut module_name) } as usize;
+        if module_name_len == 0 {
+            return Err(std::io::Error::last_os_error());
+        } else if module_name_len == module_name.len() {
+            module_name.resize(module_name.len() * 2, 0);
+        } else {
+            module_name.truncate(module_name_len + 1);
+            return Ok(module_name);
+        }
+    }
+}
+
 pub(crate) unsafe fn _spawn_child<'a>(
     child_tx: BorrowedHandle<'a>,
     child_rx: BorrowedHandle<'a>,
@@ -38,20 +55,6 @@ pub(crate) unsafe fn _spawn_child<'a>(
                 )
             }
         };
-
-        let mut module_name = vec![0u16; 256];
-        let mut module_name_len;
-        loop {
-            module_name_len = LibraryLoader::GetModuleFileNameW(None, &mut module_name) as usize;
-            if module_name_len == 0 {
-                return Err(std::io::Error::last_os_error());
-            } else if module_name_len == module_name.len() {
-                module_name.resize(module_name.len() * 2, 0);
-            } else {
-                module_name.truncate(module_name_len + 1);
-                break;
-            }
-        }
 
         let mut cmd_line: Vec<u16> = format!(
             "_crossmist_ {} {} {} {}\0",
@@ -93,6 +96,7 @@ pub(crate) unsafe fn _spawn_child<'a>(
             }
         }
 
+        let module_name = get_own_name()?;
         let res = Threading::CreateProcessW(
             PCWSTR::from_raw(module_name.as_ptr()),
             Some(PWSTR::from_raw(cmd_line.as_mut_ptr())),
