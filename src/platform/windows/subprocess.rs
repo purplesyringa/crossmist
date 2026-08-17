@@ -62,6 +62,13 @@ pub(crate) fn start_broker() -> Result<()> {
         let mut attrs = vec![0u8; size];
         let attrs = Threading::LPPROC_THREAD_ATTRIBUTE_LIST(attrs.as_mut_ptr().cast());
         Threading::InitializeProcThreadAttributeList(Some(attrs), n_attrs, None, &raw mut size)?;
+        struct AttrsGuard(Threading::LPPROC_THREAD_ATTRIBUTE_LIST);
+        impl Drop for AttrsGuard {
+            fn drop(&mut self) {
+                unsafe { Threading::DeleteProcThreadAttributeList(self.0) };
+            }
+        }
+        let _attrs_guard = AttrsGuard(attrs);
         Threading::UpdateProcThreadAttribute(
             attrs,
             0,
