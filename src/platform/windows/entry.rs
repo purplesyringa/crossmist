@@ -31,9 +31,6 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
 
     set_broker(broker_process, broker_job);
 
-    enable_cloexec(handle_tx.as_handle()).expect("Failed to set O_CLOEXEC for the file descriptor");
-    enable_cloexec(handle_rx.as_handle()).expect("Failed to set O_CLOEXEC for the file descriptor");
-
     let deserializer =
         unsafe { Receiver::<FakeDeserializer>::from_raw_handle(handle_rx.into_raw_handle()) }
             .recv()
@@ -47,7 +44,9 @@ unsafe fn parse_handle(s: &str) -> OwnedHandle {
     let handle = Foundation::HANDLE(core::ptr::without_provenance_mut(
         s.parse().expect("Failed to parse handle"),
     ));
-    unsafe { OwnedHandle::from_raw_handle(handle) }
+    let handle = unsafe { OwnedHandle::from_raw_handle(handle) };
+    enable_cloexec(handle.as_handle()).expect("Failed to set O_CLOEXEC for the file descriptor");
+    handle
 }
 
 pub(crate) fn disable_cloexec(handle: BorrowedHandle<'_>) -> std::io::Result<()> {
