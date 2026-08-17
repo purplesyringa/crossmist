@@ -4,10 +4,7 @@
 //! to serialize not only data structures, but objects with real-world side-effects, e.g. files.
 
 use crate::handles::{BorrowedHandle, OwnedHandle};
-use std::any::Any;
-use std::collections::{HashMap, hash_map};
 use std::fmt;
-use std::num::NonZeroUsize;
 
 /// Stateful serialization.
 ///
@@ -16,7 +13,6 @@ use std::num::NonZeroUsize;
 pub struct Serializer<'fd> {
     data: Vec<u8>,
     handles: Vec<BorrowedHandle<'fd>>,
-    cyclic_ids: HashMap<*const (), NonZeroUsize>,
 }
 
 impl<'fd> Serializer<'fd> {
@@ -25,7 +21,6 @@ impl<'fd> Serializer<'fd> {
         Serializer {
             data: Vec::new(),
             handles: Vec::new(),
-            cyclic_ids: HashMap::new(),
         }
     }
 
@@ -68,18 +63,6 @@ impl<'fd> Serializer<'fd> {
         self.handles.push(handle);
     }
 
-    /// Check if an object has already been serialized in this session and return its index.
-    pub fn learn_cyclic(&mut self, ptr: *const ()) -> Option<NonZeroUsize> {
-        let len_before = self.cyclic_ids.len();
-        match self.cyclic_ids.entry(ptr) {
-            hash_map::Entry::Occupied(occupied) => Some(*occupied.get()),
-            hash_map::Entry::Vacant(vacant) => {
-                vacant.insert(NonZeroUsize::new(len_before + 1).expect("Too many cyclic objects"));
-                None
-            }
-        }
-    }
-
     /// Extract serialized data and file handles.
     pub fn into_parts(self) -> (Vec<u8>, Vec<BorrowedHandle<'fd>>) {
         (self.data, self.handles)
@@ -112,7 +95,6 @@ pub struct Deserializer {
     data: Vec<u8>,
     pub(crate) handles: std::vec::IntoIter<OwnedHandle>,
     pos: usize,
-    cyclics: Vec<Box<dyn Any>>,
 }
 
 impl Deserializer {
@@ -122,7 +104,6 @@ impl Deserializer {
             data,
             handles: handles.into_iter(),
             pos: 0,
-            cyclics: Vec::new(),
         }
     }
 
@@ -180,18 +161,6 @@ impl Deserializer {
         unsafe { T::deserialize_self(self) }
     }
 
-    /// Store a reference to a newly built potentially cyclic object.
-    pub fn learn_cyclic<T: 'static>(&mut self, obj: T) {
-        self.cyclics.push(Box::new(obj));
-    }
-
-    /// Get a reference to an object built earlier.
-    pub fn get_cyclic<T: 'static>(&self, id: NonZeroUsize) -> &T {
-        self.cyclics[id.get() - 1]
-            .downcast_ref()
-            .expect("The cyclic object is of unexpected type")
-    }
-
     #[cfg(windows)]
     pub(crate) fn get_rest(&self) -> &[u8] {
         &self.data[self.pos..]
@@ -242,66 +211,6 @@ impl fmt::Debug for Deserializer {
 /// ```
 ///
 /// Note that DSTs cannot be objects (but `Box<dyn Trait>` and `Box<[T]>` are fine).
-///
-///
-/// # Cyclic structures
-///
-/// Occasionally, you might need to serialize recursive structures that might contain loops. You're
-/// probably better off using [`std::rc::Rc`] or [`std::sync::Arc`] or redesigning your structures,
-/// but if nothing better comes to your mind, you can do the same thing that `Rc` does:
-///
-/// ```rust
-/// # use crossmist::{Deserializer, Object, Serializer};
-/// # use std::io::Result;
-/// # use std::rc::Rc;
-/// struct CustomRc<T: 'static>(Rc<T>);
-///
-/// unsafe impl<T: 'static + Object> Object for CustomRc<T> {
-///     fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-///         // Any unique identifier works, but it must be *globally* unique, not just for objects
-///         // of the same type.
-///         match s.learn_cyclic(Rc::as_ptr(&self.0).cast()) {
-///             None => {
-///                 // This is the first time we see this object -- encode a marker followed by its
-///                 // contents. Under the hood, learn_cyclic remembers this object.
-///                 s.serialize_temporary(0usize);
-///                 s.serialize(&*self.0);
-///             }
-///             Some(id) => {
-///                 // We have seen this object before -- store its ID instead
-///                 s.serialize_temporary(id.get());
-///             }
-///         }
-///     }
-///     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-///         let id = d.deserialize::<usize>();
-///         match std::num::NonZeroUsize::new(id) {
-///             None => {
-///                 // If 0 is stored, this is the first time we see this object -- decode its
-///                 // contents
-///                 let rc = Rc::<T>::new(d.deserialize());
-///                 // Tell the deserializer about this object. Note that you don't specify the ID:
-///                 // learn_cyclic infers it automatically. To make sure numeration is consistent
-///                 // with the serializer, call learn_cyclic in the same order in both. For
-///                 // instance, when encoding a set, make sure that data is serialized in the same
-///                 // order as it is deserialized. This should already be the case unless you
-///                 // serialize data in a very bizarre way. Also, notice that learn_cyclic does not
-///                 // have to store the exact object you are deserializing in: in this case, we
-///                 // store the Rc itself, not CustomRc.
-///                 d.learn_cyclic(rc.clone());
-///                 Self(rc)
-///             }
-///             Some(id) => {
-///                 // If a non-zero value is stored, this is an ID of an already existing object.
-///                 // Notice that you must specify the type of the object you expect to be stored.
-///                 // get_cyclic returns a reference to the object. In case of Rc, cloning it is
-///                 // sufficient.
-///                 Self(d.get_cyclic::<Rc<T>>(id).clone())
-///             }
-///         }
-///     }
-/// }
-/// ```
 ///
 ///
 /// # File descriptors

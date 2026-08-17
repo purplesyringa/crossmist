@@ -7,8 +7,6 @@ use crate::{
 use paste::paste;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};
-use std::rc::Rc;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 macro_rules! impl_pod {
@@ -182,60 +180,6 @@ unsafe impl<T: Object> Object for Option<T> {
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         unsafe { d.deserialize::<bool>().then(|| d.deserialize()) }
-    }
-}
-
-unsafe impl<T: 'static + Object> Object for Rc<T> {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        match s.learn_cyclic(Rc::as_ptr(self).cast()) {
-            None => {
-                s.serialize_temporary(0usize);
-                s.serialize(&**self);
-            }
-            Some(id) => {
-                s.serialize_temporary(id.get());
-            }
-        }
-    }
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-        unsafe {
-            let id = d.deserialize::<usize>();
-            match std::num::NonZeroUsize::new(id) {
-                None => {
-                    let rc = Self::new(d.deserialize());
-                    d.learn_cyclic(rc.clone());
-                    rc
-                }
-                Some(id) => d.get_cyclic::<Rc<T>>(id).clone(),
-            }
-        }
-    }
-}
-
-unsafe impl<T: 'static + Object> Object for Arc<T> {
-    fn serialize_self<'a>(&'a self, s: &mut Serializer<'a>) {
-        match s.learn_cyclic(Arc::as_ptr(self).cast()) {
-            None => {
-                s.serialize_temporary(0usize);
-                s.serialize(&**self);
-            }
-            Some(id) => {
-                s.serialize_temporary(id.get());
-            }
-        }
-    }
-    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-        unsafe {
-            let id = d.deserialize::<usize>();
-            match std::num::NonZeroUsize::new(id) {
-                None => {
-                    let rc = Self::new(d.deserialize());
-                    d.learn_cyclic(rc.clone());
-                    rc
-                }
-                Some(id) => d.get_cyclic::<Arc<T>>(id).clone(),
-            }
-        }
     }
 }
 
