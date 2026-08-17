@@ -661,8 +661,11 @@ pub(crate) async unsafe fn spawn<
                 child.0.sender.fd.as_handle(),
                 child.0.receiver.fd.as_handle(),
             )?;
-            local.send(&(entrypoint, args)).await?;
-            receiver = local.receiver;
+            // Wait for a response that the handles have been copied successfully before continuing.
+            let mut signal = Receiver::<Stream, ()>::from_stream(local.receiver.fd);
+            signal.recv().await?;
+            local.sender.send(&(entrypoint, args)).await?;
+            receiver = Receiver::from_stream(signal.fd);
         }
 
         Ok(Child::new(process_handle, receiver))

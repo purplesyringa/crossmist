@@ -1,7 +1,4 @@
-use crate::{
-    entry,
-    handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle},
-};
+use crate::handles::{AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle};
 use std::ffi::c_void;
 use std::io::Result;
 use std::sync::OnceLock;
@@ -119,15 +116,12 @@ pub(crate) unsafe fn _spawn_child<'a>(
     unsafe {
         let broker = HANDLE_BROKER.get().expect("broker not initialized");
 
-        let inherited_handles = [
-            broker.process.as_handle(),
-            broker.job.as_handle(),
-            child_tx,
-            child_rx,
-        ];
-
+        // Pass the handles as visible in the current process, and let the child duplicate them into
+        // itself manually. Every other way, like using inheritance, duplicating into a suspended
+        // child, or setting the parent to the broker process, is unfortunately inherently racy.
         let mut cmd_line: Vec<u16> = format!(
-            "_crossmist_ {} {} {} {}\0",
+            "_crossmist_ {} {} {} {} {}\0",
+            Threading::GetCurrentProcessId(),
             broker.process.as_raw_handle().0.addr(),
             broker.job.as_raw_handle().0.addr(),
             child_tx.as_raw_handle().0.addr(),
@@ -136,51 +130,24 @@ pub(crate) unsafe fn _spawn_child<'a>(
         .encode_utf16()
         .collect();
 
-        let n_attrs = 1;
-        let mut size = 0;
-        let _ = Threading::InitializeProcThreadAttributeList(None, n_attrs, None, &raw mut size); // errors by design according to MSDN
-        let mut attrs = vec![0u8; size];
-        let attrs = Threading::LPPROC_THREAD_ATTRIBUTE_LIST(attrs.as_mut_ptr().cast());
-        Threading::InitializeProcThreadAttributeList(Some(attrs), n_attrs, None, &raw mut size)?;
-        Threading::UpdateProcThreadAttribute(
-            attrs,
-            0,
-            Threading::PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
-            Some((&raw const inherited_handles).cast()),
-            size_of_val(&inherited_handles),
-            None,
-            None,
-        )?;
-
-        let mut startup_info = Threading::STARTUPINFOEXW::default();
-        startup_info.StartupInfo.cb = size_of_val(&startup_info) as u32;
-        startup_info.lpAttributeList = attrs;
+        let mut startup_info = Threading::STARTUPINFOW::default();
+        startup_info.cb = size_of_val(&startup_info) as u32;
 
         let mut process_info = Threading::PROCESS_INFORMATION::default();
 
-        for handle in inherited_handles {
-            entry::disable_cloexec(handle)?;
-        }
-
         let module_name = get_own_name()?;
-        let res = Threading::CreateProcessW(
+        Threading::CreateProcessW(
             PCWSTR::from_raw(module_name.as_ptr()),
             Some(PWSTR::from_raw(cmd_line.as_mut_ptr())),
             None,
             None,
             true,
-            Threading::EXTENDED_STARTUPINFO_PRESENT | Threading::INHERIT_PARENT_AFFINITY,
+            Threading::INHERIT_PARENT_AFFINITY,
             None,
             None,
-            (&raw const startup_info).cast(),
+            &raw const startup_info,
             &raw mut process_info,
-        );
-
-        for handle in inherited_handles {
-            entry::enable_cloexec(handle)?;
-        }
-
-        res?;
+        )?;
 
         Foundation::CloseHandle(process_info.hThread)?;
         Ok(OwnedHandle::from_raw_handle(process_info.hProcess))
