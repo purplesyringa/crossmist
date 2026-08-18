@@ -44,13 +44,15 @@
 //! You can then kill the child, get its PID, or join it (i.e. wait till it returns and obtain the
 //! returned value).
 
-#[cfg(windows)]
-use std::os::windows::io::{RawHandle, AsRawHandle, IntoRawHandle, FromRawHandle, AsHandle, BorrowedHandle};
 use crate::{KillHandle, Object, asynchronous};
 use std::future::Future;
 use std::io::Result;
 #[cfg(unix)]
-use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd, FromRawFd, AsFd, BorrowedFd};
+use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
+#[cfg(windows)]
+use std::os::windows::io::{
+    AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle,
+};
 use std::pin::pin;
 use std::task::{Context, Poll, Waker};
 
@@ -98,17 +100,13 @@ unsafe impl asynchronous::AsyncStream for Blocking {
 #[cfg(unix)]
 impl FromRawFd for Blocking {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        unsafe {
-            Self(asynchronous::SyncStream::from_raw_fd(fd))
-        }
+        unsafe { Self(asynchronous::SyncStream::from_raw_fd(fd)) }
     }
 }
 #[cfg(windows)]
 impl FromRawHandle for Blocking {
     unsafe fn from_raw_handle(fd: RawHandle) -> Self {
-        unsafe {
-            Self(asynchronous::SyncStream::from_raw_handle(fd))
-        }
+        unsafe { Self(asynchronous::SyncStream::from_raw_handle(fd)) }
     }
 }
 
@@ -218,16 +216,16 @@ impl<T: Object> IntoRawHandle for Sender<T> {
 #[cfg(unix)]
 impl<T: Object> FromRawFd for Sender<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        unsafe {
-            Self(asynchronous::Sender::from_stream(Blocking::from_raw_fd(fd)))
-        }
+        unsafe { Self(asynchronous::Sender::from_stream(Blocking::from_raw_fd(fd))) }
     }
 }
 #[cfg(windows)]
 impl<T: Object> FromRawHandle for Sender<T> {
     unsafe fn from_raw_handle(fd: RawHandle) -> Self {
         unsafe {
-            Self(asynchronous::Sender::from_stream(Blocking::from_raw_handle(fd)))
+            Self(asynchronous::Sender::from_stream(
+                Blocking::from_raw_handle(fd),
+            ))
         }
     }
 }
@@ -271,7 +269,9 @@ impl<T: Object> IntoRawHandle for Receiver<T> {
 impl<T: Object> FromRawFd for Receiver<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         unsafe {
-            Self(asynchronous::Receiver::from_stream(Blocking::from_raw_fd(fd)))
+            Self(asynchronous::Receiver::from_stream(Blocking::from_raw_fd(
+                fd,
+            )))
         }
     }
 }
@@ -279,7 +279,9 @@ impl<T: Object> FromRawFd for Receiver<T> {
 impl<T: Object> FromRawHandle for Receiver<T> {
     unsafe fn from_raw_handle(fd: RawHandle) -> Self {
         unsafe {
-            Self(asynchronous::Receiver::from_stream(Blocking::from_raw_handle(fd)))
+            Self(asynchronous::Receiver::from_stream(
+                Blocking::from_raw_handle(fd),
+            ))
         }
     }
 }
@@ -342,16 +344,16 @@ impl<S: Object, R: Object> IntoRawHandle for Duplex<S, R> {
 #[cfg(unix)]
 impl<S: Object, R: Object> FromRawFd for Duplex<S, R> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        unsafe {
-            Self(asynchronous::Duplex::from_stream(Blocking::from_raw_fd(fd)))
-        }
+        unsafe { Self(asynchronous::Duplex::from_stream(Blocking::from_raw_fd(fd))) }
     }
 }
 #[cfg(windows)]
 impl<S: Object, R: Object> FromRawHandle for Duplex<S, R> {
     unsafe fn from_raw_handle(handle: RawHandle) -> Self {
         unsafe {
-            Self(asynchronous::Duplex::from_stream(Blocking::from_raw_handle(handle)))
+            Self(asynchronous::Duplex::from_stream(
+                Blocking::from_raw_handle(handle),
+            ))
         }
     }
 }

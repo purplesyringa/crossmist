@@ -1,6 +1,6 @@
-use std::os::windows::io::{BorrowedHandle, OwnedHandle, AsRawHandle, FromRawHandle, RawHandle};
 use std::ffi::c_void;
 use std::io::Result;
+use std::os::windows::io::{AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle};
 use std::sync::OnceLock;
 use windows::{
     Win32::{
@@ -41,10 +41,9 @@ pub(crate) fn start_broker() -> Result<()> {
         // user dies. The job handles acts as a keep-alive, similarly to how holding the write end
         // of the pipe keeps the reader hanging on Linux, but without wasting resources on actually
         // populating the process with an executable image.
-        let job = OwnedHandle::from_raw_handle(JobObjects::CreateJobObjectW(
-            None,
-            PCWSTR(core::ptr::null()),
-        )?.0);
+        let job = OwnedHandle::from_raw_handle(
+            JobObjects::CreateJobObjectW(None, PCWSTR(core::ptr::null()))?.0,
+        );
 
         let mut limit_info = JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         limit_info.BasicLimitInformation.LimitFlags =

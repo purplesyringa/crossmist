@@ -1,11 +1,8 @@
-use crate::{
-    Deserializer, Object, Serializer,
-    subprocess::HANDLE_BROKER,
-};
+use crate::{Deserializer, Object, Serializer, subprocess::HANDLE_BROKER};
 use std::default::Default;
 use std::fs::File;
 use std::io::Result;
-use std::os::windows::io::{OwnedHandle, AsRawHandle, FromRawHandle};
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use windows::Win32::{
     Foundation::{self, HANDLE},
     Security::{self, Authorization},

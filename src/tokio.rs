@@ -4,10 +4,10 @@
 
 use crate::{Object, asynchronous};
 use std::io::Result;
-#[cfg(windows)]
-use std::os::windows::io::{RawHandle, AsRawHandle, AsHandle, BorrowedHandle};
 #[cfg(unix)]
-use std::os::unix::io::{AsRawFd, RawFd, AsFd, BorrowedFd};
+use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, RawFd};
+#[cfg(windows)]
+use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle};
 
 /// `tokio` marker struct.
 #[derive(Debug, Object)]

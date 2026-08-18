@@ -1,5 +1,3 @@
-#[cfg(windows)]
-use std::os::windows::io::OwnedHandle;
 use crate::{
     Deserializer, Object, Serializer,
     owning_ref::{OwningRef, WithOwningRef},
@@ -9,6 +7,8 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedL
 use std::hash::{BuildHasher, Hash};
 #[cfg(unix)]
 use std::os::unix::io::OwnedFd;
+#[cfg(windows)]
+use std::os::windows::io::OwnedHandle;
 use std::time::{Duration, SystemTime};
 
 macro_rules! impl_pod {

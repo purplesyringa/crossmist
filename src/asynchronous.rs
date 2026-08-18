@@ -47,19 +47,19 @@ use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
+#[cfg(windows)]
+use {
+    crate::internals::{deserialize_with_handles, serialize_with_handles, socketpair},
+    std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
+    windows::Win32::{Foundation::HANDLE, System::Threading},
+};
 #[cfg(unix)]
 use {
     crate::{
         Serializer,
         internals::{SingleObjectReceiver, SingleObjectSender, socketpair},
     },
-    std::os::unix::io::{AsRawFd, RawFd, AsFd, FromRawFd},
-};
-#[cfg(windows)]
-use {
-    crate::internals::{deserialize_with_handles, serialize_with_handles, socketpair},
-    std::os::windows::io::{OwnedHandle, AsRawHandle, RawHandle, FromRawHandle, AsHandle},
-    windows::Win32::{System::Threading, Foundation::HANDLE},
+    std::os::unix::io::{AsFd, AsRawFd, FromRawFd, RawFd},
 };
 
 #[cfg(unix)]

@@ -3,8 +3,11 @@ use crate::{
     asynchronous::handle_entry,
     subprocess::{get_creation_time, set_broker},
 };
-use std::os::windows::io::{AsHandle, BorrowedHandle, OwnedHandle, AsRawHandle, FromRawHandle};
-use windows::Win32::{Foundation::{self, HANDLE}, System::Threading};
+use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle};
+use windows::Win32::{
+    Foundation::{self, HANDLE},
+    System::Threading,
+};
 
 // XXX: very hacky
 struct FakeDeserializer(Deserializer);
@@ -33,7 +36,8 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
                 false,
                 ppid,
             )
-            .expect("failed to open parent").0,
+            .expect("failed to open parent")
+            .0,
         )
     };
 
@@ -81,9 +85,8 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
 }
 
 unsafe fn parse_handle(parent: BorrowedHandle<'_>, s: &str) -> OwnedHandle {
-    let remote_handle = core::ptr::without_provenance_mut(
-        s.parse().expect("Failed to parse handle"),
-    );
+    let remote_handle =
+        core::ptr::without_provenance_mut(s.parse().expect("Failed to parse handle"));
     let mut handle = Default::default();
     unsafe {
         Foundation::DuplicateHandle(

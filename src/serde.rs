@@ -3,12 +3,12 @@
 //! This is *not* the well-known `serde` crate. We use custom serialization methods because we need
 //! to serialize not only data structures, but objects with real-world side-effects, e.g. files.
 
+use crate::owning_ref::OwningRef;
+use std::fmt;
 #[cfg(unix)]
 use std::os::unix::io::OwnedFd;
 #[cfg(windows)]
 use std::os::windows::io::OwnedHandle;
-use crate::owning_ref::OwningRef;
-use std::fmt;
 
 /// Stateful serialization.
 ///
