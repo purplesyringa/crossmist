@@ -278,11 +278,23 @@ impl<S: Object, R: Object> std::os::unix::io::AsRawFd for Duplex<S, R> {
         self.0.as_raw_handle()
     }
 }
+#[cfg(windows)]
+impl<S: Object, R: Object> std::os::windows::io::AsRawHandle for Duplex<S, R> {
+    fn as_raw_handle(&self) -> std::os::windows::io::RawHandle {
+        std::os::windows::io::AsRawHandle::as_raw_handle(&self.0)
+    }
+}
 
 #[cfg(unix)]
 impl<S: Object, R: Object> std::os::unix::io::IntoRawFd for Duplex<S, R> {
     fn into_raw_fd(self) -> RawHandle {
         self.0.fd.0.into_raw_fd()
+    }
+}
+#[cfg(windows)]
+impl<S: Object, R: Object> std::os::windows::io::IntoRawHandle for Duplex<S, R> {
+    fn into_raw_handle(self) -> std::os::windows::io::RawHandle {
+        self.0.fd.0.into_raw_handle()
     }
 }
 

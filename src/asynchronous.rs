@@ -58,7 +58,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 #[cfg(windows)]
 use {
-    crate::internals::{deserialize_with_handles, serialize_with_handles},
+    crate::internals::{deserialize_with_handles, serialize_with_handles, socketpair},
     std::os::windows::io,
     windows::Win32::System::{Pipes, Threading},
 };
@@ -134,14 +134,8 @@ pub struct Receiver<Stream: AsyncStream, T: Object> {
 /// is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
 pub struct Duplex<Stream: AsyncStream, S: Object, R: Object> {
-    #[cfg(unix)]
     pub(crate) fd: Stream,
-    #[cfg(unix)]
     marker: PhantomData<fn(S) -> R>,
-    #[cfg(windows)]
-    pub(crate) sender: Sender<Stream, S>,
-    #[cfg(windows)]
-    pub(crate) receiver: Receiver<Stream, R>,
 }
 
 /// Create a unidirectional channel.
@@ -181,29 +175,12 @@ pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, R
 /// Create a bidirectional channel.
 pub fn duplex<Stream: AsyncStream, A: Object, B: Object>()
 -> Result<(Duplex<Stream, A, B>, Duplex<Stream, B, A>)> {
-    #[cfg(unix)]
-    {
-        let (tx, rx) = socketpair()?;
-        unsafe {
-            Ok((
-                Duplex::from_stream(Stream::try_new(tx)?),
-                Duplex::from_stream(Stream::try_new(rx)?),
-            ))
-        }
-    }
-    #[cfg(windows)]
-    {
-        let (tx_a, rx_a) = channel::<Stream, A>()?;
-        let (tx_b, rx_b) = channel::<Stream, B>()?;
-        let ours = Duplex {
-            sender: tx_a,
-            receiver: rx_b,
-        };
-        let theirs = Duplex {
-            sender: tx_b,
-            receiver: rx_a,
-        };
-        Ok((ours, theirs))
+    let (tx, rx) = socketpair()?;
+    unsafe {
+        Ok((
+            Duplex::from_stream(Stream::try_new(tx)?),
+            Duplex::from_stream(Stream::try_new(rx)?),
+        ))
     }
 }
 
@@ -329,7 +306,6 @@ impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Receiver<Stream, T> {
 }
 
 impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
-    #[cfg(unix)]
     pub(crate) unsafe fn from_stream(fd: Stream) -> Self {
         Duplex {
             fd,
@@ -346,7 +322,11 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
-        self.sender.send(value).await
+        {
+            let serialized = serialize_with_handles(value)?;
+            self.fd.write(&serialized.len().to_ne_bytes()).await?;
+            self.fd.write(&serialized).await
+        }
     }
 
     /// Receive a value from the other side.
@@ -360,7 +340,20 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]
-        self.receiver.recv().await
+        {
+            let mut len = [0u8; size_of::<usize>()];
+            if let Err(e) = self.fd.read(&mut len).await {
+                if e.kind() == ErrorKind::UnexpectedEof {
+                    return Ok(None);
+                }
+                return Err(e);
+            }
+            let len = usize::from_ne_bytes(len);
+
+            let mut serialized = vec![0u8; len];
+            self.fd.read(&mut serialized).await?;
+            unsafe { deserialize_with_handles(serialized) }.map(Some)
+        }
     }
 
     /// Send a value from the other side and wait for a response immediately.
@@ -377,37 +370,17 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     }
 
     pub fn into_sender(self) -> Sender<Stream, S> {
-        #[cfg(unix)]
-        unsafe {
-            Sender::from_stream(self.fd)
-        }
-        #[cfg(windows)]
-        self.sender
+        unsafe { Sender::from_stream(self.fd) }
     }
 
     pub fn into_receiver(self) -> Receiver<Stream, R> {
-        #[cfg(unix)]
-        unsafe {
-            Receiver::from_stream(self.fd)
-        }
-        #[cfg(windows)]
-        self.receiver
+        unsafe { Receiver::from_stream(self.fd) }
     }
 }
 
 impl<Stream: AsyncStream + fmt::Debug, S: Object, R: Object> fmt::Debug for Duplex<Stream, S, R> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        #[cfg(unix)]
-        {
-            fmt.debug_tuple("Duplex").field(&self.fd).finish()
-        }
-        #[cfg(windows)]
-        {
-            fmt.debug_struct("Duplex")
-                .field("sender", &self.sender)
-                .field("receiver", &self.receiver)
-                .finish()
-        }
+        fmt.debug_tuple("Duplex").field(&self.fd).finish()
     }
 }
 
@@ -416,18 +389,10 @@ impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
 {
     type Error = Error;
     fn try_from(value: crate::Duplex<S, R>) -> Result<Self> {
-        #[cfg(unix)]
         unsafe {
             Ok(Self::from_stream(Stream::try_new(
                 SyncStream::from_raw_handle(value.into_raw_handle()),
             )?))
-        }
-        #[cfg(windows)]
-        {
-            Ok(Self {
-                sender: crate::Sender(value.0.sender).try_into()?,
-                receiver: crate::Receiver(value.0.receiver).try_into()?,
-            })
         }
     }
 }
@@ -438,6 +403,12 @@ impl<Stream: AsyncStream, S: Object, R: Object> std::os::unix::io::AsRawFd
 {
     fn as_raw_fd(&self) -> RawHandle {
         self.fd.as_raw_handle()
+    }
+}
+#[cfg(windows)]
+impl<Stream: AsyncStream, S: Object, R: Object> io::AsRawHandle for Duplex<Stream, S, R> {
+    fn as_raw_handle(&self) -> std::os::windows::prelude::RawHandle {
+        self.fd.as_raw_handle().0 as _
     }
 }
 
@@ -639,7 +610,6 @@ pub(crate) async unsafe fn spawn<
         let mut local: Duplex<Stream, _, Ret> = local.try_into()?;
 
         let process_handle;
-        let receiver;
 
         #[cfg(unix)]
         {
@@ -653,24 +623,21 @@ pub(crate) async unsafe fn spawn<
                 .map(AsRawHandle::as_raw_handle)
                 .collect::<Vec<_>>();
             local.send((data, raw_handles)).await?;
-            receiver = Receiver::from_stream(local.fd);
         }
 
         #[cfg(windows)]
         {
             // Windows offers no good way to inherit handles safely, so we pass them via the broker,
             // just like when sending handles over channels.
-            process_handle = subprocess::_spawn_child(
-                child.0.sender.fd.as_handle(),
-                child.0.receiver.fd.as_handle(),
-            )?;
+            process_handle = subprocess::_spawn_child(child.0.fd.as_handle())?;
             // Wait for a response that the handles have been copied successfully before continuing.
-            let mut signal = Receiver::<Stream, ()>::from_stream(local.receiver.fd);
+            let mut signal = Receiver::<Stream, ()>::from_stream(local.fd);
             signal.recv().await?;
-            local.sender.send((entrypoint, args)).await?;
-            receiver = Receiver::from_stream(signal.fd);
+            local.fd = signal.fd;
+            local.send((entrypoint, args)).await?;
         }
 
+        let receiver = Receiver::from_stream(local.fd);
         Ok(Child::new(process_handle, receiver))
     }
 }

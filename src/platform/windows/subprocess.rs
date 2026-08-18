@@ -116,10 +116,7 @@ pub(crate) fn set_broker(process: OwnedHandle, job: OwnedHandle) {
         .expect("broker already initialized");
 }
 
-pub(crate) unsafe fn _spawn_child<'a>(
-    child_tx: BorrowedHandle<'a>,
-    child_rx: BorrowedHandle<'a>,
-) -> Result<OwnedHandle> {
+pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Result<OwnedHandle> {
     unsafe {
         let broker = HANDLE_BROKER.get().expect("broker not initialized");
 
@@ -128,13 +125,12 @@ pub(crate) unsafe fn _spawn_child<'a>(
         // child, or setting the parent to the broker process, is unfortunately inherently racy.
         let creation_time = get_creation_time(Threading::GetCurrentProcess())?;
         let mut cmd_line: Vec<u16> = format!(
-            "_crossmist_ {} {} {} {} {} {}\0",
+            "_crossmist_ {} {} {} {} {}\0",
             Threading::GetCurrentProcessId(),
             creation_time,
             broker.process.as_raw_handle().0.addr(),
             broker.job.as_raw_handle().0.addr(),
-            child_tx.as_raw_handle().0.addr(),
-            child_rx.as_raw_handle().0.addr(),
+            child_handle.as_raw_handle().0.addr(),
         )
         .encode_utf16()
         .collect();
