@@ -1,8 +1,11 @@
-use crossmist::smol::{Duplex, Receiver, Sender, channel, duplex};
-use crossmist::{FnOnceObject, Object};
-
 mod testing;
 testing::setup!();
+
+#[cfg(not(windows))] // smol+Windows is currently broken
+mod tests {
+use super::*;
+use crossmist::smol::{Duplex, Receiver, Sender, channel, duplex};
+use crossmist::{FnOnceObject, Object};
 
 #[derive(Debug, PartialEq, Object)]
 struct SimplePair {
@@ -149,4 +152,5 @@ async fn exitting() {
         std::process::exit(0);
     }
     inner.run_smol().await.unwrap();
+}
 }
