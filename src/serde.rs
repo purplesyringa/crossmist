@@ -209,16 +209,19 @@ impl From<Serializer> for Deserializer {
 /// use crossmist::{Deserializer, Object, Serializer};
 /// use std::fs::File;
 /// use std::io::Result;
-/// use std::os::unix::io::OwnedFd;
+/// #[cfg(unix)]
+/// use std::os::unix::io::OwnedFd as Resource;
+/// #[cfg(windows)]
+/// use std::os::windows::io::OwnedHandle as Resource;
 ///
 /// struct CustomFile(std::fs::File);
 ///
 /// unsafe impl Object for CustomFile {
 ///     fn serialize_self(self, s: &mut Serializer) {
-///         s.serialize(OwnedFd::from(self.0));
+///         s.serialize(Resource::from(self.0));
 ///     }
 ///     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-///         Self(unsafe { d.deserialize::<OwnedFd>() }.into())
+///         Self(unsafe { d.deserialize::<Resource>() }.into())
 ///     }
 /// }
 /// ```
