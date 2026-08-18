@@ -308,6 +308,16 @@ impl<S: Object, R: Object> std::os::unix::io::FromRawFd for Duplex<S, R> {
         }
     }
 }
+#[cfg(windows)]
+impl<S: Object, R: Object> std::os::windows::io::FromRawHandle for Duplex<S, R> {
+    unsafe fn from_raw_handle(handle: std::os::windows::io::RawHandle) -> Self {
+        unsafe {
+            Self(asynchronous::Duplex::from_stream(Blocking(
+                asynchronous::SyncStream::from_raw_handle(handle),
+            )))
+        }
+    }
+}
 
 /// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
 #[derive(Debug)]
