@@ -2,7 +2,7 @@ use crate::{
     Deserializer, Object, Receiver, Sender, Serializer,
     asynchronous::handle_entry,
     handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, OwnedHandle},
-    subprocess::set_broker,
+    subprocess::{get_creation_time, set_broker},
 };
 use windows::Win32::{Foundation, System::Threading};
 
@@ -23,24 +23,40 @@ unsafe impl Object for FakeDeserializer {
 pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
     let ppid = args
         .next()
-        .expect("Expected five CLI arguments for crossmist")
+        .expect("Expected six CLI arguments for crossmist")
         .parse()
         .expect("Failed to parse PPID");
     let parent = unsafe {
         OwnedHandle::from_raw_handle(
-            Threading::OpenProcess(Threading::PROCESS_DUP_HANDLE, false, ppid)
-                .expect("failed to open parent"),
+            Threading::OpenProcess(
+                Threading::PROCESS_DUP_HANDLE | Threading::PROCESS_QUERY_LIMITED_INFORMATION,
+                false,
+                ppid,
+            )
+            .expect("failed to open parent"),
         )
     };
 
-    // If the parent dies and its PID gets reused, this will either safely crash, or we'll crash
-    // when we signal the parent that we finished stealing the handles.
+    // Validate that the process we've just opened is the intended parent and the PID wasn't reused
+    let creation_time = unsafe { get_creation_time(parent.as_raw_handle()) }
+        .expect("failed to get parent's creation time");
+    let expected_creation_time = args
+        .next()
+        .expect("Expected six CLI arguments for crossmist")
+        .parse()
+        .expect("Failed to parse creation time");
+    assert!(
+        creation_time == expected_creation_time,
+        "PID reuse detected"
+    );
+
+    // If our parent dies while copying the handles, this will safely crash.
     let [broker_process, broker_job, handle_tx, handle_rx] = core::array::from_fn(|_| unsafe {
         parse_handle(
             parent.as_handle(),
             &args
                 .next()
-                .expect("Expected five CLI arguments for crossmist"),
+                .expect("Expected six CLI arguments for crossmist"),
         )
     });
 

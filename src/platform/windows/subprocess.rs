@@ -1,4 +1,4 @@
-use crate::handles::{AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle};
+use crate::handles::{AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle};
 use std::ffi::c_void;
 use std::io::Result;
 use std::sync::OnceLock;
@@ -126,9 +126,11 @@ pub(crate) unsafe fn _spawn_child<'a>(
         // Pass the handles as visible in the current process, and let the child duplicate them into
         // itself manually. Every other way, like using inheritance, duplicating into a suspended
         // child, or setting the parent to the broker process, is unfortunately inherently racy.
+        let creation_time = get_creation_time(Threading::GetCurrentProcess())?;
         let mut cmd_line: Vec<u16> = format!(
-            "_crossmist_ {} {} {} {} {}\0",
+            "_crossmist_ {} {} {} {} {} {}\0",
             Threading::GetCurrentProcessId(),
+            creation_time,
             broker.process.as_raw_handle().0.addr(),
             broker.job.as_raw_handle().0.addr(),
             child_tx.as_raw_handle().0.addr(),
@@ -159,4 +161,19 @@ pub(crate) unsafe fn _spawn_child<'a>(
         Foundation::CloseHandle(process_info.hThread)?;
         Ok(OwnedHandle::from_raw_handle(process_info.hProcess))
     }
+}
+
+pub(crate) unsafe fn get_creation_time(process: RawHandle) -> Result<u64> {
+    let mut creation_time = Default::default();
+    let mut ignore = Default::default();
+    unsafe {
+        Threading::GetProcessTimes(
+            process,
+            &raw mut creation_time,
+            &raw mut ignore,
+            &raw mut ignore,
+            &raw mut ignore,
+        )
+    }?;
+    Ok(creation_time.dwLowDateTime as u64 | (creation_time.dwHighDateTime as u64) << 32)
 }
