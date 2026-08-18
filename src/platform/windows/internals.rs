@@ -38,13 +38,13 @@ pub(crate) fn socketpair() -> Result<(File, File)> {
         },
     };
 
-    struct ACL(*mut Security::ACL); // stored on the local heap
-    impl Drop for ACL {
+    struct Acl(*mut Security::ACL); // stored on the local heap
+    impl Drop for Acl {
         fn drop(&mut self) {
             unsafe { Foundation::LocalFree(Some(Foundation::HLOCAL(self.0.cast()))) };
         }
     }
-    let mut acl = ACL(core::ptr::null_mut());
+    let mut acl = Acl(core::ptr::null_mut());
     unsafe {
         Authorization::SetEntriesInAclA(Some(core::slice::from_ref(&ea)), None, &raw mut acl.0)
     }
