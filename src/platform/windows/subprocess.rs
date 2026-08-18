@@ -1,11 +1,15 @@
-use std::ffi::c_void;
+use std::ffi::{OsStr, c_void};
 use std::io::Result;
-use std::os::windows::io::{AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle};
+use std::os::windows::{
+    ffi::OsStrExt,
+    io::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle},
+};
 use std::sync::OnceLock;
 use windows::{
+    Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation},
     Win32::{
         Foundation::{self, HANDLE},
-        System::{JobObjects, LibraryLoader, Threading},
+        System::{Diagnostics::Debug, JobObjects, LibraryLoader, Threading},
     },
     core::{PCWSTR, PWSTR},
 };
@@ -17,6 +21,15 @@ pub(crate) struct Broker {
 }
 
 pub(crate) static HANDLE_BROKER: OnceLock<Broker> = OnceLock::new();
+
+#[derive(Clone, Copy, Default)]
+struct InitHandles {
+    broker_process: HANDLE,
+    broker_job: HANDLE,
+    child_handle: HANDLE,
+}
+
+static mut INIT_HANDLES: InitHandles = unsafe { core::mem::zeroed() };
 
 fn get_own_name() -> Result<Vec<u16>> {
     let mut module_name = vec![0u16; 256];
@@ -35,24 +48,30 @@ fn get_own_name() -> Result<Vec<u16>> {
     }
 }
 
-pub(crate) fn start_broker() -> Result<()> {
+unsafe fn set_job_flags(job: RawHandle, flags: JobObjects::JOB_OBJECT_LIMIT) -> Result<()> {
+    let mut limit_info = JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    limit_info.BasicLimitInformation.LimitFlags = flags;
     unsafe {
-        // Create the broker in a kill-on-close job so that it doesn't linger around after every
-        // user dies. The job handles acts as a keep-alive, similarly to how holding the write end
-        // of the pipe keeps the reader hanging on Linux, but without wasting resources on actually
-        // populating the process with an executable image.
-        let job = OwnedHandle::from_raw_handle(
-            JobObjects::CreateJobObjectW(None, PCWSTR(core::ptr::null()))?.0,
-        );
-
-        let mut limit_info = JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        limit_info.BasicLimitInformation.LimitFlags =
-            JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         JobObjects::SetInformationJobObject(
-            HANDLE(job.as_raw_handle()),
+            HANDLE(job),
             JobObjects::JobObjectExtendedLimitInformation,
             (&raw const limit_info).cast(),
             size_of_val(&limit_info) as u32,
+        )
+    }?;
+    Ok(())
+}
+
+fn spawn_suspended_in_job(
+    cmd_line: Option<&OsStr>,
+) -> Result<(OwnedHandle, OwnedHandle, OwnedHandle)> {
+    unsafe {
+        let job = OwnedHandle::from_raw_handle(
+            JobObjects::CreateJobObjectW(None, PCWSTR(core::ptr::null()))?.0,
+        );
+        set_job_flags(
+            job.as_raw_handle(),
+            JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         )?;
 
         let n_attrs = 1;
@@ -85,9 +104,17 @@ pub(crate) fn start_broker() -> Result<()> {
         let mut process_info = Threading::PROCESS_INFORMATION::default();
 
         let module_name = get_own_name()?;
+        let mut cmd_line = cmd_line.map(|cmd_line| {
+            let mut wide: Vec<u16> = cmd_line.encode_wide().collect();
+            wide.push(0);
+            wide
+        });
         Threading::CreateProcessW(
             PCWSTR::from_raw(module_name.as_ptr()),
-            None,
+            // `CreateProcessW` modifies `cmd_line`.
+            cmd_line
+                .as_mut()
+                .map(|cmd_line| PWSTR::from_raw(cmd_line.as_mut_ptr())),
             None,
             None,
             false,
@@ -98,77 +125,122 @@ pub(crate) fn start_broker() -> Result<()> {
             &raw mut process_info,
         )?;
         let process = OwnedHandle::from_raw_handle(process_info.hProcess.0);
-        Foundation::CloseHandle(process_info.hThread)?;
+        let thread = OwnedHandle::from_raw_handle(process_info.hThread.0);
 
-        HANDLE_BROKER
-            .set(Broker { process, job })
-            .ok()
-            .expect("broker already initialized");
-        Ok(())
+        Ok((process, thread, job))
     }
 }
 
-pub(crate) fn set_broker(process: OwnedHandle, job: OwnedHandle) {
+pub(crate) fn start_broker() -> Result<()> {
+    // Create the broker in a kill-on-close job so that it doesn't linger around after every user
+    // dies. The job handles acts as a keep-alive, similarly to how holding the write end of the
+    // pipe keeps the reader hanging on Linux, but without wasting resources on actually populating
+    // the process with an executable image.
+    let (process, _, job) = spawn_suspended_in_job(None)?;
     HANDLE_BROKER
         .set(Broker { process, job })
         .ok()
         .expect("broker already initialized");
+    Ok(())
+}
+
+pub(crate) unsafe fn load_init_handles() -> OwnedHandle {
+    let init_handles = unsafe { INIT_HANDLES };
+    let [process, job, handle] = [
+        init_handles.broker_process,
+        init_handles.broker_job,
+        init_handles.child_handle,
+    ]
+    .map(|handle| unsafe { OwnedHandle::from_raw_handle(handle.0) });
+    HANDLE_BROKER
+        .set(Broker { process, job })
+        .ok()
+        .expect("broker already initialized");
+    handle
+}
+
+unsafe fn get_peb(process: RawHandle) -> Result<*const Threading::PEB> {
+    // Communicate the handles via memory injection, since we have no other way of interacting
+    // with the child process yet.
+    let mut proc = Threading::PROCESS_BASIC_INFORMATION::default();
+    unsafe {
+        NtQueryInformationProcess(
+            HANDLE(process),
+            ProcessBasicInformation,
+            (&raw mut proc).cast(),
+            size_of_val(&proc) as u32,
+            core::ptr::null_mut(),
+        )
+    }
+    .ok()?;
+    Ok(proc.PebBaseAddress)
 }
 
 pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Result<OwnedHandle> {
     unsafe {
         let broker = HANDLE_BROKER.get().expect("broker not initialized");
 
-        // Pass the handles as visible in the current process, and let the child duplicate them into
-        // itself manually. Every other way, like using inheritance, duplicating into a suspended
-        // child, or setting the parent to the broker process, is unfortunately inherently racy.
-        let creation_time = get_creation_time(Threading::GetCurrentProcess().0)?;
-        let mut cmd_line: Vec<u16> = format!(
-            "_crossmist_ {} {} {} {} {}\0",
-            Threading::GetCurrentProcessId(),
-            creation_time,
-            broker.process.as_raw_handle().addr(),
-            broker.job.as_raw_handle().addr(),
-            child_handle.as_raw_handle().addr(),
-        )
-        .encode_utf16()
-        .collect();
+        // Create the child suspended and duplicate handles into it, since using normal handle
+        // inheritance is broken [1], and setting a custom parent [2] is broken on Wine and requires
+        // spawning another process.
+        // [1]: https://github.com/rust-lang/rust/issues/161158
+        // [2]: https://devblogs.microsoft.com/oldnewthing/20260511-00/?p=112313
 
-        let mut startup_info = Threading::STARTUPINFOW::default();
-        startup_info.cb = size_of_val(&startup_info) as u32;
+        // Create the child in a (temporarily) kill-on-close job so that it doesn't remain in a coma
+        // if we die before completing the startup.
+        let (process, thread, job) = spawn_suspended_in_job(Some(OsStr::new("_crossmist_")))?;
 
-        let mut process_info = Threading::PROCESS_INFORMATION::default();
+        let mut init_handles = InitHandles::default();
+        for (handle, remote_handle) in [
+            (broker.process.as_handle(), &mut init_handles.broker_process),
+            (broker.job.as_handle(), &mut init_handles.broker_job),
+            (child_handle, &mut init_handles.child_handle),
+        ] {
+            Foundation::DuplicateHandle(
+                Threading::GetCurrentProcess(),
+                HANDLE(handle.as_raw_handle()),
+                HANDLE(process.as_raw_handle()),
+                remote_handle,
+                0,
+                false,
+                Foundation::DUPLICATE_SAME_ACCESS,
+            )?;
+        }
 
-        let module_name = get_own_name()?;
-        Threading::CreateProcessW(
-            PCWSTR::from_raw(module_name.as_ptr()),
-            Some(PWSTR::from_raw(cmd_line.as_mut_ptr())),
+        // Communicate the handles via memory injection, since we have no other way of interacting
+        // with the child process yet.
+        let peb = get_peb(Threading::GetCurrentProcess().0)?;
+        let image_base_address = (*peb).Reserved3[1].addr();
+        let remote_peb = get_peb(process.as_raw_handle())?;
+        let mut remote_image_base_address = 0usize;
+        Debug::ReadProcessMemory(
+            HANDLE(process.as_raw_handle()),
+            (&raw const (*remote_peb).Reserved3[1]).cast(),
+            (&raw mut remote_image_base_address).cast(),
+            size_of_val(&remote_image_base_address),
             None,
+        )?;
+        let offset = remote_image_base_address.wrapping_sub(image_base_address);
+        let remote_init_handles = (&raw mut INIT_HANDLES).byte_add(offset);
+        Debug::WriteProcessMemory(
+            HANDLE(process.as_raw_handle()),
+            remote_init_handles.cast(),
+            (&raw const init_handles).cast(),
+            size_of_val(&init_handles),
             None,
-            true,
-            Threading::INHERIT_PARENT_AFFINITY,
-            None,
-            None,
-            &raw const startup_info,
-            &raw mut process_info,
         )?;
 
-        Foundation::CloseHandle(process_info.hThread)?;
-        Ok(OwnedHandle::from_raw_handle(process_info.hProcess.0))
-    }
-}
+        if Threading::ResumeThread(HANDLE(thread.as_raw_handle())) == u32::MAX {
+            return Err(std::io::Error::last_os_error());
+        }
 
-pub(crate) unsafe fn get_creation_time(process: RawHandle) -> Result<u64> {
-    let mut creation_time = Default::default();
-    let mut ignore = Default::default();
-    unsafe {
-        Threading::GetProcessTimes(
-            HANDLE(process),
-            &raw mut creation_time,
-            &raw mut ignore,
-            &raw mut ignore,
-            &raw mut ignore,
-        )
-    }?;
-    Ok(creation_time.dwLowDateTime as u64 | (creation_time.dwHighDateTime as u64) << 32)
+        // Drop kill-on-close to let the process live independently from us, and also let it break
+        // away to avoid heavily nested jobs.
+        set_job_flags(
+            job.as_raw_handle(),
+            JobObjects::JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+        )?;
+
+        Ok(process)
+    }
 }
