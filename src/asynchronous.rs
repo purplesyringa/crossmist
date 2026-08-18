@@ -60,7 +60,7 @@ use std::sync::{Arc, Mutex};
 use {
     crate::internals::{deserialize_with_handles, serialize_with_handles, socketpair},
     std::os::windows::io,
-    windows::Win32::System::{Pipes, Threading},
+    windows::Win32::System::Threading,
 };
 
 #[cfg(unix)]
@@ -141,35 +141,8 @@ pub struct Duplex<Stream: AsyncStream, S: Object, R: Object> {
 /// Create a unidirectional channel.
 pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, Receiver<Stream, T>)>
 {
-    #[cfg(unix)]
-    {
-        let (tx, rx) = duplex::<Stream, T, T>()?;
-        Ok((tx.into_sender(), rx.into_receiver()))
-    }
-    #[cfg(windows)]
-    {
-        let mut tx: RawHandle = Default::default();
-        let mut rx: RawHandle = Default::default();
-        unsafe {
-            Pipes::CreatePipe(
-                &mut rx as *mut RawHandle,
-                &mut tx as *mut RawHandle,
-                None,
-                0,
-            )?;
-        }
-        let tx = unsafe { SyncStream::from_raw_handle(tx) };
-        let rx = unsafe { SyncStream::from_raw_handle(rx) };
-        let tx = Sender {
-            fd: Stream::try_new(tx)?,
-            marker: PhantomData,
-        };
-        let rx = Receiver {
-            fd: Stream::try_new(rx)?,
-            marker: PhantomData,
-        };
-        Ok((tx, rx))
-    }
+    let (tx, rx) = duplex::<Stream, T, T>()?;
+    Ok((tx.into_sender(), rx.into_receiver()))
 }
 
 /// Create a bidirectional channel.
