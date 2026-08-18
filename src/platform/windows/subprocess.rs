@@ -168,7 +168,8 @@ unsafe fn get_peb(process: RawHandle) -> Result<*const Threading::PEB> {
             HANDLE(process),
             ProcessBasicInformation,
             (&raw mut proc).cast(),
-            size_of_val(&proc) as u32,
+            // avoid `size_of_val` due to aliasing
+            size_of::<Threading::PROCESS_BASIC_INFORMATION>() as u32,
             core::ptr::null_mut(),
         )
     }
@@ -217,7 +218,7 @@ pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Resul
             HANDLE(process.as_raw_handle()),
             (&raw const (*remote_peb).Reserved3[1]).cast(),
             (&raw mut remote_image_base_address).cast(),
-            size_of_val(&remote_image_base_address),
+            size_of::<usize>(), // avoid `size_of_val` due to aliasing
             None,
         )?;
         let offset = remote_image_base_address.wrapping_sub(image_base_address);
