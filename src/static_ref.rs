@@ -8,7 +8,7 @@
 //! [`StaticRef`] is similar to `&'static T`, but implements [`Object`] by serializing a pointer. It
 //! can be created from a constant value of type `T` with [`static_ref!`] and sent over:
 //!
-//! ```rust
+//! ```standalone_crate
 //! use crossmist::{StaticRef, static_ref};
 //!
 //! struct Configuration {
@@ -35,7 +35,7 @@
 //! `&'static &'static dyn Trait`). The double indirection is required because [`StaticRef`] can
 //! only reference sized values, and `dyn Trait` is unsized.
 //!
-//! ```rust
+//! ```standalone_crate
 //! use crossmist::{StaticRef, static_ref};
 //!
 //! trait Speak {

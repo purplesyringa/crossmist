@@ -5,7 +5,7 @@
 //! separate executable or parsing command line arguments manually. For example, the simplest
 //! example, computing a sum of several numbers in a one-shot subprocess, looks like this:
 //!
-//! ```rust
+//! ```standalone_crate
 //! fn main() {
 //!     crossmist::init();
 //!     println!("5 + 7 = {}", add.run(vec![5, 7]).unwrap());
@@ -19,7 +19,7 @@
 //!
 //! This crate also supports long-lived tasks with constant cross-process communication:
 //!
-//! ```rust
+//! ```standalone_crate
 //! fn main() {
 //!     crossmist::init();
 //!     let (mut ours, theirs) = crossmist::duplex().unwrap();
@@ -92,7 +92,7 @@
 //! If, at any point, you determine that you are no longer interested in the output of a process,
 //! you can kill it:
 //!
-//! ```rust
+//! ```standalone_crate
 //! fn main() {
 //!     crossmist::init();
 //!     let mut child = long_computation.spawn().expect("Failed to spawn child");
@@ -166,7 +166,7 @@ extern crate self as crossmist;
 ///
 /// For example:
 ///
-/// ```rust
+/// ```standalone_crate
 /// #[crossmist::func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
@@ -183,7 +183,7 @@ extern crate self as crossmist;
 /// [`FnMutObject`], and [`FnObject`] traits, which are similar to [`std::ops::FnOnce`],
 /// [`std::ops::FnMut`], and [`std::ops::Fn`], respectively:
 ///
-/// ```rust
+/// ```standalone_crate
 /// use crossmist::FnObject;
 ///
 /// #[crossmist::func]
@@ -225,7 +225,7 @@ extern crate self as crossmist;
 ///
 /// Do:
 ///
-/// ```rust
+/// ```standalone_crate
 /// fn main() {
 ///     crossmist::init();
 ///     let child = long_running_task.spawn().expect("Failed to spawn child");
@@ -272,7 +272,7 @@ extern crate self as crossmist;
 ///
 /// Do:
 ///
-/// ```rust
+/// ```standalone_crate
 /// fn main() {
 ///     crossmist::init();
 ///     long_running_task.spawn().expect("Failed to spawn child");
@@ -286,7 +286,7 @@ extern crate self as crossmist;
 ///
 /// Do:
 ///
-/// ```rust
+/// ```standalone_crate
 /// fn main() {
 ///     crossmist::init();
 ///     let child = long_running_task.spawn().expect("Failed to spawn child");
@@ -341,7 +341,7 @@ extern crate self as crossmist;
 /// function is `async`: you can start a synchronous function in a child process asynchronously, or
 /// vice versa:
 ///
-/// ```rust
+/// ```standalone_crate
 /// #[crossmist::func]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
@@ -358,7 +358,7 @@ extern crate self as crossmist;
 /// }
 /// ```
 ///
-/// ```rust
+/// ```standalone_crate
 /// #[crossmist::func(tokio(flavor = "current_thread"))]
 /// async fn example(a: i32, b: i32) -> i32 {
 ///     a + b

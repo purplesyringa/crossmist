@@ -25,7 +25,7 @@
 //!
 //! ...we have to use a macro, and also a different invocation syntax:
 //!
-//! ```rust
+//! ```standalone_crate
 //! use crossmist::{FnObject, lambda};
 //!
 //! fn main() {
@@ -48,7 +48,7 @@
 //! then be called multiple times. This cannot be detected automatically, so slightly different
 //! syntax is used:
 //!
-//! ```rust
+//! ```standalone_crate
 //! use crossmist::{FnObject, lambda};
 //!
 //! fn main() {
@@ -69,7 +69,7 @@
 //! Under the hood, the macro uses currying, replacing `|y| x + y` with `|x, y| x + y` with a
 //! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`:
 //!
-//! ```rust
+//! ```standalone_crate
 //! use crossmist::{BindValue, FnObject};
 //!
 //! fn main() {
@@ -591,7 +591,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 ///
 /// Simplest example:
 ///
-/// ```rust
+/// ```standalone_crate
 /// # use crossmist::lambda;
 /// fn main() {
 ///     crossmist::init();
@@ -602,7 +602,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 ///
 /// With captures:
 ///
-/// ```rust
+/// ```standalone_crate
 /// # use crossmist::{FnObject, FnOnceObject, lambda};
 /// fn main() {
 ///     crossmist::init();
@@ -624,7 +624,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// Captuing more complex objects (type annotations are provided for completeness and are
 /// unnecessary):
 ///
-/// ```rust
+/// ```standalone_crate
 /// # use crossmist::{FnOnceObject, lambda};
 /// # fn main() {
 /// # crossmist::init();
@@ -638,7 +638,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// # }
 /// ```
 ///
-/// ```rust
+/// ```standalone_crate
 /// # use crossmist::{FnMutObject, lambda};
 /// # fn main() {
 /// # crossmist::init();
@@ -658,7 +658,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// # }
 /// ```
 ///
-/// ```rust
+/// ```standalone_crate
 /// # use crossmist::{FnObject, lambda};
 /// # fn main() {
 /// # crossmist::init();
