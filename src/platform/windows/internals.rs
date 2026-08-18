@@ -1,13 +1,13 @@
 use crate::{
     Deserializer, Object, Serializer,
-    handles::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
     subprocess::HANDLE_BROKER,
 };
 use std::default::Default;
 use std::fs::File;
 use std::io::Result;
+use std::os::windows::io::{OwnedHandle, AsRawHandle, FromRawHandle};
 use windows::Win32::{
-    Foundation,
+    Foundation::{self, HANDLE},
     Security::{self, Authorization},
     Storage::FileSystem,
     System::{Pipes, SystemServices, Threading},
@@ -79,7 +79,7 @@ pub(crate) fn socketpair() -> Result<(File, File)> {
             Some(&raw const sa),
         )
     }?;
-    let tx = unsafe { File::from_raw_handle(tx) };
+    let tx = unsafe { File::from_raw_handle(tx.0) };
 
     let rx = unsafe {
         FileSystem::CreateFileA(
@@ -95,7 +95,7 @@ pub(crate) fn socketpair() -> Result<(File, File)> {
             None,
         )
     }?;
-    let rx = unsafe { File::from_raw_handle(rx) };
+    let rx = unsafe { File::from_raw_handle(rx.0) };
 
     Ok((tx, rx))
 }
@@ -104,39 +104,41 @@ pub(crate) fn serialize_with_handles<T: Object>(value: T) -> Result<Vec<u8>> {
     let mut s = Serializer::new();
     s.serialize(value);
 
-    let (data, handles) = s.into_parts();
     let mut remote_handles = Vec::new();
-    if !handles.is_empty() {
+    if !s.handles.is_empty() {
         let broker = HANDLE_BROKER
             .get()
             .expect("broker has not been initialized");
 
-        for handle in handles {
-            let mut remote_handle: RawHandle = Default::default();
+        for handle in s.handles {
+            let mut remote_handle: HANDLE = Default::default();
             unsafe {
                 Foundation::DuplicateHandle(
                     Threading::GetCurrentProcess(),
-                    handle.as_raw_handle(),
-                    broker.process.as_raw_handle(),
+                    HANDLE(handle.as_raw_handle()),
+                    HANDLE(broker.process.as_raw_handle()),
                     &mut remote_handle,
                     0,
                     false,
                     Foundation::DUPLICATE_SAME_ACCESS,
                 )?;
             }
-            remote_handles.push(remote_handle);
+            remote_handles.push(remote_handle.0.addr());
         }
     }
 
     let mut s1 = Serializer::new();
     s1.serialize(remote_handles);
-    s1.write(&data);
-    Ok(s1.into_parts().0)
+    s1.write(&s.data);
+    Ok(s1.data)
 }
 
 pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) -> Result<T> {
-    let mut d = Deserializer::new(serialized, Vec::new());
-    let remote_handles: Vec<RawHandle> = unsafe { d.deserialize() };
+    let mut d = Deserializer::from(Serializer {
+        data: serialized,
+        handles: Vec::new(),
+    });
+    let remote_handles: Vec<usize> = unsafe { d.deserialize() };
     let serialized_contents: Vec<u8> = Vec::from(d.get_rest());
 
     let mut handles = Vec::new();
@@ -146,11 +148,11 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
             .expect("broker has not been initialized");
 
         for remote_handle in remote_handles {
-            let mut handle: RawHandle = Default::default();
+            let mut handle: HANDLE = Default::default();
             unsafe {
                 Foundation::DuplicateHandle(
-                    broker.process.as_raw_handle(),
-                    remote_handle,
+                    HANDLE(broker.process.as_raw_handle()),
+                    HANDLE(core::ptr::without_provenance_mut(remote_handle)),
                     Threading::GetCurrentProcess(),
                     &mut handle,
                     0,
@@ -158,10 +160,16 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
                     Foundation::DUPLICATE_CLOSE_SOURCE | Foundation::DUPLICATE_SAME_ACCESS,
                 )?;
             }
-            let handle = unsafe { OwnedHandle::from_raw_handle(handle) };
+            let handle = unsafe { OwnedHandle::from_raw_handle(handle.0) };
             handles.push(handle);
         }
     }
 
-    Ok(unsafe { Deserializer::new(serialized_contents, handles).deserialize() })
+    Ok(unsafe {
+        Deserializer::from(Serializer {
+            data: serialized_contents,
+            handles,
+        })
+        .deserialize()
+    })
 }

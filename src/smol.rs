@@ -2,11 +2,12 @@
 //!
 //! Check out the docs at [`asynchronous`] for more information.
 
-use crate::{
-    Object, asynchronous,
-    handles::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle},
-};
+use crate::{Object, asynchronous};
 use std::io::Result;
+#[cfg(windows)]
+use std::os::windows::io::{RawHandle, AsRawHandle, AsHandle, BorrowedHandle};
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, RawFd, AsFd, BorrowedFd};
 
 /// `smol` marker type.
 #[derive(Debug, Object)]
@@ -24,14 +25,6 @@ unsafe impl asynchronous::AsyncStream for Smol {
         }
         #[cfg(windows)]
         return Ok(Self(stream.into()));
-    }
-
-    fn as_handle(&self) -> BorrowedHandle<'_> {
-        self.0.as_handle()
-    }
-
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_handle()
     }
 
     #[cfg(unix)]
@@ -57,6 +50,32 @@ unsafe impl asynchronous::AsyncStream for Smol {
         use futures_lite::io::AsyncReadExt;
         self.0.read_exact(buf).await?;
         Ok(())
+    }
+}
+
+#[cfg(unix)]
+impl AsRawFd for Smol {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
+    }
+}
+#[cfg(windows)]
+impl AsRawHandle for Smol {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.0.as_raw_handle()
+    }
+}
+
+#[cfg(unix)]
+impl AsFd for Smol {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.0.as_fd()
+    }
+}
+#[cfg(windows)]
+impl AsHandle for Smol {
+    fn as_handle(&self) -> BorrowedHandle<'_> {
+        self.0.as_handle()
     }
 }
 

@@ -429,23 +429,21 @@ mod platform {
     #[cfg(unix)]
     pub mod unix {
         pub(crate) mod entry;
-        pub mod handles;
         pub(crate) mod internals;
         pub(crate) mod subprocess;
     }
     #[cfg(windows)]
     pub mod windows {
         pub(crate) mod entry;
-        pub mod handles;
         pub(crate) mod internals;
         pub(crate) mod subprocess;
     }
 }
 
 #[cfg(unix)]
-pub use crate::platform::unix::*;
+pub(crate) use crate::platform::unix::*;
 #[cfg(windows)]
-pub use crate::platform::windows::*;
+pub(crate) use crate::platform::windows::*;
 
 pub mod asynchronous;
 pub mod blocking;

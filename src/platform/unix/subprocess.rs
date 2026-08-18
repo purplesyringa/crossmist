@@ -1,4 +1,4 @@
-use crate::{Duplex, Object, asynchronous::AsyncStream, entry};
+use crate::{Duplex, Object, entry};
 use libc::{c_char, c_int, c_void};
 use rustix::process::Pid;
 use std::ffi::{CStr, CString};
@@ -22,7 +22,7 @@ pub(crate) unsafe fn _spawn_child<S: Object, R: Object>(
     unsafe {
         let child_fd_str = CString::new(child_fd.as_raw_fd().to_string()).unwrap();
         let clone_arg = CloneArg {
-            child_fd: child_fd.0.fd.as_handle(),
+            child_fd: child_fd.0.fd.as_fd(),
             child_fd_str: &child_fd_str,
             inherited_fds,
         };

@@ -41,26 +41,25 @@
 //! let child = my_process.spawn_tokio().await?;
 //! ```
 
-use crate::{
-    Deserializer, Object, StaticFn,
-    handles::{AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle},
-    imp, subprocess,
-};
-#[cfg(unix)]
-use crate::{
-    Serializer,
-    internals::{SingleObjectReceiver, SingleObjectSender, socketpair},
-};
+use crate::{Deserializer, Object, StaticFn, imp, subprocess};
 use std::fmt;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
+use {
+    crate::{
+        Serializer,
+        internals::{SingleObjectReceiver, SingleObjectSender, socketpair},
+    },
+    std::os::unix::io::{AsRawFd, RawFd, AsFd, FromRawFd},
+};
 #[cfg(windows)]
 use {
     crate::internals::{deserialize_with_handles, serialize_with_handles, socketpair},
-    std::os::windows::io,
-    windows::Win32::System::Threading,
+    std::os::windows::io::{OwnedHandle, AsRawHandle, RawHandle, FromRawHandle, AsHandle},
+    windows::Win32::{System::Threading, Foundation::HANDLE},
 };
 
 #[cfg(unix)]
@@ -69,42 +68,43 @@ pub(crate) type SyncStream = std::os::unix::net::UnixStream;
 pub(crate) type SyncStream = std::fs::File;
 
 /// Runtime-dependent stream implementation.
-pub unsafe trait AsyncStream: Object + Sized {
+#[cfg(unix)]
+pub unsafe trait AsyncStream: Object + AsFd + AsRawFd + Sized {
     /// Create the stream from a sync stream.
     fn try_new(stream: SyncStream) -> Result<Self>;
 
-    /// Borrow a handle to the underlying stream.
-    fn as_handle(&self) -> BorrowedHandle<'_>;
-
-    /// Get a raw handle to the underlying stream.
-    fn as_raw_handle(&self) -> RawHandle;
-
     /// Whether socket operations should be blocking.
-    #[cfg(unix)]
     const IS_BLOCKING: bool;
 
     /// Perform a blocking write.
     ///
     /// Calls `f`. If it returns `Err(WouldBlock)`, waits until the stream is writable and retries.
     /// When the function returns anything other than `Err(WouldBlock)`, returns.
-    #[cfg(unix)]
     fn blocking_write<T>(
         &self,
         f: impl FnMut() -> Result<T> + Send,
     ) -> impl Future<Output = Result<T>> + Send;
-    /// Perform a write.
-    #[cfg(windows)]
-    fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<()>> + Send;
 
     /// Perform a blocking read.
     ///
     /// Calls `f`. If it returns `Err(WouldBlock)`, waits until the stream is readable and retries.
     /// When the function returns anything other than `Err(WouldBlock)`, returns.
-    #[cfg(unix)]
     fn blocking_read<T>(
         &self,
         f: impl FnMut() -> Result<T> + Send,
     ) -> impl Future<Output = Result<T>> + Send;
+}
+
+/// Runtime-dependent stream implementation.
+#[cfg(windows)]
+pub unsafe trait AsyncStream: Object + AsHandle + AsRawHandle + Sized {
+    /// Create the stream from a sync stream.
+    fn try_new(stream: SyncStream) -> Result<Self>;
+
+    /// Perform a write.
+    #[cfg(windows)]
+    fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<()>> + Send;
+
     /// Perform a read.
     #[cfg(windows)]
     fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<()>> + Send;
@@ -169,8 +169,7 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
     pub async fn send(&mut self, value: T) -> Result<()> {
         #[cfg(unix)]
         {
-            let mut sender =
-                SingleObjectSender::new(self.fd.as_handle(), value, Stream::IS_BLOCKING);
+            let mut sender = SingleObjectSender::new(self.fd.as_fd(), value, Stream::IS_BLOCKING);
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
@@ -191,24 +190,20 @@ impl<Stream: AsyncStream + fmt::Debug, T: Object> fmt::Debug for Sender<Stream, 
 impl<Stream: AsyncStream, T: Object> TryFrom<crate::Sender<T>> for Sender<Stream, T> {
     type Error = Error;
     fn try_from(value: crate::Sender<T>) -> Result<Self> {
-        unsafe {
-            Ok(Self::from_stream(Stream::try_new(
-                SyncStream::from_raw_handle(value.into_raw_handle()),
-            )?))
-        }
+        unsafe { Ok(Self::from_stream(Stream::try_new(value.0.fd.0)?)) }
     }
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> std::os::unix::io::AsRawFd for Sender<Stream, T> {
-    fn as_raw_fd(&self) -> RawHandle {
-        self.fd.as_raw_handle()
+impl<Stream: AsyncStream, T: Object> AsRawFd for Sender<Stream, T> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Sender<Stream, T> {
-    fn as_raw_handle(&self) -> std::os::windows::prelude::RawHandle {
-        self.fd.as_raw_handle().0 as _
+impl<Stream: AsyncStream, T: Object> AsRawHandle for Sender<Stream, T> {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.fd.as_raw_handle()
     }
 }
 
@@ -227,7 +222,7 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
         #[cfg(unix)]
         {
             let mut receiver =
-                unsafe { SingleObjectReceiver::new(self.fd.as_handle(), Stream::IS_BLOCKING) };
+                unsafe { SingleObjectReceiver::new(self.fd.as_fd(), Stream::IS_BLOCKING) };
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]
@@ -257,24 +252,20 @@ impl<Stream: AsyncStream + fmt::Debug, T: Object> fmt::Debug for Receiver<Stream
 impl<Stream: AsyncStream, T: Object> TryFrom<crate::Receiver<T>> for Receiver<Stream, T> {
     type Error = Error;
     fn try_from(value: crate::Receiver<T>) -> Result<Self> {
-        unsafe {
-            Ok(Self::from_stream(Stream::try_new(
-                SyncStream::from_raw_handle(value.into_raw_handle()),
-            )?))
-        }
+        unsafe { Ok(Self::from_stream(Stream::try_new(value.0.fd.0)?)) }
     }
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> std::os::unix::io::AsRawFd for Receiver<Stream, T> {
-    fn as_raw_fd(&self) -> RawHandle {
-        self.fd.as_raw_handle()
+impl<Stream: AsyncStream, T: Object> AsRawFd for Receiver<Stream, T> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, T: Object> io::AsRawHandle for Receiver<Stream, T> {
-    fn as_raw_handle(&self) -> std::os::windows::prelude::RawHandle {
-        self.fd.as_raw_handle().0 as _
+impl<Stream: AsyncStream, T: Object> AsRawHandle for Receiver<Stream, T> {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.fd.as_raw_handle()
     }
 }
 
@@ -290,8 +281,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     pub async fn send(&mut self, value: S) -> Result<()> {
         #[cfg(unix)]
         {
-            let mut sender =
-                SingleObjectSender::new(self.fd.as_handle(), value, Stream::IS_BLOCKING);
+            let mut sender = SingleObjectSender::new(self.fd.as_fd(), value, Stream::IS_BLOCKING);
             self.fd.blocking_write(|| sender.send_next()).await
         }
         #[cfg(windows)]
@@ -309,7 +299,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
         #[cfg(unix)]
         {
             let mut receiver =
-                unsafe { SingleObjectReceiver::new(self.fd.as_handle(), Stream::IS_BLOCKING) };
+                unsafe { SingleObjectReceiver::new(self.fd.as_fd(), Stream::IS_BLOCKING) };
             self.fd.blocking_read(|| receiver.recv_next()).await
         }
         #[cfg(windows)]
@@ -362,38 +352,32 @@ impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
 {
     type Error = Error;
     fn try_from(value: crate::Duplex<S, R>) -> Result<Self> {
-        unsafe {
-            Ok(Self::from_stream(Stream::try_new(
-                SyncStream::from_raw_handle(value.into_raw_handle()),
-            )?))
-        }
+        unsafe { Ok(Self::from_stream(Stream::try_new(value.0.fd.0)?)) }
     }
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, S: Object, R: Object> std::os::unix::io::AsRawFd
-    for Duplex<Stream, S, R>
-{
-    fn as_raw_fd(&self) -> RawHandle {
-        self.fd.as_raw_handle()
+impl<Stream: AsyncStream, S: Object, R: Object> AsRawFd for Duplex<Stream, S, R> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, S: Object, R: Object> io::AsRawHandle for Duplex<Stream, S, R> {
-    fn as_raw_handle(&self) -> std::os::windows::prelude::RawHandle {
-        self.fd.as_raw_handle().0 as _
+impl<Stream: AsyncStream, S: Object, R: Object> AsRawHandle for Duplex<Stream, S, R> {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.fd.as_raw_handle()
     }
 }
 
 #[cfg(unix)]
 type ProcHandle = rustix::process::Pid;
 #[cfg(windows)]
-type ProcHandle = crate::handles::OwnedHandle;
+type ProcHandle = OwnedHandle;
 
 #[cfg(unix)]
 pub(crate) type ProcID = rustix::process::RawPid;
 #[cfg(windows)]
-pub(crate) type ProcID = RawHandle;
+pub(crate) type ProcID = HANDLE;
 
 /// A subprocess.
 pub struct Child<Stream: AsyncStream, T: Object> {
@@ -436,7 +420,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
         }
         #[cfg(windows)]
         {
-            self.proc_handle.as_raw_handle()
+            HANDLE(self.proc_handle.as_raw_handle())
         }
     }
 
@@ -476,7 +460,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
         {
             if unsafe {
                 Threading::WaitForSingleObject(
-                    self.proc_handle.as_raw_handle(),
+                    HANDLE(self.proc_handle.as_raw_handle()),
                     Threading::INFINITE,
                 )
             }
@@ -487,7 +471,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
             let mut code: u32 = 0;
             unsafe {
                 Threading::GetExitCodeProcess(
-                    self.proc_handle.as_raw_handle(),
+                    HANDLE(self.proc_handle.as_raw_handle()),
                     &mut code as *mut u32,
                 )?;
             }
@@ -555,7 +539,7 @@ pub(crate) async unsafe fn spawn<
     unsafe {
         imp::perform_sanity_checks();
 
-        let entrypoint = |mut deserializer: Deserializer, tx_handle| {
+        let entrypoint = |mut deserializer: Deserializer, output_tx| {
             // Re-read `func` so that we don't borrow anything and `entrypoint` can be converted to
             // a function pointer.
             let func = core::ptr::dangling::<Func>().read();
@@ -571,7 +555,10 @@ pub(crate) async unsafe fn spawn<
 
             // Even if the function was asynchronous, there shouldn't be any task running at this
             // moment, so it is fine (and more efficient) to use a sync sender
-            let mut output_tx = crate::Sender::from_raw_handle(tx_handle);
+            #[cfg(unix)]
+            let mut output_tx = crate::Sender::from_raw_fd(output_tx);
+            #[cfg(windows)]
+            let mut output_tx = crate::Sender::from_raw_handle(output_tx);
             output_tx
                 .send(output)
                 .expect("Failed to send subprocess output");
@@ -589,13 +576,9 @@ pub(crate) async unsafe fn spawn<
             let mut s = Serializer::new();
             s.serialize(entrypoint);
             s.serialize(args);
-            let (data, handles) = s.into_parts();
-            process_handle = subprocess::_spawn_child(child, &handles)?;
-            let raw_handles = handles
-                .iter()
-                .map(AsRawHandle::as_raw_handle)
-                .collect::<Vec<_>>();
-            local.send((data, raw_handles)).await?;
+            process_handle = subprocess::_spawn_child(child, &s.fds)?;
+            let raw_fds = s.fds.iter().map(AsRawFd::as_raw_fd).collect::<Vec<_>>();
+            local.send((s.data, raw_fds)).await?;
         }
 
         #[cfg(windows)]
@@ -615,8 +598,12 @@ pub(crate) async unsafe fn spawn<
     }
 }
 
-pub(crate) fn handle_entry(mut deserializer: Deserializer, tx_handle: RawHandle) -> ! {
-    let entry: StaticFn<fn(Deserializer, RawHandle)> = unsafe { deserializer.deserialize() };
-    (entry.get_fn())(deserializer, tx_handle);
+pub(crate) fn handle_entry(
+    mut deserializer: Deserializer,
+    #[cfg(unix)] output_tx: RawFd,
+    #[cfg(windows)] output_tx: RawHandle,
+) -> ! {
+    let entry: StaticFn<fn(_, _)> = unsafe { deserializer.deserialize() };
+    (entry.get_fn())(deserializer, output_tx);
     std::process::exit(0);
 }

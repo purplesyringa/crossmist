@@ -3,15 +3,22 @@
 //! This is *not* the well-known `serde` crate. We use custom serialization methods because we need
 //! to serialize not only data structures, but objects with real-world side-effects, e.g. files.
 
-use crate::{handles::OwnedHandle, owning_ref::OwningRef};
+#[cfg(unix)]
+use std::os::unix::io::OwnedFd;
+#[cfg(windows)]
+use std::os::windows::io::OwnedHandle;
+use crate::owning_ref::OwningRef;
 use std::fmt;
 
 /// Stateful serialization.
 ///
-/// The serializer stores binary data corresponding to the serialized object and file descriptors
-/// inside it.
+/// The serializer stores binary data corresponding to the serialized object, and file descriptors
+/// or other OS resources inside it.
 pub struct Serializer {
-    data: Vec<u8>,
+    pub(crate) data: Vec<u8>,
+    #[cfg(unix)]
+    pub(crate) fds: Vec<OwnedFd>,
+    #[cfg(windows)]
     pub(crate) handles: Vec<OwnedHandle>,
 }
 
@@ -20,6 +27,9 @@ impl Serializer {
     pub fn new() -> Self {
         Serializer {
             data: Vec::new(),
+            #[cfg(unix)]
+            fds: Vec::new(),
+            #[cfg(windows)]
             handles: Vec::new(),
         }
     }
@@ -47,11 +57,6 @@ impl Serializer {
     pub(crate) fn serialize_slice<T: Object>(&mut self, data: OwningRef<'_, [T]>) {
         Object::serialize_slice(data, self);
     }
-
-    /// Extract serialized data and file handles.
-    pub fn into_parts(self) -> (Vec<u8>, Vec<OwnedHandle>) {
-        (self.data, self.handles)
-    }
 }
 
 impl fmt::Debug for Serializer {
@@ -70,20 +75,14 @@ impl Default for Serializer {
 /// Stateful deserialization.
 pub struct Deserializer {
     data: Vec<u8>,
+    #[cfg(unix)]
+    pub(crate) fds: std::vec::IntoIter<OwnedFd>,
+    #[cfg(windows)]
     pub(crate) handles: std::vec::IntoIter<OwnedHandle>,
     pos: usize,
 }
 
 impl Deserializer {
-    /// Start deserializing data obtain from a [`Serializer`].
-    pub fn new(data: Vec<u8>, handles: Vec<OwnedHandle>) -> Self {
-        Deserializer {
-            data,
-            handles: handles.into_iter(),
-            pos: 0,
-        }
-    }
-
     /// Read the next `count` bytes.
     pub fn read(&mut self, count: usize) -> &[u8] {
         self.pos += count;
@@ -109,8 +108,7 @@ impl Deserializer {
     /// let mut serializer = Serializer::new();
     /// serializer.serialize(1u8);
     /// serializer.serialize(2u16);
-    /// let (data, handles) = serializer.into_parts();
-    /// let mut deserializer = Deserializer::new(data, handles);
+    /// let mut deserializer = Deserializer::from(serializer);
     /// unsafe {
     ///     assert_eq!(deserializer.deserialize::<u8>(), 1);
     ///     assert_eq!(deserializer.deserialize::<u16>(), 2);
@@ -125,17 +123,12 @@ impl Deserializer {
     /// let mut serializer = Serializer::new();
     /// serializer.serialize(1u8);
     /// serializer.serialize(2u16);
-    /// let (data, handles) = serializer.into_parts();
-    /// let mut deserializer = Deserializer::new(data, handles);
+    /// let mut deserializer = Deserializer::from(serializer);
     /// unsafe {
     ///     deserializer.deserialize::<u16>();
     ///     deserializer.deserialize::<u8>();
     /// }
     /// ```
-    ///
-    /// It is also sometimes safe to invoke deserialize with mismatched types if the two types have
-    /// the exact same layout in crossmist's serde (not in Rust memory model!). For example,
-    /// [`std::fs::File`] and [`crossmist::handles::OwnedHandle`] are compatible.
     pub unsafe fn deserialize<T: Object>(&mut self) -> T {
         unsafe { T::deserialize_self(self) }
     }
@@ -150,6 +143,19 @@ impl fmt::Debug for Deserializer {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         // Omit internal state because it's not user-friendly.
         fmt.debug_struct("Deserializer").finish()
+    }
+}
+
+impl From<Serializer> for Deserializer {
+    fn from(serializer: Serializer) -> Self {
+        Deserializer {
+            data: serializer.data,
+            #[cfg(unix)]
+            fds: serializer.fds.into_iter(),
+            #[cfg(windows)]
+            handles: serializer.handles.into_iter(),
+            pos: 0,
+        }
     }
 }
 
@@ -194,25 +200,25 @@ impl fmt::Debug for Deserializer {
 ///
 /// # File descriptors
 ///
-/// Sometimes, you might need to serialize objects that store references to files. This is done
-/// automatically for [`std::fs::File`] and a couple other types, but if necessary, you can use
-/// [`OwnedHandle`] to represent a file descriptor or a Windows handle in a cross-platform manner.
-///
-/// The following example should be of help:
+/// Most objects that store references to files can be serialized automatically, including
+/// [`std::fs::File`]. If you need to serialize a custom type with a file descriptor (on Unix) or
+/// a handle (on Windows), you can use [`OwnedFd`](std::os::unix::io::OwnedFd) or
+/// [`OwnedHandle`](std::os::windows::io::OwnedHandle):
 ///
 /// ```rust
-/// use crossmist::{handles::{IntoRawHandle, FromRawHandle, OwnedHandle}, Deserializer, Object, Serializer};
+/// use crossmist::{Deserializer, Object, Serializer};
 /// use std::fs::File;
 /// use std::io::Result;
+/// use std::os::unix::io::OwnedFd;
 ///
 /// struct CustomFile(std::fs::File);
 ///
 /// unsafe impl Object for CustomFile {
 ///     fn serialize_self(self, s: &mut Serializer) {
-///         s.serialize(unsafe { OwnedHandle::from_raw_handle(self.0.into_raw_handle()) });
+///         s.serialize(OwnedFd::from(self.0));
 ///     }
 ///     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-///         Self(unsafe { d.deserialize::<OwnedHandle>() }.into())
+///         Self(unsafe { d.deserialize::<OwnedFd>() }.into())
 ///     }
 /// }
 /// ```

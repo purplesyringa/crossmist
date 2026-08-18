@@ -42,12 +42,10 @@ impl<'a> SingleObjectSender<'a> {
     pub(crate) fn new<T: Object>(socket_fd: BorrowedFd<'a>, value: T, blocking: bool) -> Self {
         let mut s = Serializer::new();
         s.serialize(value);
-        let (buffer, fds) = s.into_parts();
-
         Self {
             socket_fd,
-            fds,
-            buffer,
+            fds: s.fds,
+            buffer: s.data,
             data_pos: 0,
             fds_pos: 0,
             flags: if blocking {
@@ -174,9 +172,10 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
             self.terminated = true;
 
             self.buffer.truncate(self.data_pos);
-            let buffer = std::mem::take(&mut self.buffer);
-            let fds = std::mem::take(&mut self.fds);
-            let mut d = Deserializer::new(buffer, fds);
+            let mut d = Deserializer::from(Serializer {
+                data: std::mem::take(&mut self.buffer),
+                fds: std::mem::take(&mut self.fds),
+            });
             return Ok(Some(unsafe { d.deserialize() }));
         }
     }

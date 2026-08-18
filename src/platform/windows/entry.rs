@@ -1,10 +1,10 @@
 use crate::{
     Deserializer, Object, Receiver, Sender, Serializer,
     asynchronous::handle_entry,
-    handles::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle},
     subprocess::{get_creation_time, set_broker},
 };
-use windows::Win32::{Foundation, System::Threading};
+use std::os::windows::io::{AsHandle, BorrowedHandle, OwnedHandle, AsRawHandle, FromRawHandle};
+use windows::Win32::{Foundation::{self, HANDLE}, System::Threading};
 
 // XXX: very hacky
 struct FakeDeserializer(Deserializer);
@@ -15,7 +15,7 @@ unsafe impl Object for FakeDeserializer {
     unsafe fn deserialize_self(deserializer: &mut Deserializer) -> Self {
         Self(core::mem::replace(
             deserializer,
-            Deserializer::new(Vec::new(), Vec::new()),
+            Deserializer::from(Serializer::new()),
         ))
     }
 }
@@ -33,7 +33,7 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
                 false,
                 ppid,
             )
-            .expect("failed to open parent"),
+            .expect("failed to open parent").0,
         )
     };
 
@@ -81,14 +81,14 @@ pub(crate) fn crossmist_main(mut args: std::env::Args) -> ! {
 }
 
 unsafe fn parse_handle(parent: BorrowedHandle<'_>, s: &str) -> OwnedHandle {
-    let remote_handle = Foundation::HANDLE(core::ptr::without_provenance_mut(
+    let remote_handle = core::ptr::without_provenance_mut(
         s.parse().expect("Failed to parse handle"),
-    ));
+    );
     let mut handle = Default::default();
     unsafe {
         Foundation::DuplicateHandle(
-            parent.as_raw_handle(),
-            remote_handle,
+            HANDLE(parent.as_raw_handle()),
+            HANDLE(remote_handle),
             Threading::GetCurrentProcess(),
             &mut handle,
             0,
@@ -97,5 +97,5 @@ unsafe fn parse_handle(parent: BorrowedHandle<'_>, s: &str) -> OwnedHandle {
         )
     }
     .expect("failed to steal handle");
-    unsafe { OwnedHandle::from_raw_handle(handle) }
+    unsafe { OwnedHandle::from_raw_handle(handle.0) }
 }

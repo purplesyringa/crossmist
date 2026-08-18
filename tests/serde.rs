@@ -4,8 +4,7 @@ use std::fmt::Debug;
 fn serde<T: Object>(x: T) -> T {
     let mut s = Serializer::new();
     s.serialize(x);
-    let (data, handles) = s.into_parts();
-    let mut d = Deserializer::new(data, handles);
+    let mut d = Deserializer::from(s);
     unsafe { d.deserialize() }
 }
 

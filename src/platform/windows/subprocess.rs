@@ -1,10 +1,10 @@
-use crate::handles::{AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle};
+use std::os::windows::io::{BorrowedHandle, OwnedHandle, AsRawHandle, FromRawHandle, RawHandle};
 use std::ffi::c_void;
 use std::io::Result;
 use std::sync::OnceLock;
 use windows::{
     Win32::{
-        Foundation,
+        Foundation::{self, HANDLE},
         System::{JobObjects, LibraryLoader, Threading},
     },
     core::{PCWSTR, PWSTR},
@@ -44,13 +44,13 @@ pub(crate) fn start_broker() -> Result<()> {
         let job = OwnedHandle::from_raw_handle(JobObjects::CreateJobObjectW(
             None,
             PCWSTR(core::ptr::null()),
-        )?);
+        )?.0);
 
         let mut limit_info = JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         limit_info.BasicLimitInformation.LimitFlags =
             JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         JobObjects::SetInformationJobObject(
-            job.as_raw_handle(),
+            HANDLE(job.as_raw_handle()),
             JobObjects::JobObjectExtendedLimitInformation,
             (&raw const limit_info).cast(),
             size_of_val(&limit_info) as u32,
@@ -98,7 +98,7 @@ pub(crate) fn start_broker() -> Result<()> {
             (&raw const startup_info).cast(),
             &raw mut process_info,
         )?;
-        let process = OwnedHandle::from_raw_handle(process_info.hProcess);
+        let process = OwnedHandle::from_raw_handle(process_info.hProcess.0);
         Foundation::CloseHandle(process_info.hThread)?;
 
         HANDLE_BROKER
@@ -123,14 +123,14 @@ pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Resul
         // Pass the handles as visible in the current process, and let the child duplicate them into
         // itself manually. Every other way, like using inheritance, duplicating into a suspended
         // child, or setting the parent to the broker process, is unfortunately inherently racy.
-        let creation_time = get_creation_time(Threading::GetCurrentProcess())?;
+        let creation_time = get_creation_time(Threading::GetCurrentProcess().0)?;
         let mut cmd_line: Vec<u16> = format!(
             "_crossmist_ {} {} {} {} {}\0",
             Threading::GetCurrentProcessId(),
             creation_time,
-            broker.process.as_raw_handle().0.addr(),
-            broker.job.as_raw_handle().0.addr(),
-            child_handle.as_raw_handle().0.addr(),
+            broker.process.as_raw_handle().addr(),
+            broker.job.as_raw_handle().addr(),
+            child_handle.as_raw_handle().addr(),
         )
         .encode_utf16()
         .collect();
@@ -155,7 +155,7 @@ pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Resul
         )?;
 
         Foundation::CloseHandle(process_info.hThread)?;
-        Ok(OwnedHandle::from_raw_handle(process_info.hProcess))
+        Ok(OwnedHandle::from_raw_handle(process_info.hProcess.0))
     }
 }
 
@@ -164,7 +164,7 @@ pub(crate) unsafe fn get_creation_time(process: RawHandle) -> Result<u64> {
     let mut ignore = Default::default();
     unsafe {
         Threading::GetProcessTimes(
-            process,
+            HANDLE(process),
             &raw mut creation_time,
             &raw mut ignore,
             &raw mut ignore,

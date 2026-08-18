@@ -1,13 +1,14 @@
 #[cfg(windows)]
-use crate::handles::RawHandle;
+use std::os::windows::io::OwnedHandle;
 use crate::{
     Deserializer, Object, Serializer,
-    handles::OwnedHandle,
     owning_ref::{OwningRef, WithOwningRef},
 };
 use paste::paste;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};
+#[cfg(unix)]
+use std::os::unix::io::OwnedFd;
 use std::time::{Duration, SystemTime};
 
 macro_rules! impl_pod {
@@ -274,6 +275,19 @@ unsafe impl<T: Object, E: Object> Object for Result<T, E> {
     }
 }
 
+#[cfg(unix)]
+unsafe impl Object for OwnedFd {
+    fn serialize_self(self, s: &mut Serializer) {
+        s.fds.push(self);
+    }
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+        d.fds
+            .next()
+            .expect("Mismatched (de)serialization of OwnedFd")
+    }
+}
+
+#[cfg(windows)]
 unsafe impl Object for OwnedHandle {
     fn serialize_self(self, s: &mut Serializer) {
         s.handles.push(self);
@@ -281,16 +295,23 @@ unsafe impl Object for OwnedHandle {
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
         d.handles
             .next()
-            .expect("Mismatched calls to serialize_handle/deserialize_handle")
+            .expect("Mismatched (de)serialization of OwnedHandle")
     }
 }
 
 unsafe impl Object for std::fs::File {
     fn serialize_self(self, s: &mut Serializer) {
+        #[cfg(unix)]
+        s.serialize(OwnedFd::from(self));
+        #[cfg(windows)]
         s.serialize(OwnedHandle::from(self));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-        unsafe { d.deserialize::<OwnedHandle>() }.into()
+        #[cfg(unix)]
+        let raw = unsafe { d.deserialize::<OwnedFd>() };
+        #[cfg(windows)]
+        let raw = unsafe { d.deserialize::<OwnedHandle>() };
+        raw.into()
     }
 }
 
@@ -318,10 +339,10 @@ unsafe impl Object for tokio::fs::File {
 #[cfg(unix)]
 unsafe impl Object for std::os::unix::net::UnixStream {
     fn serialize_self(self, s: &mut Serializer) {
-        s.serialize(OwnedHandle::from(self));
+        s.serialize(OwnedFd::from(self));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-        unsafe { d.deserialize::<OwnedHandle>() }.into()
+        unsafe { d.deserialize::<OwnedFd>() }.into()
     }
 }
 
@@ -344,6 +365,3 @@ unsafe impl<T: std::os::fd::AsFd + Object> Object for async_io::Async<T> {
         async_io::Async::new(unsafe { d.deserialize() }).expect("cannot deserialize Async")
     }
 }
-
-#[cfg(windows)]
-impl_pod!(for RawHandle);
