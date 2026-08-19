@@ -104,6 +104,22 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
         let raw_connected = WinSock::accept(raw_server, None, None)?;
         let connected = OwnedSocket::from_raw_socket(raw_connected.0 as RawSocket);
 
+        // I'm a little paranoid about the backlog size: if it's treated like a hint rather than
+        // an exact queue length, `connect` can succeed despite another connection already being
+        // present. So just to make sure, validate that another process hasn't stolen our socket.
+        let mut pid = 0u32;
+        if WinSock::ioctlsocket(
+            raw_connected,
+            WinSock::SIO_AF_UNIX_GETPEERPID as i32,
+            (&raw mut pid).cast(),
+        ) != 0
+        {
+            return Err(Error::from_raw_os_error(WinSock::WSAGetLastError().0));
+        }
+        if pid != Threading::GetCurrentProcessId() {
+            return Ok(None);
+        }
+
         Ok(Some((TcpStream::from(client), TcpStream::from(connected))))
     }
 }
