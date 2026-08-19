@@ -4,7 +4,7 @@
 //!
 //! Create and use a unidirectional channel:
 //!
-//! ```rust
+//! ```standalone_crate
 //! # use crossmist::{channel, Receiver, Sender};
 //! # crossmist::init();
 //! let (mut sender, mut receiver): (Sender<i32>, Receiver<i32>) = channel::<i32>()?;
@@ -17,7 +17,7 @@
 //!
 //! Create and use a bidirectional channel:
 //!
-//! ```rust
+//! ```standalone_crate
 //! # use crossmist::{duplex, Duplex};
 //! # crossmist::init();
 //! let (mut side1, mut side2) = duplex::<i32, (i32, i32)>()?;
