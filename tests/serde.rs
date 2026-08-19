@@ -1,6 +1,9 @@
 use crossmist::{Deserializer, FnOnceObject, Object, Serializer, lambda};
 use std::fmt::Debug;
 
+mod testing;
+testing::setup!();
+
 fn serde<T: Object>(x: T) -> T {
     let mut s = Serializer::new();
     s.serialize(x);
@@ -18,32 +21,32 @@ struct SimplePair {
     y: i32,
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn simple() {
     test_idempotency(0x123456789abcdefi64);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn string() {
     test_idempotency("hello".to_string());
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn complex_argument() {
     test_idempotency(SimplePair { x: 5, y: 7 })
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn hole() {
     test_idempotency((1i32, 2u8, 3i32))
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn boxed() {
     test_idempotency(Box::new(7))
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn vec_and_box() {
     test_idempotency((vec![1, 2, 3], Box::new([4, 5, 6])))
 }
@@ -76,7 +79,7 @@ impl Trait for bool {
     }
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn box_trait() {
     assert_eq!(
         serde(Box::new(ImplA("hello".to_string())) as Box<dyn Trait>).say(),
@@ -92,14 +95,14 @@ fn box_trait() {
     );
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn function() {
     let func: Box<dyn FnOnceObject<(i32, i32), Output = i32>> =
         lambda! { |a: i32, b: i32| -> i32 { a + b } };
     assert_eq!(serde(func).call_object_box((5, 7)), 12);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn bound_function() {
     let a = 5;
     let func: Box<dyn FnOnceObject<(i32,), Output = i32>> =
@@ -107,7 +110,7 @@ fn bound_function() {
     assert_eq!(serde(func).call_object_box((7,)), 12);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn ref_bound_function() {
     let s = "abc".to_string();
     let func: Box<dyn FnOnceObject<(), Output = usize>> =
@@ -115,7 +118,7 @@ fn ref_bound_function() {
     assert_eq!(serde(func).call_object_box(()), 3);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 fn double_bound_function() {
     let a = 5;
     let b = 7;
@@ -124,7 +127,7 @@ fn double_bound_function() {
     assert_eq!(serde(func).call_object_box(()), 12);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 #[cfg(not(miri))]
 fn test_rx() {
     let (mut tx, rx) = crossmist::channel::<i32>().unwrap();
@@ -135,7 +138,7 @@ fn test_rx() {
     assert_eq!(rx.recv().unwrap().unwrap(), 7);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 #[cfg(not(miri))]
 fn test_tx() {
     let (tx, mut rx) = crossmist::channel::<i32>().unwrap();
@@ -146,7 +149,7 @@ fn test_tx() {
     assert_eq!(rx.recv().unwrap().unwrap(), 7);
 }
 
-#[test]
+#[macro_rules_attribute::apply(test!)]
 #[cfg(not(miri))]
 fn test_duplex() {
     let (mut local, downstream) = crossmist::duplex::<(i32, i32), i32>().unwrap();

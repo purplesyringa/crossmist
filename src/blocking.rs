@@ -6,6 +6,7 @@
 //!
 //! ```rust
 //! # use crossmist::{channel, Receiver, Sender};
+//! # crossmist::init();
 //! let (mut sender, mut receiver): (Sender<i32>, Receiver<i32>) = channel::<i32>()?;
 //! sender.send(57)?;
 //! drop(sender);
@@ -18,6 +19,7 @@
 //!
 //! ```rust
 //! # use crossmist::{duplex, Duplex};
+//! # crossmist::init();
 //! let (mut side1, mut side2) = duplex::<i32, (i32, i32)>()?;
 //! side1.send(57)?;
 //! assert_eq!(side2.recv()?, Some(57));
