@@ -233,7 +233,7 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
         {
             let mut len = [0u8; size_of::<usize>()];
             if let Err(e) = self.fd.read(&mut len).await {
-                if e.kind() == ErrorKind::UnexpectedEof {
+                if let ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset = e.kind() {
                     return Ok(None);
                 }
                 return Err(e);
@@ -310,7 +310,7 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
         {
             let mut len = [0u8; size_of::<usize>()];
             if let Err(e) = self.fd.read(&mut len).await {
-                if e.kind() == ErrorKind::UnexpectedEof {
+                if let ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset = e.kind() {
                     return Ok(None);
                 }
                 return Err(e);
