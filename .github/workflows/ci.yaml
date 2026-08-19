@@ -87,9 +87,9 @@ jobs:
           echo "rustflags = ['-C', 'target-feature=+crt-static']" >>~/.cargo/config.toml &&
           echo "rustdocflags = ['-C', 'target-feature=+crt-static']" >>~/.cargo/config.toml
       - name: Test (debug)
-        run: ci/cargo-save "Test (debug)" test -F tokio -F nightly --target $target
+        run: ci/cargo-save "Test (debug)" test --all-features --target $target
       - name: Test (release)
-        run: ci/cargo-save "Test (release)" test -F tokio -F nightly --target $target --release
+        run: ci/cargo-save "Test (release)" test --all-features --target $target --release
       - name: Upload built tests for Wine
         uses: actions/upload-artifact@v4
         with:
