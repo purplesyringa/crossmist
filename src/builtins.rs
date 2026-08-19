@@ -368,8 +368,44 @@ unsafe impl Object for tokio::net::UnixStream {
     }
 }
 
+unsafe impl Object for std::net::TcpStream {
+    fn serialize_self(self, s: &mut Serializer) {
+        #[cfg(unix)]
+        s.serialize(OwnedFd::from(self));
+        #[cfg(windows)]
+        s.serialize(OwnedSocket::from(self));
+    }
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+        #[cfg(unix)]
+        let raw = unsafe { d.deserialize::<OwnedFd>() };
+        #[cfg(windows)]
+        let raw = unsafe { d.deserialize::<OwnedSocket>() };
+        raw.into()
+    }
+}
+
+#[cfg(feature = "tokio")]
+unsafe impl Object for tokio::net::TcpStream {
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.into_std().expect("cannot serialize TcpStream"));
+    }
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+        Self::from_std(unsafe { d.deserialize() }).expect("cannot deserialize TcpStream")
+    }
+}
+
 #[cfg(all(unix, feature = "smol"))]
 unsafe impl<T: std::os::fd::AsFd + Object> Object for async_io::Async<T> {
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.into_inner().expect("cannot serialize Async"))
+    }
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+        async_io::Async::new(unsafe { d.deserialize() }).expect("cannot deserialize Async")
+    }
+}
+
+#[cfg(all(windows, feature = "smol"))]
+unsafe impl<T: std::os::windows::io::AsSocket + Object> Object for async_io::Async<T> {
     fn serialize_self(self, s: &mut Serializer) {
         s.serialize(self.into_inner().expect("cannot serialize Async"))
     }

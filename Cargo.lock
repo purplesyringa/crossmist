@@ -336,7 +336,6 @@ name = "crossmist"
 version = "1.1.2"
 dependencies = [
  "anyhow",
- "async-fs",
  "async-io",
  "crossmist-derive",
  "futures-lite",

@@ -7,24 +7,19 @@ use std::io::Result;
 #[cfg(unix)]
 use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, RawFd};
 #[cfg(windows)]
-use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle};
+use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, RawSocket};
 
 /// `tokio` marker struct.
 #[derive(Debug, Object)]
 pub struct Tokio(
     #[cfg(unix)] tokio::net::UnixStream,
-    #[cfg(windows)] tokio::fs::File,
+    #[cfg(windows)] tokio::net::TcpStream,
 );
 
 unsafe impl asynchronous::AsyncStream for Tokio {
     fn try_new(stream: asynchronous::SyncStream) -> Result<Self> {
-        #[cfg(unix)]
-        {
-            stream.set_nonblocking(true)?;
-            stream.try_into().map(Self)
-        }
-        #[cfg(windows)]
-        return Ok(Self(stream.into()));
+        stream.set_nonblocking(true)?;
+        stream.try_into().map(Self)
     }
 
     #[cfg(unix)]
@@ -59,9 +54,9 @@ impl AsRawFd for Tokio {
     }
 }
 #[cfg(windows)]
-impl AsRawHandle for Tokio {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_handle()
+impl AsRawSocket for Tokio {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.0.as_raw_socket()
     }
 }
 
@@ -72,9 +67,9 @@ impl AsFd for Tokio {
     }
 }
 #[cfg(windows)]
-impl AsHandle for Tokio {
-    fn as_handle(&self) -> BorrowedHandle<'_> {
-        self.0.as_handle()
+impl AsSocket for Tokio {
+    fn as_socket(&self) -> BorrowedSocket<'_> {
+        self.0.as_socket()
     }
 }
 

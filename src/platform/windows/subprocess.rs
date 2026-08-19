@@ -2,7 +2,10 @@ use std::ffi::{OsStr, c_void};
 use std::io::Result;
 use std::os::windows::{
     ffi::OsStrExt,
-    io::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle},
+    io::{
+        AsRawHandle, AsRawSocket, BorrowedSocket, FromRawHandle, FromRawSocket, OwnedHandle,
+        OwnedSocket, RawHandle, RawSocket,
+    },
 };
 use std::sync::OnceLock;
 use windows::{
@@ -28,7 +31,7 @@ struct InitData {
     broker_process: HANDLE,
     broker_pid: u32,
     broker_job: HANDLE,
-    child_handle: HANDLE,
+    child_socket: HANDLE,
 }
 
 static mut INIT_DATA: InitData = unsafe { core::mem::zeroed() };
@@ -147,20 +150,17 @@ pub(crate) fn start_broker() -> Result<()> {
     Ok(())
 }
 
-pub(crate) unsafe fn load_init_handles() -> OwnedHandle {
+pub(crate) unsafe fn load_init_handles() -> OwnedSocket {
     let init_data = unsafe { INIT_DATA };
-    let [process, job, handle] = [
-        init_data.broker_process,
-        init_data.broker_job,
-        init_data.child_handle,
-    ]
-    .map(|handle| unsafe { OwnedHandle::from_raw_handle(handle.0) });
-    let pid = init_data.broker_pid;
     HANDLE_BROKER
-        .set(Broker { process, pid, job })
+        .set(Broker {
+            process: unsafe { OwnedHandle::from_raw_handle(init_data.broker_process.0) },
+            pid: init_data.broker_pid,
+            job: unsafe { OwnedHandle::from_raw_handle(init_data.broker_job.0) },
+        })
         .ok()
         .expect("broker already initialized");
-    handle
+    unsafe { OwnedSocket::from_raw_socket(init_data.child_socket.0 as RawSocket) }
 }
 
 unsafe fn get_peb(process: RawHandle) -> Result<*const Threading::PEB> {
@@ -181,7 +181,7 @@ unsafe fn get_peb(process: RawHandle) -> Result<*const Threading::PEB> {
     Ok(proc.PebBaseAddress)
 }
 
-pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Result<OwnedHandle> {
+pub(crate) unsafe fn _spawn_child<'a>(child_socket: BorrowedSocket<'a>) -> Result<OwnedHandle> {
     unsafe {
         let broker = HANDLE_BROKER.get().expect("broker not initialized");
 
@@ -200,13 +200,20 @@ pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Resul
             ..Default::default()
         };
         for (handle, remote_handle) in [
-            (broker.process.as_handle(), &mut init_data.broker_process),
-            (broker.job.as_handle(), &mut init_data.broker_job),
-            (child_handle, &mut init_data.child_handle),
+            (
+                broker.process.as_raw_handle(),
+                &mut init_data.broker_process,
+            ),
+            (broker.job.as_raw_handle(), &mut init_data.broker_job),
+            // Sockets can be duplicated as handles in most cases, see internals.rs.
+            (
+                child_socket.as_raw_socket() as RawHandle,
+                &mut init_data.child_socket,
+            ),
         ] {
             Foundation::DuplicateHandle(
                 Threading::GetCurrentProcess(),
-                HANDLE(handle.as_raw_handle()),
+                HANDLE(handle),
                 HANDLE(process.as_raw_handle()),
                 remote_handle,
                 0,

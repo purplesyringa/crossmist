@@ -2,7 +2,7 @@ use crate::{
     Deserializer, Object, Receiver, Sender, Serializer, asynchronous::handle_entry,
     subprocess::load_init_handles,
 };
-use std::os::windows::io::{AsRawHandle, FromRawHandle};
+use std::os::windows::io::{AsRawSocket, FromRawSocket};
 
 // XXX: very hacky
 struct FakeDeserializer(Deserializer);
@@ -19,15 +19,15 @@ unsafe impl Object for FakeDeserializer {
 }
 
 pub(crate) fn crossmist_main(_args: std::env::Args) -> ! {
-    let handle = unsafe { load_init_handles() };
+    let socket = unsafe { load_init_handles() };
 
     // Notify the parent that they can stop keeping the handles alive
-    let mut output_tx = unsafe { Sender::from_raw_handle(handle.as_raw_handle()) };
+    let mut output_tx = unsafe { Sender::from_raw_socket(socket.as_raw_socket()) };
     output_tx.send(()).expect("Failed to signal");
     core::mem::forget(output_tx);
 
     let mut entry_rx =
-        unsafe { Receiver::<FakeDeserializer>::from_raw_handle(handle.as_raw_handle()) };
+        unsafe { Receiver::<FakeDeserializer>::from_raw_socket(socket.as_raw_socket()) };
 
     // By the time we receive the first byte, we know that our parent has moved on from spawning the
     // child to sending data, so the job we're in is no longer kill-on-close and we can do user work
@@ -39,5 +39,5 @@ pub(crate) fn crossmist_main(_args: std::env::Args) -> ! {
         .0;
     core::mem::forget(entry_rx);
 
-    handle_entry(deserializer, handle.as_raw_handle());
+    handle_entry(deserializer, socket.as_raw_socket());
 }

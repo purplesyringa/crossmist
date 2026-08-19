@@ -53,7 +53,7 @@ use std::io::Result;
 use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
 #[cfg(windows)]
 use std::os::windows::io::{
-    AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, RawHandle,
+    AsRawSocket, AsSocket, BorrowedSocket, FromRawSocket, IntoRawSocket, RawSocket,
 };
 use std::pin::pin;
 use std::task::{Context, Poll, Waker};
@@ -106,9 +106,9 @@ impl FromRawFd for Blocking {
     }
 }
 #[cfg(windows)]
-impl FromRawHandle for Blocking {
-    unsafe fn from_raw_handle(fd: RawHandle) -> Self {
-        unsafe { Self(asynchronous::SyncStream::from_raw_handle(fd)) }
+impl FromRawSocket for Blocking {
+    unsafe fn from_raw_socket(fd: RawSocket) -> Self {
+        unsafe { Self(asynchronous::SyncStream::from_raw_socket(fd)) }
     }
 }
 
@@ -119,9 +119,9 @@ impl AsRawFd for Blocking {
     }
 }
 #[cfg(windows)]
-impl AsRawHandle for Blocking {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_handle()
+impl AsRawSocket for Blocking {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.0.as_raw_socket()
     }
 }
 
@@ -132,9 +132,9 @@ impl AsFd for Blocking {
     }
 }
 #[cfg(windows)]
-impl AsHandle for Blocking {
-    fn as_handle(&self) -> BorrowedHandle<'_> {
-        self.0.as_handle()
+impl AsSocket for Blocking {
+    fn as_socket(&self) -> BorrowedSocket<'_> {
+        self.0.as_socket()
     }
 }
 
@@ -145,9 +145,9 @@ impl IntoRawFd for Blocking {
     }
 }
 #[cfg(windows)]
-impl IntoRawHandle for Blocking {
-    fn into_raw_handle(self) -> RawHandle {
-        self.0.into_raw_handle()
+impl IntoRawSocket for Blocking {
+    fn into_raw_socket(self) -> RawSocket {
+        self.0.into_raw_socket()
     }
 }
 
@@ -196,9 +196,9 @@ impl<T: Object> AsRawFd for Sender<T> {
     }
 }
 #[cfg(windows)]
-impl<T: Object> AsRawHandle for Sender<T> {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_handle()
+impl<T: Object> AsRawSocket for Sender<T> {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.0.as_raw_socket()
     }
 }
 
@@ -209,9 +209,9 @@ impl<T: Object> IntoRawFd for Sender<T> {
     }
 }
 #[cfg(windows)]
-impl<T: Object> IntoRawHandle for Sender<T> {
-    fn into_raw_handle(self) -> RawHandle {
-        self.0.fd.into_raw_handle()
+impl<T: Object> IntoRawSocket for Sender<T> {
+    fn into_raw_socket(self) -> RawSocket {
+        self.0.fd.into_raw_socket()
     }
 }
 
@@ -222,11 +222,11 @@ impl<T: Object> FromRawFd for Sender<T> {
     }
 }
 #[cfg(windows)]
-impl<T: Object> FromRawHandle for Sender<T> {
-    unsafe fn from_raw_handle(fd: RawHandle) -> Self {
+impl<T: Object> FromRawSocket for Sender<T> {
+    unsafe fn from_raw_socket(fd: RawSocket) -> Self {
         unsafe {
             Self(asynchronous::Sender::from_stream(
-                Blocking::from_raw_handle(fd),
+                Blocking::from_raw_socket(fd),
             ))
         }
     }
@@ -248,9 +248,9 @@ impl<T: Object> AsRawFd for Receiver<T> {
     }
 }
 #[cfg(windows)]
-impl<T: Object> AsRawHandle for Receiver<T> {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_handle()
+impl<T: Object> AsRawSocket for Receiver<T> {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.0.as_raw_socket()
     }
 }
 
@@ -261,9 +261,9 @@ impl<T: Object> IntoRawFd for Receiver<T> {
     }
 }
 #[cfg(windows)]
-impl<T: Object> IntoRawHandle for Receiver<T> {
-    fn into_raw_handle(self) -> RawHandle {
-        self.0.fd.into_raw_handle()
+impl<T: Object> IntoRawSocket for Receiver<T> {
+    fn into_raw_socket(self) -> RawSocket {
+        self.0.fd.into_raw_socket()
     }
 }
 
@@ -278,11 +278,11 @@ impl<T: Object> FromRawFd for Receiver<T> {
     }
 }
 #[cfg(windows)]
-impl<T: Object> FromRawHandle for Receiver<T> {
-    unsafe fn from_raw_handle(fd: RawHandle) -> Self {
+impl<T: Object> FromRawSocket for Receiver<T> {
+    unsafe fn from_raw_socket(fd: RawSocket) -> Self {
         unsafe {
             Self(asynchronous::Receiver::from_stream(
-                Blocking::from_raw_handle(fd),
+                Blocking::from_raw_socket(fd),
             ))
         }
     }
@@ -324,9 +324,9 @@ impl<S: Object, R: Object> AsRawFd for Duplex<S, R> {
     }
 }
 #[cfg(windows)]
-impl<S: Object, R: Object> AsRawHandle for Duplex<S, R> {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_handle()
+impl<S: Object, R: Object> AsRawSocket for Duplex<S, R> {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.0.as_raw_socket()
     }
 }
 
@@ -337,9 +337,9 @@ impl<S: Object, R: Object> IntoRawFd for Duplex<S, R> {
     }
 }
 #[cfg(windows)]
-impl<S: Object, R: Object> IntoRawHandle for Duplex<S, R> {
-    fn into_raw_handle(self) -> RawHandle {
-        self.0.fd.into_raw_handle()
+impl<S: Object, R: Object> IntoRawSocket for Duplex<S, R> {
+    fn into_raw_socket(self) -> RawSocket {
+        self.0.fd.into_raw_socket()
     }
 }
 
@@ -350,11 +350,11 @@ impl<S: Object, R: Object> FromRawFd for Duplex<S, R> {
     }
 }
 #[cfg(windows)]
-impl<S: Object, R: Object> FromRawHandle for Duplex<S, R> {
-    unsafe fn from_raw_handle(handle: RawHandle) -> Self {
+impl<S: Object, R: Object> FromRawSocket for Duplex<S, R> {
+    unsafe fn from_raw_socket(handle: RawSocket) -> Self {
         unsafe {
             Self(asynchronous::Duplex::from_stream(
-                Blocking::from_raw_handle(handle),
+                Blocking::from_raw_socket(handle),
             ))
         }
     }

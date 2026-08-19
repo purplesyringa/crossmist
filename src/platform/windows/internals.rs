@@ -1,103 +1,110 @@
 use crate::{Deserializer, Object, Serializer, subprocess::HANDLE_BROKER};
-use std::default::Default;
-use std::fs::File;
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
+use std::sync::LazyLock;
+use std::net::TcpStream;
 use std::os::windows::io::{
     AsRawHandle, AsRawSocket, FromRawHandle, FromRawSocket, IntoRawHandle, OwnedHandle,
     OwnedSocket, RawHandle, RawSocket,
 };
+use std::path::PathBuf;
 use windows::Win32::{
     Foundation::{self, HANDLE},
-    Security::{self, Authorization},
-    Storage::FileSystem,
-    System::{Pipes, SystemServices, Threading},
+    Networking::WinSock,
+    Security::Cryptography,
+    System::Threading,
 };
-use windows::core::{PCSTR, PSTR};
 
-pub(crate) fn socketpair() -> Result<(File, File)> {
-    // Set a security descriptor for the pipe so that no other user can connect to it. This is
-    // not necessary for security, since we only allow one client and validate that our own
-    // connection went through, but it guarantees that a malicious program doesn't race us to
-    // connection and cause a failure.
-    let mut sd = Security::SECURITY_DESCRIPTOR::default();
-    let sd = Security::PSECURITY_DESCRIPTOR((&raw mut sd).cast());
-    unsafe {
-        Security::InitializeSecurityDescriptor(sd, SystemServices::SECURITY_DESCRIPTOR_REVISION)
-    }?;
-
-    let ea = Authorization::EXPLICIT_ACCESS_A {
-        grfAccessPermissions: (Foundation::GENERIC_READ | Foundation::GENERIC_WRITE).0,
-        grfAccessMode: Authorization::SET_ACCESS,
-        grfInheritance: Security::NO_INHERITANCE,
-        Trustee: Authorization::TRUSTEE_A {
-            pMultipleTrustee: core::ptr::null_mut(),
-            MultipleTrusteeOperation: Authorization::NO_MULTIPLE_TRUSTEE,
-            TrusteeForm: Authorization::TRUSTEE_IS_NAME,
-            TrusteeType: Authorization::TRUSTEE_IS_USER,
-            ptstrName: PSTR(c"CURRENT_USER".as_ptr() as _),
-        },
-    };
-
-    struct Acl(*mut Security::ACL); // stored on the local heap
-    impl Drop for Acl {
-        fn drop(&mut self) {
-            unsafe { Foundation::LocalFree(Some(Foundation::HLOCAL(self.0.cast()))) };
+pub(crate) fn socketpair() -> Result<(TcpStream, TcpStream)> {
+    loop {
+        if let Some(out) = try_socketpair()? {
+            return Ok(out);
         }
     }
-    let mut acl = Acl(core::ptr::null_mut());
-    unsafe {
-        Authorization::SetEntriesInAclA(Some(core::slice::from_ref(&ea)), None, &raw mut acl.0)
-    }
-    .ok()?;
-    unsafe { Security::SetSecurityDescriptorDacl(sd, true, Some(acl.0), false) }?;
+}
 
-    let sa = Security::SECURITY_ATTRIBUTES {
-        nLength: size_of::<Security::SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: sd.0,
-        bInheritHandle: false.into(),
+pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
+    // Achieves two purposes: initializes WSA and generates a temporary directory path once, since
+    // Wine spams FIXMEs on `GetTempPath2W` and I don't want to read them.
+    static INIT: LazyLock<core::result::Result<PathBuf, WinSock::WSA_ERROR>> = LazyLock::new(|| {
+        let mut data = WinSock::WSADATA::default();
+        if unsafe { WinSock::WSAStartup(0x0202, &raw mut data) } != 0 {
+            return Err(unsafe { WinSock::WSAGetLastError() });
+        }
+        Ok(std::env::temp_dir())
+    });
+    let temp_dir = match INIT.as_deref() {
+        Ok(temp_dir) => temp_dir,
+        Err(err) => return Err(Error::from_raw_os_error(err.0)),
     };
 
-    let mut buf = [0u8; 32];
-    let _ = unsafe { Security::Cryptography::ProcessPrng(&mut buf) }; // documented to return TRUE
-    let mut path = br"\\.\pipe\crossmist-".to_vec();
-    path.extend(buf.into_iter().map(|c| b'a' + (c & 15)));
-    path.push(0);
-    let path = PCSTR(path.as_ptr());
+    let mut rng = [0u8; 32];
+    let _ = unsafe { Cryptography::ProcessPrng(&mut rng) }; // documented to return TRUE
 
-    let tx = unsafe {
-        Pipes::CreateNamedPipeA(
-            path,
-            FileSystem::PIPE_ACCESS_DUPLEX | FileSystem::FILE_FLAG_FIRST_PIPE_INSTANCE,
-            Pipes::PIPE_TYPE_MESSAGE
-                | Pipes::PIPE_READMODE_MESSAGE
-                | Pipes::PIPE_WAIT
-                | Pipes::PIPE_REJECT_REMOTE_CLIENTS,
-            1,    // 1 instance so that the pipe name cannot be reused to possibly cause issues
-            2048, // buffer size
-            2048,
-            0,
-            Some(&raw const sa),
-        )
-    }?;
-    let tx = unsafe { File::from_raw_handle(tx.0) };
+    let mut name = "crossmist-".to_string();
+    for c in rng {
+        name.push((b'a' + (c & 15)) as char);
+    }
+    let path = temp_dir.join(name);
+    let path_bytes = path.as_os_str().as_encoded_bytes();
 
-    let rx = unsafe {
-        FileSystem::CreateFileA(
-            path,
-            (Foundation::GENERIC_READ | Foundation::GENERIC_WRITE).0,
-            FileSystem::FILE_SHARE_MODE(0),
-            None,
-            FileSystem::OPEN_EXISTING,
-            // `SECURITY_SQOS_PRESENT` should be passed even though we can be the only process on
-            // the other side, since the process holding `tx` may have different permissions from
-            // the process holding `rx` if a stream is sent across processes.
-            FileSystem::FILE_ATTRIBUTE_NORMAL | FileSystem::SECURITY_SQOS_PRESENT,
-            None,
-        )
-    }?;
-    let rx = unsafe { File::from_raw_handle(rx.0) };
+    let mut addr = WinSock::SOCKADDR_UN {
+        sun_family: WinSock::ADDRESS_FAMILY(WinSock::AF_UNIX),
+        ..Default::default()
+    };
+    if path_bytes.len() > addr.sun_path.len() {
+        return Err(Error::from(ErrorKind::InvalidFilename));
+    }
+    for (dst, src) in addr.sun_path.iter_mut().zip(path_bytes) {
+        *dst = *src as i8;
+    }
 
-    Ok((tx, rx))
+    unsafe {
+        let raw_server = WinSock::socket(WinSock::AF_UNIX as i32, WinSock::SOCK_STREAM, 0)?;
+        let _server = OwnedSocket::from_raw_socket(raw_server.0 as RawSocket);
+        if WinSock::bind(
+            raw_server,
+            (&raw const addr).cast(),
+            size_of_val(&addr) as i32,
+        ) != 0
+        {
+            return Err(Error::from_raw_os_error(WinSock::WSAGetLastError().0));
+        }
+        struct SockGuard(PathBuf);
+        impl Drop for SockGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _guard = SockGuard(path);
+        if WinSock::listen(raw_server, 1) != 0 {
+            return Err(Error::from_raw_os_error(WinSock::WSAGetLastError().0));
+        }
+
+        let raw_client = WinSock::socket(WinSock::AF_UNIX as i32, WinSock::SOCK_STREAM, 0)?;
+        let client = OwnedSocket::from_raw_socket(raw_client.0 as RawSocket);
+        let connect_result = WinSock::connect(
+            raw_client,
+            (&raw const addr).cast(),
+            size_of_val(&addr) as i32,
+        );
+        if connect_result != 0 {
+            let err = Error::from_raw_os_error(WinSock::WSAGetLastError().0);
+            // If someone races us to connection, the backlog will be full and `connect` will return
+            // `ConnectionRefused`, which we can detect and retry.
+            if err.kind() == ErrorKind::ConnectionRefused {
+                return Ok(None);
+            }
+            return Err(err);
+        }
+
+        // Since the server socket has a backlog of 1, at most one client can `connect` before we
+        // invoke `accept`. Since our `connect` has completed, we know the client in the queue must
+        // be us, so there's no need to check if the wrong client has connected.
+        let raw_connected = WinSock::accept(raw_server, None, None)?;
+        let connected = OwnedSocket::from_raw_socket(raw_connected.0 as RawSocket);
+
+        Ok(Some((TcpStream::from(client), TcpStream::from(connected))))
+    }
 }
 
 pub(crate) fn serialize_with_handles<T: Object>(value: T) -> Result<Vec<u8>> {

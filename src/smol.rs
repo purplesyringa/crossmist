@@ -7,24 +7,16 @@ use std::io::Result;
 #[cfg(unix)]
 use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, RawFd};
 #[cfg(windows)]
-use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle};
+use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, RawSocket};
 
 /// `smol` marker type.
 #[derive(Debug, Object)]
-pub struct Smol(
-    #[cfg(unix)] async_io::Async<std::os::unix::net::UnixStream>,
-    #[cfg(windows)] async_fs::File,
-);
+pub struct Smol(async_io::Async<asynchronous::SyncStream>);
 
 unsafe impl asynchronous::AsyncStream for Smol {
     fn try_new(stream: asynchronous::SyncStream) -> Result<Self> {
-        #[cfg(unix)]
-        {
-            stream.set_nonblocking(true)?;
-            stream.try_into().map(Self)
-        }
-        #[cfg(windows)]
-        return Ok(Self(stream.into()));
+        stream.set_nonblocking(true)?;
+        stream.try_into().map(Self)
     }
 
     #[cfg(unix)]
@@ -60,9 +52,9 @@ impl AsRawFd for Smol {
     }
 }
 #[cfg(windows)]
-impl AsRawHandle for Smol {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_handle()
+impl AsRawSocket for Smol {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.0.as_raw_socket()
     }
 }
 
@@ -73,9 +65,9 @@ impl AsFd for Smol {
     }
 }
 #[cfg(windows)]
-impl AsHandle for Smol {
-    fn as_handle(&self) -> BorrowedHandle<'_> {
-        self.0.as_handle()
+impl AsSocket for Smol {
+    fn as_socket(&self) -> BorrowedSocket<'_> {
+        self.0.as_socket()
     }
 }
 

@@ -50,7 +50,9 @@ use std::sync::{Arc, Mutex};
 #[cfg(windows)]
 use {
     crate::internals::{deserialize_with_handles, serialize_with_handles, socketpair},
-    std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
+    std::os::windows::io::{
+        AsRawHandle, AsRawSocket, AsSocket, FromRawSocket, OwnedHandle, RawSocket,
+    },
     windows::Win32::{Foundation::HANDLE, System::Threading},
 };
 #[cfg(unix)]
@@ -64,8 +66,10 @@ use {
 
 #[cfg(unix)]
 pub(crate) type SyncStream = std::os::unix::net::UnixStream;
+// This is a complete lie and a fabrication, but `std::os::windows::net::UnixStream` is unstable and
+// `TcpStream` is close enough.
 #[cfg(windows)]
-pub(crate) type SyncStream = std::fs::File;
+pub(crate) type SyncStream = std::net::TcpStream;
 
 /// Runtime-dependent stream implementation.
 #[cfg(unix)]
@@ -97,7 +101,7 @@ pub unsafe trait AsyncStream: Object + AsFd + AsRawFd + Sized {
 
 /// Runtime-dependent stream implementation.
 #[cfg(windows)]
-pub unsafe trait AsyncStream: Object + AsHandle + AsRawHandle + Sized {
+pub unsafe trait AsyncStream: Object + AsSocket + AsRawSocket + Sized {
     /// Create the stream from a sync stream.
     fn try_new(stream: SyncStream) -> Result<Self>;
 
@@ -201,9 +205,9 @@ impl<Stream: AsyncStream, T: Object> AsRawFd for Sender<Stream, T> {
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, T: Object> AsRawHandle for Sender<Stream, T> {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.fd.as_raw_handle()
+impl<Stream: AsyncStream, T: Object> AsRawSocket for Sender<Stream, T> {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.fd.as_raw_socket()
     }
 }
 
@@ -263,9 +267,9 @@ impl<Stream: AsyncStream, T: Object> AsRawFd for Receiver<Stream, T> {
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, T: Object> AsRawHandle for Receiver<Stream, T> {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.fd.as_raw_handle()
+impl<Stream: AsyncStream, T: Object> AsRawSocket for Receiver<Stream, T> {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.fd.as_raw_socket()
     }
 }
 
@@ -363,9 +367,9 @@ impl<Stream: AsyncStream, S: Object, R: Object> AsRawFd for Duplex<Stream, S, R>
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, S: Object, R: Object> AsRawHandle for Duplex<Stream, S, R> {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.fd.as_raw_handle()
+impl<Stream: AsyncStream, S: Object, R: Object> AsRawSocket for Duplex<Stream, S, R> {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.fd.as_raw_socket()
     }
 }
 
@@ -558,7 +562,7 @@ pub(crate) async unsafe fn spawn<
             #[cfg(unix)]
             let mut output_tx = crate::Sender::from_raw_fd(output_tx);
             #[cfg(windows)]
-            let mut output_tx = crate::Sender::from_raw_handle(output_tx);
+            let mut output_tx = crate::Sender::from_raw_socket(output_tx);
             output_tx
                 .send(output)
                 .expect("Failed to send subprocess output");
@@ -585,7 +589,7 @@ pub(crate) async unsafe fn spawn<
         {
             // Windows offers no good way to inherit handles safely, so we pass them via the broker,
             // just like when sending handles over channels.
-            process_handle = subprocess::_spawn_child(child.0.fd.as_handle())?;
+            process_handle = subprocess::_spawn_child(child.0.fd.as_socket())?;
             // Wait for a response that the handles have been copied successfully before continuing.
             let mut signal = Receiver::<Stream, ()>::from_stream(local.fd);
             signal.recv().await?;
@@ -601,7 +605,7 @@ pub(crate) async unsafe fn spawn<
 pub(crate) fn handle_entry(
     mut deserializer: Deserializer,
     #[cfg(unix)] output_tx: RawFd,
-    #[cfg(windows)] output_tx: RawHandle,
+    #[cfg(windows)] output_tx: RawSocket,
 ) -> ! {
     let entry: StaticFn<fn(_, _)> = unsafe { deserializer.deserialize() };
     (entry.get_fn())(deserializer, output_tx);
