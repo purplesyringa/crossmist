@@ -8,7 +8,7 @@ use std::hash::{BuildHasher, Hash};
 #[cfg(unix)]
 use std::os::unix::io::OwnedFd;
 #[cfg(windows)]
-use std::os::windows::io::OwnedHandle;
+use std::os::windows::io::{OwnedHandle, OwnedSocket};
 use std::time::{Duration, SystemTime};
 
 macro_rules! impl_pod {
@@ -296,6 +296,18 @@ unsafe impl Object for OwnedHandle {
         d.handles
             .next()
             .expect("Mismatched (de)serialization of OwnedHandle")
+    }
+}
+
+#[cfg(windows)]
+unsafe impl Object for OwnedSocket {
+    fn serialize_self(self, s: &mut Serializer) {
+        s.sockets.push(self);
+    }
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+        d.sockets
+            .next()
+            .expect("Mismatched (de)serialization of OwnedSocket")
     }
 }
 

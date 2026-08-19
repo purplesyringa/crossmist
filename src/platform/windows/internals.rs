@@ -2,7 +2,10 @@ use crate::{Deserializer, Object, Serializer, subprocess::HANDLE_BROKER};
 use std::default::Default;
 use std::fs::File;
 use std::io::Result;
-use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+use std::os::windows::io::{
+    AsRawHandle, AsRawSocket, FromRawHandle, FromRawSocket, IntoRawHandle, OwnedHandle,
+    OwnedSocket, RawHandle, RawSocket,
+};
 use windows::Win32::{
     Foundation::{self, HANDLE},
     Security::{self, Authorization},
@@ -127,8 +130,20 @@ pub(crate) fn serialize_with_handles<T: Object>(value: T) -> Result<Vec<u8>> {
         .map(|handle| copy_handle(handle.as_raw_handle()))
         .collect::<Result<Vec<usize>>>()?;
 
+    let remote_sockets = s
+        .sockets
+        .into_iter()
+        .map(|socket| {
+            // On modern Windows, sockets are always valid handles. Just make sure to let the normal
+            // `OwnedSocket` destructor to be invoked, so that it's closed by `closesocket` rather
+            // than `CloseHandle` to correctly free userland resources.
+            copy_handle(socket.as_raw_socket() as RawHandle)
+        })
+        .collect::<Result<Vec<usize>>>()?;
+
     let mut s1 = Serializer::new();
     s1.serialize(remote_handles);
+    s1.serialize(remote_sockets);
     s1.write(&s.data);
     Ok(s1.data)
 }
@@ -141,6 +156,7 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
     let mut d = Deserializer::from(Serializer {
         data: serialized,
         handles: Vec::new(),
+        sockets: Vec::new(),
     });
 
     let steal_handle = |remote_handle: usize| -> Result<OwnedHandle> {
@@ -164,6 +180,24 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
         .map(steal_handle)
         .collect::<Result<Vec<_>>>()?;
 
+    let sockets = unsafe { d.deserialize::<Vec<usize>>() }
+        .into_iter()
+        .map(|remote_socket| {
+            // Modern Winsock2 lazily fetches socket information from the native handle even without
+            // going through `WSADuplicateSocketW`/`WSASocket`, see
+            // https://purplesyringa.moe/blog/duplicatehandle-works-on-sockets-mostly.
+            let socket = steal_handle(remote_socket)?.into_raw_handle() as RawSocket;
+            Ok(unsafe { OwnedSocket::from_raw_socket(socket) })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
     let data = d.get_rest().to_vec();
-    Ok(unsafe { Deserializer::from(Serializer { data, handles }).deserialize() })
+    Ok(unsafe {
+        Deserializer::from(Serializer {
+            data,
+            handles,
+            sockets,
+        })
+        .deserialize()
+    })
 }

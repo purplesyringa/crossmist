@@ -8,7 +8,7 @@ use std::fmt;
 #[cfg(unix)]
 use std::os::unix::io::OwnedFd;
 #[cfg(windows)]
-use std::os::windows::io::OwnedHandle;
+use std::os::windows::io::{OwnedHandle, OwnedSocket};
 
 /// Stateful serialization.
 ///
@@ -20,6 +20,8 @@ pub struct Serializer {
     pub(crate) fds: Vec<OwnedFd>,
     #[cfg(windows)]
     pub(crate) handles: Vec<OwnedHandle>,
+    #[cfg(windows)]
+    pub(crate) sockets: Vec<OwnedSocket>,
 }
 
 impl Serializer {
@@ -31,6 +33,8 @@ impl Serializer {
             fds: Vec::new(),
             #[cfg(windows)]
             handles: Vec::new(),
+            #[cfg(windows)]
+            sockets: Vec::new(),
         }
     }
 
@@ -79,6 +83,8 @@ pub struct Deserializer {
     pub(crate) fds: std::vec::IntoIter<OwnedFd>,
     #[cfg(windows)]
     pub(crate) handles: std::vec::IntoIter<OwnedHandle>,
+    #[cfg(windows)]
+    pub(crate) sockets: std::vec::IntoIter<OwnedSocket>,
     pos: usize,
 }
 
@@ -154,6 +160,8 @@ impl From<Serializer> for Deserializer {
             fds: serializer.fds.into_iter(),
             #[cfg(windows)]
             handles: serializer.handles.into_iter(),
+            #[cfg(windows)]
+            sockets: serializer.sockets.into_iter(),
             pos: 0,
         }
     }

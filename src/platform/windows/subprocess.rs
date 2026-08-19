@@ -17,19 +17,21 @@ use windows::{
 // An empty process holding in-flight handles.
 pub(crate) struct Broker {
     pub(crate) process: OwnedHandle,
+    pub(crate) pid: u32,
     job: OwnedHandle,
 }
 
 pub(crate) static HANDLE_BROKER: OnceLock<Broker> = OnceLock::new();
 
 #[derive(Clone, Copy, Default)]
-struct InitHandles {
+struct InitData {
     broker_process: HANDLE,
+    broker_pid: u32,
     broker_job: HANDLE,
     child_handle: HANDLE,
 }
 
-static mut INIT_HANDLES: InitHandles = unsafe { core::mem::zeroed() };
+static mut INIT_DATA: InitData = unsafe { core::mem::zeroed() };
 
 fn get_own_name() -> Result<Vec<u16>> {
     let mut module_name = vec![0u16; 256];
@@ -64,7 +66,7 @@ unsafe fn set_job_flags(job: RawHandle, flags: JobObjects::JOB_OBJECT_LIMIT) -> 
 
 fn spawn_suspended_in_job(
     cmd_line: Option<&OsStr>,
-) -> Result<(OwnedHandle, OwnedHandle, OwnedHandle)> {
+) -> Result<(OwnedHandle, OwnedHandle, u32, OwnedHandle)> {
     unsafe {
         let job = OwnedHandle::from_raw_handle(
             JobObjects::CreateJobObjectW(None, PCWSTR(core::ptr::null()))?.0,
@@ -126,8 +128,9 @@ fn spawn_suspended_in_job(
         )?;
         let process = OwnedHandle::from_raw_handle(process_info.hProcess.0);
         let thread = OwnedHandle::from_raw_handle(process_info.hThread.0);
+        let pid = process_info.dwProcessId;
 
-        Ok((process, thread, job))
+        Ok((process, thread, pid, job))
     }
 }
 
@@ -136,24 +139,25 @@ pub(crate) fn start_broker() -> Result<()> {
     // dies. The job handles acts as a keep-alive, similarly to how holding the write end of the
     // pipe keeps the reader hanging on Linux, but without wasting resources on actually populating
     // the process with an executable image.
-    let (process, _, job) = spawn_suspended_in_job(None)?;
+    let (process, _, pid, job) = spawn_suspended_in_job(None)?;
     HANDLE_BROKER
-        .set(Broker { process, job })
+        .set(Broker { process, pid, job })
         .ok()
         .expect("broker already initialized");
     Ok(())
 }
 
 pub(crate) unsafe fn load_init_handles() -> OwnedHandle {
-    let init_handles = unsafe { INIT_HANDLES };
+    let init_data = unsafe { INIT_DATA };
     let [process, job, handle] = [
-        init_handles.broker_process,
-        init_handles.broker_job,
-        init_handles.child_handle,
+        init_data.broker_process,
+        init_data.broker_job,
+        init_data.child_handle,
     ]
     .map(|handle| unsafe { OwnedHandle::from_raw_handle(handle.0) });
+    let pid = init_data.broker_pid;
     HANDLE_BROKER
-        .set(Broker { process, job })
+        .set(Broker { process, pid, job })
         .ok()
         .expect("broker already initialized");
     handle
@@ -189,13 +193,16 @@ pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Resul
 
         // Create the child in a (temporarily) kill-on-close job so that it doesn't remain in a coma
         // if we die before completing the startup.
-        let (process, thread, job) = spawn_suspended_in_job(Some(OsStr::new("_crossmist_")))?;
+        let (process, thread, _, job) = spawn_suspended_in_job(Some(OsStr::new("_crossmist_")))?;
 
-        let mut init_handles = InitHandles::default();
+        let mut init_data = InitData {
+            broker_pid: broker.pid,
+            ..Default::default()
+        };
         for (handle, remote_handle) in [
-            (broker.process.as_handle(), &mut init_handles.broker_process),
-            (broker.job.as_handle(), &mut init_handles.broker_job),
-            (child_handle, &mut init_handles.child_handle),
+            (broker.process.as_handle(), &mut init_data.broker_process),
+            (broker.job.as_handle(), &mut init_data.broker_job),
+            (child_handle, &mut init_data.child_handle),
         ] {
             Foundation::DuplicateHandle(
                 Threading::GetCurrentProcess(),
@@ -222,12 +229,12 @@ pub(crate) unsafe fn _spawn_child<'a>(child_handle: BorrowedHandle<'a>) -> Resul
             None,
         )?;
         let offset = remote_image_base_address.wrapping_sub(image_base_address);
-        let remote_init_handles = (&raw mut INIT_HANDLES).byte_add(offset);
+        let remote_init_data = (&raw mut INIT_DATA).byte_add(offset);
         Debug::WriteProcessMemory(
             HANDLE(process.as_raw_handle()),
-            remote_init_handles.cast(),
-            (&raw const init_handles).cast(),
-            size_of_val(&init_handles),
+            remote_init_data.cast(),
+            (&raw const init_data).cast(),
+            size_of_val(&init_data),
             None,
         )?;
 
