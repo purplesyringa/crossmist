@@ -1,12 +1,12 @@
 use crate::{Deserializer, Object, Serializer, subprocess::HANDLE_BROKER};
 use std::io::{Error, ErrorKind, Result};
-use std::sync::LazyLock;
 use std::net::TcpStream;
 use std::os::windows::io::{
     AsRawHandle, AsRawSocket, FromRawHandle, FromRawSocket, IntoRawHandle, OwnedHandle,
     OwnedSocket, RawHandle, RawSocket,
 };
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use windows::Win32::{
     Foundation::{self, HANDLE},
     Networking::WinSock,
@@ -25,13 +25,14 @@ pub(crate) fn socketpair() -> Result<(TcpStream, TcpStream)> {
 pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
     // Achieves two purposes: initializes WSA and generates a temporary directory path once, since
     // Wine spams FIXMEs on `GetTempPath2W` and I don't want to read them.
-    static INIT: LazyLock<core::result::Result<PathBuf, WinSock::WSA_ERROR>> = LazyLock::new(|| {
-        let mut data = WinSock::WSADATA::default();
-        if unsafe { WinSock::WSAStartup(0x0202, &raw mut data) } != 0 {
-            return Err(unsafe { WinSock::WSAGetLastError() });
-        }
-        Ok(std::env::temp_dir())
-    });
+    static INIT: LazyLock<core::result::Result<PathBuf, WinSock::WSA_ERROR>> =
+        LazyLock::new(|| {
+            let mut data = WinSock::WSADATA::default();
+            if unsafe { WinSock::WSAStartup(0x0202, &raw mut data) } != 0 {
+                return Err(unsafe { WinSock::WSAGetLastError() });
+            }
+            Ok(std::env::temp_dir())
+        });
     let temp_dir = match INIT.as_deref() {
         Ok(temp_dir) => temp_dir,
         Err(err) => return Err(Error::from_raw_os_error(err.0)),
