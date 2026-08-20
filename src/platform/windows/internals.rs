@@ -77,6 +77,7 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
             }
         }
         let _guard = SockGuard(path);
+        // Backlog 0 is load-bearing for Wine -- see below
         if WinSock::listen(raw_server, 0) != 0 {
             return Err(Error::from_raw_os_error(WinSock::WSAGetLastError().0));
         }
@@ -89,35 +90,50 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
             size_of_val(&addr) as i32,
         );
         if connect_result != 0 {
-            let err = Error::from_raw_os_error(WinSock::WSAGetLastError().0);
-            // If someone races us to connection, the backlog will be full and `connect` will return
-            // `ConnectionRefused`, which we can detect and retry.
-            if err.kind() == ErrorKind::ConnectionRefused {
+            let err = WinSock::WSAGetLastError();
+            if err == WinSock::WSAENOBUFS
+                || err == WinSock::WSAECONNREFUSED
+                || err == WinSock::WSAEWOULDBLOCK
+            {
+                // Someone raced us to connection and filled the backlog, retry. Real Windows
+                // returns WSAENOBUFS, but Wine forwards native errors, which are WSAECONNREFUSED on
+                // POSIX (including FreeBSD) and WSAEWOULDBLOCK on Linux.
                 return Ok(None);
             }
-            return Err(err);
+            return Err(Error::from_raw_os_error(err.0));
         }
 
-        // Since the server socket has a backlog of 1, at most one client can `connect` before we
-        // invoke `accept`. Since our `connect` has completed, we know the client in the queue must
-        // be us, so there's no need to check if the wrong client has connected.
         let raw_connected = WinSock::accept(raw_server, None, None)?;
         let connected = OwnedSocket::from_raw_socket(raw_connected.0 as RawSocket);
 
-        // I'm a little paranoid about the backlog size: if it's treated like a hint rather than
-        // an exact queue length, `connect` can succeed despite another connection already being
-        // present. So just to make sure, validate that another process hasn't stolen our socket.
+        // POSIX says [1] the backlog argument to `listen` is merely a hint, so even if we set the
+        // smallest backlog value possible and our connection succeeds, we can't be sure that no one
+        // else has raced us. Therefore we need to validate the PID.
+        // [1]: https://pubs.opengroup.org/onlinepubs/009695099/functions/listen.html
         let mut pid = 0u32;
         if WinSock::ioctlsocket(
             raw_connected,
             WinSock::SIO_AF_UNIX_GETPEERPID as i32,
             (&raw mut pid).cast(),
-        ) != 0
+        ) == 0
         {
-            return Err(Error::from_raw_os_error(WinSock::WSAGetLastError().0));
-        }
-        if pid != Threading::GetCurrentProcessId() {
-            return Ok(None);
+            if pid != Threading::GetCurrentProcessId() {
+                return Ok(None);
+            }
+        } else {
+            let err = WinSock::WSAGetLastError();
+            // Wine doesn't implement SIO_AF_UNIX_GETPEERPID [1], so this gets messy.
+            //
+            // Linux interprets `backlog = 0` as exactly one connection allowed [2], which produces
+            // the right semantics: since our `connect` has completed before we `accept`ed any
+            // connection, we know the client in the queue must be us. FreeBSD multiplies `backlog`
+            // by 1.5, but Sonya checked it behaves the same way for `backlog = 0`.
+            //
+            // [1]: https://bugs.winehq.org/show_bug.cgi?id=60201
+            // [2]: https://github.com/torvalds/linux/commit/64a146513f8f
+            if err != WinSock::WSAEINVAL {
+                return Err(Error::from_raw_os_error(err.0));
+            }
         }
 
         Ok(Some((TcpStream::from(client), TcpStream::from(connected))))
