@@ -131,7 +131,7 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
             //
             // [1]: https://bugs.winehq.org/show_bug.cgi?id=60201
             // [2]: https://github.com/torvalds/linux/commit/64a146513f8f
-            if err != WinSock::WSAEINVAL {
+            if err != WinSock::WSAEOPNOTSUPP {
                 return Err(Error::from_raw_os_error(err.0));
             }
         }
