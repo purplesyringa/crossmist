@@ -41,7 +41,7 @@
 //! let child = my_process.spawn_tokio().await?;
 //! ```
 
-use crate::{Deserializer, Object, StaticFn, imp, subprocess};
+use crate::{Deserializer, Object, Serializer, StaticFn, imp, subprocess};
 use std::fmt;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
@@ -50,13 +50,14 @@ use std::sync::{Arc, Mutex};
 #[cfg(unix)]
 use {
     crate::internals::{SingleObjectReceiver, SingleObjectSender, socketpair},
-    std::os::unix::io::{AsFd, AsRawFd, FromRawFd, RawFd},
+    std::os::unix::io::{AsFd, AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd},
 };
 #[cfg(windows)]
 use {
     crate::internals::{deserialize_with_handles, serialize_with_handles, socketpair},
     std::os::windows::io::{
-        AsRawHandle, AsRawSocket, AsSocket, FromRawSocket, OwnedHandle, RawSocket,
+        AsRawHandle, AsRawSocket, AsSocket, FromRawSocket, IntoRawSocket, OwnedHandle, OwnedSocket,
+        RawSocket,
     },
     windows::Win32::{Foundation::HANDLE, System::Threading},
 };
@@ -540,7 +541,9 @@ pub(crate) async unsafe fn spawn<
     unsafe {
         imp::perform_sanity_checks();
 
-        let entrypoint = |mut deserializer: Deserializer, output_tx| {
+        let entrypoint = |mut deserializer: Deserializer,
+                          #[cfg(unix)] channel: OwnedFd,
+                          #[cfg(windows)] channel: OwnedSocket| {
             // Re-read `func` so that we don't borrow anything and `entrypoint` can be converted to
             // a function pointer.
             let func = core::ptr::dangling::<Func>().read();
@@ -557,10 +560,10 @@ pub(crate) async unsafe fn spawn<
             // Even if the function was asynchronous, there shouldn't be any task running at this
             // moment, so it is fine (and more efficient) to use a sync sender
             #[cfg(unix)]
-            let mut output_tx = crate::Sender::from_raw_fd(output_tx);
+            let mut channel = crate::Sender::from_raw_fd(channel.into_raw_fd());
             #[cfg(windows)]
-            let mut output_tx = crate::Sender::from_raw_socket(output_tx);
-            output_tx
+            let mut channel = crate::Sender::from_raw_socket(channel.into_raw_socket());
+            channel
                 .send(output)
                 .expect("Failed to send subprocess output");
         };
@@ -599,11 +602,36 @@ pub(crate) async unsafe fn spawn<
 }
 
 pub(crate) fn handle_entry(
-    mut deserializer: Deserializer,
-    #[cfg(unix)] output_tx: RawFd,
-    #[cfg(windows)] output_tx: RawSocket,
+    #[cfg(unix)] channel: OwnedFd,
+    #[cfg(windows)] channel: OwnedSocket,
 ) -> ! {
+    // XXX: very hacky
+    struct FakeDeserializer(Deserializer);
+    unsafe impl Object for FakeDeserializer {
+        fn serialize_self(self, _serializer: &mut Serializer) {
+            unreachable!()
+        }
+        unsafe fn deserialize_self(deserializer: &mut Deserializer) -> Self {
+            Self(core::mem::replace(
+                deserializer,
+                Deserializer::from(Serializer::new()),
+            ))
+        }
+    }
+
+    #[cfg(unix)]
+    let mut rx = unsafe { crate::Receiver::from_raw_fd(channel.as_raw_fd()) };
+    #[cfg(windows)]
+    let mut rx = unsafe { crate::Receiver::from_raw_socket(channel.as_raw_socket()) };
+
+    let deserializer: FakeDeserializer = rx
+        .recv()
+        .expect("failed to read entry for crossmist")
+        .expect("no entry passed");
+    let mut deserializer = deserializer.0;
+    core::mem::forget(rx);
+
     let entry: StaticFn<fn(_, _)> = unsafe { deserializer.deserialize() };
-    (entry.get_fn())(deserializer, output_tx);
+    (entry.get_fn())(deserializer, channel);
     std::process::exit(0);
 }
