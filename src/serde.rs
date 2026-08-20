@@ -245,6 +245,8 @@ pub unsafe trait Object: BaseObject {
     /// Serialize a single object into a serializer.
     fn serialize_self(self, s: &mut Serializer);
     /// Serialize an array of objects into a serializer.
+    ///
+    /// Not part of the stable API.
     #[doc(hidden)]
     fn serialize_slice(elements: OwningRef<'_, [Self]>, s: &mut Serializer)
     where
@@ -272,11 +274,15 @@ pub unsafe trait Object: BaseObject {
 // can't go into the `Object` trait as a default implementation directly. Instead they're
 // blanket-implemented in a supertrait.
 pub(crate) trait BaseObject {
-    // We can't use `*mut Self` or `OwningRef<'_, Self>` as the receiver, so hack around.
+    // We can't use `*mut Self` or `OwningRef<'_, Self>` as the receiver, so we cast it to
+    // `&mut self` on the caller side and then cast it back to `OwningRef` in the implementation.
+    #[doc(hidden)]
     unsafe fn serialize_taking(&mut self, s: &mut Serializer);
     #[cfg(feature = "nightly")]
+    #[doc(hidden)]
     unsafe fn deserialize_on_heap_ptr(self: *const Self, d: &mut Deserializer) -> *mut ();
     #[cfg(not(feature = "nightly"))]
+    #[doc(hidden)]
     fn deserialize_on_heap_get(&self) -> unsafe fn(&mut Deserializer) -> *mut ();
 }
 
