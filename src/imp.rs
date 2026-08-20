@@ -1,7 +1,6 @@
 #[cfg(feature = "smol")]
 pub use async_io;
 
-use crate::{entry, subprocess};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -47,10 +46,11 @@ pub fn init() {
 
     let mut args = std::env::args();
     if args.next().as_deref() == Some("_crossmist_") {
-        entry::crossmist_main(args);
+        crate::entry::crossmist_main(args);
     }
 
-    subprocess::start_broker().expect("failed to start broker");
+    #[cfg(windows)]
+    crate::subprocess::start_broker().expect("failed to start broker");
 }
 
 #[cfg(feature = "tokio")]

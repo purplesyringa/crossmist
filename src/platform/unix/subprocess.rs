@@ -5,10 +5,6 @@ use std::ffi::CString;
 use std::io::{Error, Result};
 use std::os::unix::io::{AsRawFd, BorrowedFd};
 
-pub(crate) fn start_broker() -> Result<()> {
-    Ok(())
-}
-
 // `libc` doesn't export `environ` because POSIX says it's not part of any header:
 // https://github.com/rust-lang/libc/pull/5339#discussion_r3677981017
 unsafe extern "C" {
