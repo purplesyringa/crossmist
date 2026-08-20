@@ -796,9 +796,9 @@ macro_rules! lambda_bind {
 ///
 /// This trait is not part of the stable API provided by crossmist.
 #[cfg(feature = "nightly")]
-pub trait FnPtr: std::marker::FnPtr {}
+pub trait FnPtr: std::ops::FnPtr {}
 #[cfg(feature = "nightly")]
-impl<T: std::marker::FnPtr> FnPtr for T {}
+impl<T: std::ops::FnPtr> FnPtr for T {}
 
 #[cfg(not(feature = "nightly"))]
 mod fn_ptr_private {
@@ -808,9 +808,9 @@ mod fn_ptr_private {
 ///
 /// This trait is not part of the stable API provided by crossmist.
 #[cfg(not(feature = "nightly"))]
-pub trait FnPtr: Copy + Clone + fn_ptr_private::Sealed {
+pub trait FnPtr: Copy + fn_ptr_private::Sealed {
     /// Convert the function pointer to a type-erased pointer.
-    fn addr(self) -> *const ();
+    fn addr(self) -> usize;
 }
 
 /// A wrapper for `fn(...) -> ...` implementing `Object`.
@@ -889,7 +889,7 @@ impl<F: FnPtr> StaticFn<F> {
     /// without captures.
     pub unsafe fn new(f: F) -> Self {
         Self {
-            ptr: RelocatablePtr(f.addr()),
+            ptr: RelocatablePtr(core::ptr::without_provenance(f.addr())),
             phantom: PhantomData,
         }
     }
@@ -914,8 +914,8 @@ macro_rules! impl_fn_pointer {
             impl<Output, $([<T $tail>]),*> fn_ptr_private::Sealed for fn($([<T $tail>]),*) -> Output {}
             #[cfg(not(feature = "nightly"))]
             impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {
-                fn addr(self) -> *const () {
-                    self as *const ()
+                fn addr(self) -> usize {
+                    self as usize
                 }
             }
 
@@ -923,8 +923,8 @@ macro_rules! impl_fn_pointer {
             impl<Output, $([<T $tail>]),*> fn_ptr_private::Sealed for unsafe fn($([<T $tail>]),*) -> Output {}
             #[cfg(not(feature = "nightly"))]
             impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
-                fn addr(self) -> *const () {
-                    self as *const ()
+                fn addr(self) -> usize {
+                    self as usize
                 }
             }
 
