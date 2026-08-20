@@ -11,7 +11,7 @@ use windows::Win32::{
     Foundation::{self, HANDLE},
     Networking::WinSock,
     Security::Cryptography,
-    System::Threading,
+    System::{IO, Threading},
 };
 
 pub(crate) fn socketpair() -> Result<(TcpStream, TcpStream)> {
@@ -20,6 +20,23 @@ pub(crate) fn socketpair() -> Result<(TcpStream, TcpStream)> {
             return Ok(out);
         }
     }
+}
+
+fn new_socket() -> Result<(OwnedSocket, WinSock::SOCKET)> {
+    let socket = unsafe {
+        WinSock::WSASocketW(
+            WinSock::AF_UNIX as i32,
+            WinSock::SOCK_STREAM.0,
+            0,
+            None,
+            0,
+            WinSock::WSA_FLAG_OVERLAPPED | WinSock::WSA_FLAG_NO_HANDLE_INHERIT,
+        )
+    }?;
+    Ok((
+        unsafe { OwnedSocket::from_raw_socket(socket.0 as RawSocket) },
+        socket,
+    ))
 }
 
 pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
@@ -60,8 +77,7 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
     }
 
     unsafe {
-        let raw_server = WinSock::socket(WinSock::AF_UNIX as i32, WinSock::SOCK_STREAM, 0)?;
-        let _server = OwnedSocket::from_raw_socket(raw_server.0 as RawSocket);
+        let (_server, raw_server) = new_socket()?;
         if WinSock::bind(
             raw_server,
             (&raw const addr).cast(),
@@ -82,8 +98,7 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
             return Err(Error::from_raw_os_error(WinSock::WSAGetLastError().0));
         }
 
-        let raw_client = WinSock::socket(WinSock::AF_UNIX as i32, WinSock::SOCK_STREAM, 0)?;
-        let client = OwnedSocket::from_raw_socket(raw_client.0 as RawSocket);
+        let (client, raw_client) = new_socket()?;
         let connect_result = WinSock::connect(
             raw_client,
             (&raw const addr).cast(),
@@ -103,8 +118,51 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
             return Err(Error::from_raw_os_error(err.0));
         }
 
-        let raw_connected = WinSock::accept(raw_server, None, None)?;
-        let connected = OwnedSocket::from_raw_socket(raw_connected.0 as RawSocket);
+        // Use `AcceptEx` rather than `accept`/`WSAAccept` to atomically make the socket
+        // non-inheritable (`AcceptEx` allow accepting into an existing socket).
+        let (connected, raw_connected) = new_socket()?;
+        let mut overlapped = IO::OVERLAPPED::default();
+        // `AcceptEx` docs say we need to reserve 16 more bytes for the internal format.
+        const ADDR_SIZE: usize = size_of::<WinSock::SOCKADDR_UN>() + 16;
+        let mut addresses = [0; ADDR_SIZE * 2];
+        let mut tmp = 0;
+        if WinSock::AcceptEx(
+            raw_server,
+            raw_connected,
+            (&raw mut addresses).cast(),
+            0,
+            ADDR_SIZE as u32,
+            ADDR_SIZE as u32,
+            &raw mut tmp,
+            &raw mut overlapped,
+        ) == false
+        {
+            let err = WinSock::WSAGetLastError();
+            if err.0 != Foundation::ERROR_IO_PENDING.0 as i32 {
+                return Err(Error::from_raw_os_error(err.0));
+            }
+            let mut flags = 0;
+            WinSock::WSAGetOverlappedResult(
+                raw_server,
+                &raw const overlapped,
+                &raw mut tmp,
+                true,
+                &raw mut flags,
+            )?;
+        }
+        // Make the socket usable for all operations: https://stackoverflow.com/a/9174331/5417677
+        if WinSock::setsockopt(
+            raw_connected,
+            WinSock::SOL_SOCKET,
+            WinSock::SO_UPDATE_ACCEPT_CONTEXT,
+            Some(core::slice::from_raw_parts(
+                (&raw const raw_server).cast(),
+                size_of_val(&raw_server),
+            )),
+        ) != 0
+        {
+            return Err(Error::from_raw_os_error(WinSock::WSAGetLastError().0));
+        }
 
         // POSIX says [1] the backlog argument to `listen` is merely a hint, so even if we set the
         // smallest backlog value possible and our connection succeeds, we can't be sure that no one
