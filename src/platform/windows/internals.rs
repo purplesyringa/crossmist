@@ -77,7 +77,7 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
             }
         }
         let _guard = SockGuard(path);
-        if WinSock::listen(raw_server, 1) != 0 {
+        if WinSock::listen(raw_server, 0) != 0 {
             return Err(Error::from_raw_os_error(WinSock::WSAGetLastError().0));
         }
 
