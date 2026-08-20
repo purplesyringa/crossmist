@@ -47,6 +47,11 @@ use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
+use {
+    crate::internals::{SingleObjectReceiver, SingleObjectSender, socketpair},
+    std::os::unix::io::{AsFd, AsRawFd, FromRawFd, RawFd},
+};
 #[cfg(windows)]
 use {
     crate::internals::{deserialize_with_handles, serialize_with_handles, socketpair},
@@ -54,14 +59,6 @@ use {
         AsRawHandle, AsRawSocket, AsSocket, FromRawSocket, OwnedHandle, RawSocket,
     },
     windows::Win32::{Foundation::HANDLE, System::Threading},
-};
-#[cfg(unix)]
-use {
-    crate::{
-        Serializer,
-        internals::{SingleObjectReceiver, SingleObjectSender, socketpair},
-    },
-    std::os::unix::io::{AsFd, AsRawFd, FromRawFd, RawFd},
 };
 
 #[cfg(unix)]
@@ -575,27 +572,26 @@ pub(crate) async unsafe fn spawn<
 
         let process_handle;
 
+        // Send fds/handles/sockets via a channel instead of inheritance, because:
+        // - On Linux, the child already uses `recvmsg` to retrieve the input, so passing fds that
+        //   way is free.
+        // - On Windows, there is no good way to inherit handles without races, so we have to pass
+        //   them via the broker anyway.
         #[cfg(unix)]
         {
-            let mut s = Serializer::new();
-            s.serialize(entrypoint);
-            s.serialize(args);
-            process_handle = subprocess::_spawn_child(child, &s.fds)?;
-            let raw_fds = s.fds.iter().map(AsRawFd::as_raw_fd).collect::<Vec<_>>();
-            local.send((s.data, raw_fds)).await?;
+            process_handle = subprocess::_spawn_child(child.0.fd.as_fd())?;
         }
 
         #[cfg(windows)]
         {
-            // Windows offers no good way to inherit handles safely, so we pass them via the broker,
-            // just like when sending handles over channels.
             process_handle = subprocess::_spawn_child(child.0.fd.as_socket())?;
             // Wait for a response that the handles have been copied successfully before continuing.
             let mut signal = Receiver::<Stream, ()>::from_stream(local.fd);
             signal.recv().await?;
             local.fd = signal.fd;
-            local.send((entrypoint, args)).await?;
         }
+
+        local.send((entrypoint, args)).await?;
 
         let receiver = Receiver::from_stream(local.fd);
         Ok(Child::new(process_handle, receiver))
