@@ -1,74 +1,83 @@
-use libc::{c_char, c_int, c_void};
-use rustix::{
-    io::{FdFlags, fcntl_setfd},
-    process::Pid,
-};
-use std::ffi::{CStr, CString};
-use std::io::Result;
+use core::mem::MaybeUninit;
+use libc::c_char;
+use rustix::process::Pid;
+use std::ffi::CString;
+use std::io::{Error, Result};
 use std::os::unix::io::{AsRawFd, BorrowedFd};
 
 pub(crate) fn start_broker() -> Result<()> {
     Ok(())
 }
 
-struct CloneArg<'a> {
-    child_fd: BorrowedFd<'a>,
-    child_fd_str: &'a CStr,
+// `libc` doesn't export `environ` because POSIX says it's not part of any header:
+// https://github.com/rust-lang/libc/pull/5339#discussion_r3677981017
+unsafe extern "C" {
+    static mut environ: *mut *mut c_char;
+}
+
+fn from_errno(errno: i32) -> Result<()> {
+    if errno == 0 {
+        Ok(())
+    } else {
+        Err(Error::from_raw_os_error(errno))
+    }
+}
+
+struct FileActions(MaybeUninit<libc::posix_spawn_file_actions_t>);
+
+impl FileActions {
+    fn new() -> Result<Self> {
+        let mut file_actions = MaybeUninit::uninit();
+        from_errno(unsafe { libc::posix_spawn_file_actions_init(file_actions.as_mut_ptr()) })?;
+        Ok(Self(file_actions))
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut libc::posix_spawn_file_actions_t {
+        self.0.as_mut_ptr()
+    }
+
+    fn as_ptr(&self) -> *const libc::posix_spawn_file_actions_t {
+        self.0.as_ptr()
+    }
+}
+
+impl Drop for FileActions {
+    fn drop(&mut self) {
+        from_errno(unsafe { libc::posix_spawn_file_actions_destroy(self.0.as_mut_ptr()) })
+            .expect("posix_spawn_file_actions_destroy failed");
+    }
 }
 
 pub(crate) unsafe fn _spawn_child(child_fd: BorrowedFd<'_>) -> Result<Pid> {
-    unsafe {
-        let child_fd_str = CString::new(child_fd.as_raw_fd().to_string()).unwrap();
-        let clone_arg = CloneArg {
-            child_fd,
-            child_fd_str: &child_fd_str,
-        };
+    let mut pid = 0;
 
-        let mut stack = [0u8; 4096];
-        let result = libc::clone(
-            clone_callback,
-            stack.as_mut_ptr_range().end as *mut c_void,
-            libc::CLONE_VM | libc::CLONE_VFORK | libc::SIGCHLD,
-            &clone_arg as *const CloneArg as *mut c_void,
-        );
+    let child_fd_str = CString::new(child_fd.as_raw_fd().to_string()).unwrap();
+    let argv = [
+        c"_crossmist_".as_ptr(),
+        child_fd_str.as_ptr(),
+        core::ptr::null(),
+    ];
 
-        if result < 0 {
-            Err(std::io::Error::last_os_error())
-        } else {
-            Ok(Pid::from_raw(result as i32).unwrap())
-        }
-    }
-}
+    let mut file_actions = FileActions::new()?;
 
-// XXX: The signature of libc::clone forces this function to be safe when in reality it isn't
-// (calling it with an arbitrary arg may be unsound). libc 1.0 is going to fix that, see
-// https://github.com/rust-lang/libc/issues/2198.
-extern "C" fn clone_callback(arg: *mut c_void) -> c_int {
-    // Use abort() instead of panic!() to prevent stack unwinding, as unwinding in the fork child
-    // may free resources that would later be freed in the original process
-    match fork_child_main(unsafe { &*(arg as *mut CloneArg) }) {
-        Ok(()) => unreachable!(),
-        Err(e) => {
-            eprintln!("{e}");
-            std::process::abort();
-        }
-    }
-}
+    from_errno(unsafe {
+        libc::posix_spawn_file_actions_adddup2(
+            file_actions.as_mut_ptr(),
+            child_fd.as_raw_fd(),
+            child_fd.as_raw_fd(),
+        )
+    })?;
 
-fn fork_child_main(arg: &CloneArg) -> Result<()> {
-    // No heap allocations are allowed here.
-    fcntl_setfd(&arg.child_fd, FdFlags::empty())?;
-
-    unsafe {
-        libc::execv(
+    from_errno(unsafe {
+        libc::posix_spawn(
+            &raw mut pid,
             c"/proc/self/exe".as_ptr(),
-            &[
-                c"_crossmist_".as_ptr(),
-                arg.child_fd_str.as_ptr(),
-                std::ptr::null(),
-            ] as *const *const c_char,
-        );
-    }
+            file_actions.as_ptr(),
+            core::ptr::null(),
+            &raw const argv as *const *mut c_char,
+            environ,
+        )
+    })?;
 
-    Err(std::io::Error::last_os_error())
+    Ok(Pid::from_raw(pid).unwrap())
 }
