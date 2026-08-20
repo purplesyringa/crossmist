@@ -889,7 +889,7 @@ impl<F: FnPtr> StaticFn<F> {
     /// without captures.
     pub unsafe fn new(f: F) -> Self {
         Self {
-            ptr: RelocatablePtr(core::ptr::without_provenance(f.addr())),
+            ptr: RelocatablePtr(core::ptr::with_exposed_provenance(f.addr())),
             phantom: PhantomData,
         }
     }

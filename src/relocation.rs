@@ -22,9 +22,9 @@ unsafe impl<T> Object for RelocatablePtr<T> {
         s.serialize(self.0.addr().wrapping_sub(BASE_ADDRESS as usize));
     }
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-        // `RelocatablePtr` is used either for function pointers or `static`s. The former don't have
-        // provenance in the AM, the latter are effectively pre-exposed by the as-if rule: they are
-        // visible via FFI and there is no proof that they weren't exposed by life-before-main.
+        // `RelocatablePtr` is used for `static`s and pointers to functions present at startup. Both
+        // are effectively pre-exposed by the as-if rule: they are visible via FFI and there is no
+        // proof that they weren't exposed by life-before-main.
         unsafe {
             Self(core::ptr::with_exposed_provenance(
                 (BASE_ADDRESS as usize).wrapping_add(d.deserialize()),
