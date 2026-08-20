@@ -124,7 +124,7 @@ pub(crate) fn try_socketpair() -> Result<Option<(TcpStream, TcpStream)>> {
         let mut overlapped = IO::OVERLAPPED::default();
         // `AcceptEx` docs say we need to reserve 16 more bytes for the internal format.
         const ADDR_SIZE: usize = size_of::<WinSock::SOCKADDR_UN>() + 16;
-        let mut addresses = [0; ADDR_SIZE * 2];
+        let mut addresses = [0u8; ADDR_SIZE * 2];
         let mut tmp = 0;
         if WinSock::AcceptEx(
             raw_server,
