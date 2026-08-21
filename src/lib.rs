@@ -424,26 +424,14 @@ pub use serde::*;
 
 mod owning_ref;
 
+#[cfg_attr(unix, path = "platform/unix")]
+#[cfg_attr(windows, path = "platform/windows")]
 mod platform {
-    #[cfg_attr(feature = "nightly", doc(cfg(all())))]
-    #[cfg(unix)]
-    pub mod unix {
-        pub(crate) mod entry;
-        pub(crate) mod internals;
-        pub(crate) mod subprocess;
-    }
-    #[cfg(windows)]
-    pub mod windows {
-        pub(crate) mod entry;
-        pub(crate) mod internals;
-        pub(crate) mod subprocess;
-    }
+    pub(crate) mod entry;
+    pub(crate) mod internals;
+    pub(crate) mod subprocess;
 }
-
-#[cfg(unix)]
-pub(crate) use crate::platform::unix::*;
-#[cfg(windows)]
-pub(crate) use crate::platform::windows::*;
+pub(crate) use crate::platform::*;
 
 pub mod asynchronous;
 pub mod blocking;
