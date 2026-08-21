@@ -1,18 +1,15 @@
-use std::ffi::{OsStr, c_void};
+use std::ffi::OsStr;
 use std::io::Result;
 use std::os::windows::{
     ffi::OsStrExt,
-    io::{
-        AsRawHandle, AsRawSocket, BorrowedSocket, FromRawHandle, FromRawSocket, OwnedHandle,
-        OwnedSocket, RawHandle, RawSocket,
-    },
+    io::{AsRawHandle, AsRawSocket, BorrowedSocket, FromRawHandle, OwnedHandle, RawHandle},
 };
 use std::sync::OnceLock;
 use windows::{
-    Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation},
+    Wdk::System::Threading as NtThreading,
     Win32::{
-        Foundation::{self, HANDLE},
-        System::{Diagnostics::Debug, JobObjects, LibraryLoader, Threading},
+        Foundation,
+        System::{JobObjects, LibraryLoader, Threading},
     },
     core::{PCWSTR, PWSTR},
 };
@@ -25,16 +22,6 @@ pub(crate) struct Broker {
 }
 
 pub(crate) static HANDLE_BROKER: OnceLock<Broker> = OnceLock::new();
-
-#[derive(Clone, Copy, Default)]
-struct InitData {
-    broker_process: HANDLE,
-    broker_pid: u32,
-    broker_job: HANDLE,
-    child_socket: HANDLE,
-}
-
-static mut INIT_DATA: InitData = unsafe { core::mem::zeroed() };
 
 fn get_own_name() -> Result<Vec<u16>> {
     let mut module_name = vec![0u16; 256];
@@ -53,32 +40,31 @@ fn get_own_name() -> Result<Vec<u16>> {
     }
 }
 
-unsafe fn set_job_flags(job: RawHandle, flags: JobObjects::JOB_OBJECT_LIMIT) -> Result<()> {
+fn create_job() -> Result<OwnedHandle> {
+    let job = unsafe {
+        OwnedHandle::from_raw_handle(
+            JobObjects::CreateJobObjectW(None, PCWSTR(core::ptr::null()))?.0,
+        )
+    };
     let mut limit_info = JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-    limit_info.BasicLimitInformation.LimitFlags = flags;
+    limit_info.BasicLimitInformation.LimitFlags = JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     unsafe {
         JobObjects::SetInformationJobObject(
-            HANDLE(job),
+            Foundation::HANDLE(job.as_raw_handle()),
             JobObjects::JobObjectExtendedLimitInformation,
             (&raw const limit_info).cast(),
             size_of_val(&limit_info) as u32,
         )
     }?;
-    Ok(())
+    Ok(job)
 }
 
-fn spawn_suspended_in_job(
+fn spawn(
     cmd_line: Option<&OsStr>,
-) -> Result<(OwnedHandle, OwnedHandle, u32, OwnedHandle)> {
+    suspended: bool,
+    job: Option<&OwnedHandle>,
+) -> Result<(OwnedHandle, OwnedHandle, u32)> {
     unsafe {
-        let job = OwnedHandle::from_raw_handle(
-            JobObjects::CreateJobObjectW(None, PCWSTR(core::ptr::null()))?.0,
-        );
-        set_job_flags(
-            job.as_raw_handle(),
-            JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        )?;
-
         let n_attrs = 1;
         let mut size = 0;
         let _ = Threading::InitializeProcThreadAttributeList(None, n_attrs, None, &raw mut size); // errors by design according to MSDN
@@ -92,15 +78,17 @@ fn spawn_suspended_in_job(
             }
         }
         let _attrs_guard = AttrsGuard(attrs);
-        Threading::UpdateProcThreadAttribute(
-            attrs,
-            0,
-            Threading::PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
-            Some(&raw const job as *const c_void),
-            size_of_val(&job),
-            None,
-            None,
-        )?;
+        if let Some(job) = job {
+            Threading::UpdateProcThreadAttribute(
+                attrs,
+                0,
+                Threading::PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+                Some(core::ptr::from_ref(job).cast()),
+                size_of_val(job),
+                None,
+                None,
+            )?;
+        }
 
         let mut startup_info = Threading::STARTUPINFOEXW::default();
         startup_info.StartupInfo.cb = size_of_val(&startup_info) as u32;
@@ -123,7 +111,11 @@ fn spawn_suspended_in_job(
             None,
             None,
             false,
-            Threading::CREATE_SUSPENDED | Threading::EXTENDED_STARTUPINFO_PRESENT,
+            if suspended {
+                Threading::CREATE_SUSPENDED
+            } else {
+                Threading::PROCESS_CREATION_FLAGS(0)
+            } | Threading::EXTENDED_STARTUPINFO_PRESENT,
             None,
             None,
             (&raw const startup_info).cast(),
@@ -133,7 +125,7 @@ fn spawn_suspended_in_job(
         let thread = OwnedHandle::from_raw_handle(process_info.hThread.0);
         let pid = process_info.dwProcessId;
 
-        Ok((process, thread, pid, job))
+        Ok((process, thread, pid))
     }
 }
 
@@ -142,7 +134,8 @@ pub(crate) fn start_broker() -> Result<()> {
     // dies. The job handles acts as a keep-alive, similarly to how holding the write end of the
     // pipe keeps the reader hanging on Linux, but without wasting resources on actually populating
     // the process with an executable image.
-    let (process, _, pid, job) = spawn_suspended_in_job(None)?;
+    let job = create_job()?;
+    let (process, _, pid) = spawn(None, true, Some(&job))?;
     HANDLE_BROKER
         .set(Broker { process, pid, job })
         .ok()
@@ -150,112 +143,95 @@ pub(crate) fn start_broker() -> Result<()> {
     Ok(())
 }
 
-pub(crate) unsafe fn load_init_handles() -> OwnedSocket {
-    let init_data = unsafe { INIT_DATA };
+pub(crate) fn set_broker(process: OwnedHandle, pid: u32, job: OwnedHandle) {
     HANDLE_BROKER
-        .set(Broker {
-            process: unsafe { OwnedHandle::from_raw_handle(init_data.broker_process.0) },
-            pid: init_data.broker_pid,
-            job: unsafe { OwnedHandle::from_raw_handle(init_data.broker_job.0) },
-        })
+        .set(Broker { process, pid, job })
         .ok()
         .expect("broker already initialized");
-    unsafe { OwnedSocket::from_raw_socket(init_data.child_socket.0 as RawSocket) }
-}
-
-unsafe fn get_peb(process: RawHandle) -> Result<*const Threading::PEB> {
-    // Communicate the handles via memory injection, since we have no other way of interacting
-    // with the child process yet.
-    let mut proc = Threading::PROCESS_BASIC_INFORMATION::default();
-    unsafe {
-        NtQueryInformationProcess(
-            HANDLE(process),
-            ProcessBasicInformation,
-            (&raw mut proc).cast(),
-            // avoid `size_of_val` due to aliasing
-            size_of::<Threading::PROCESS_BASIC_INFORMATION>() as u32,
-            core::ptr::null_mut(),
-        )
-    }
-    .ok()?;
-    Ok(proc.PebBaseAddress)
 }
 
 pub(crate) unsafe fn _spawn_child<'a>(child_socket: BorrowedSocket<'a>) -> Result<OwnedHandle> {
     unsafe {
         let broker = HANDLE_BROKER.get().expect("broker not initialized");
 
-        // Create the child suspended and duplicate handles into it, since using normal handle
-        // inheritance is broken [1], and setting a custom parent [2] is broken on Wine and requires
-        // spawning another process.
+        // Using normal handle inheritance is broken [1], and setting a custom parent [2] is broken
+        // on Wine and requires spawning another process, so let the child steal handles from us.
         // [1]: https://github.com/rust-lang/rust/issues/161158
         // [2]: https://devblogs.microsoft.com/oldnewthing/20260511-00/?p=112313
+        let seqnum = get_sequence_number(Threading::GetCurrentProcess().0)?;
+        let cmd_line = format!(
+            "_crossmist_ {} {} {} {} {} {}\0",
+            Threading::GetCurrentProcessId(),
+            seqnum,
+            broker.process.as_raw_handle().addr(),
+            broker.job.as_raw_handle().addr(),
+            child_socket.as_raw_socket(),
+            broker.pid,
+        );
 
-        // Create the child in a (temporarily) kill-on-close job so that it doesn't remain in a coma
-        // if we die before completing the startup.
-        let (process, thread, _, job) = spawn_suspended_in_job(Some(OsStr::new("_crossmist_")))?;
-
-        let mut init_data = InitData {
-            broker_pid: broker.pid,
-            ..Default::default()
-        };
-        for (handle, remote_handle) in [
-            (
-                broker.process.as_raw_handle(),
-                &mut init_data.broker_process,
-            ),
-            (broker.job.as_raw_handle(), &mut init_data.broker_job),
-            // Sockets can be duplicated as handles in most cases, see internals.rs.
-            (
-                child_socket.as_raw_socket() as RawHandle,
-                &mut init_data.child_socket,
-            ),
-        ] {
-            Foundation::DuplicateHandle(
-                Threading::GetCurrentProcess(),
-                HANDLE(handle),
-                HANDLE(process.as_raw_handle()),
-                remote_handle,
-                0,
-                false,
-                Foundation::DUPLICATE_SAME_ACCESS,
-            )?;
-        }
-
-        // Communicate the handles via memory injection, since we have no other way of interacting
-        // with the child process yet.
-        let peb = get_peb(Threading::GetCurrentProcess().0)?;
-        let image_base_address = (*peb).Reserved3[1].addr();
-        let remote_peb = get_peb(process.as_raw_handle())?;
-        let mut remote_image_base_address = 0usize;
-        Debug::ReadProcessMemory(
-            HANDLE(process.as_raw_handle()),
-            (&raw const (*remote_peb).Reserved3[1]).cast(),
-            (&raw mut remote_image_base_address).cast(),
-            size_of::<usize>(), // avoid `size_of_val` due to aliasing
-            None,
-        )?;
-        let offset = remote_image_base_address.wrapping_sub(image_base_address);
-        let remote_init_data = (&raw mut INIT_DATA).byte_add(offset);
-        Debug::WriteProcessMemory(
-            HANDLE(process.as_raw_handle()),
-            remote_init_data.cast(),
-            (&raw const init_data).cast(),
-            size_of_val(&init_data),
-            None,
-        )?;
-
-        if Threading::ResumeThread(HANDLE(thread.as_raw_handle())) == u32::MAX {
-            return Err(std::io::Error::last_os_error());
-        }
-
-        // Drop kill-on-close to let the process live independently from us, and also let it break
-        // away to avoid heavily nested jobs.
-        set_job_flags(
-            job.as_raw_handle(),
-            JobObjects::JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
-        )?;
-
+        let (process, _, _) = spawn(Some(OsStr::new(&cmd_line)), false, None)?;
         Ok(process)
     }
+}
+
+pub(crate) unsafe fn get_sequence_number(process: RawHandle) -> Result<u64> {
+    #[allow(nonstandard_style)]
+    let ProcessSequenceNumber = NtThreading::PROCESSINFOCLASS(92);
+
+    let mut seqnum = 0u64;
+    if unsafe {
+        NtThreading::NtQueryInformationProcess(
+            Foundation::HANDLE(process),
+            ProcessSequenceNumber,
+            (&raw mut seqnum).cast(),
+            size_of::<u64>() as u32,
+            core::ptr::null_mut(),
+        )
+    }
+    .is_ok()
+    {
+        return Ok(seqnum);
+    }
+
+    // ProcessSequenceNumber doesn't seem to work in WoW64 programs, but
+    // ProcessTelemetryIdInformation still works.
+    // https://learn.microsoft.com/en-us/windows/win32/devnotes/process_telemetry_id_information_type
+    #[allow(nonstandard_style, unused)]
+    #[derive(Default)]
+    #[repr(C)]
+    struct PROCESS_TELEMETRY_ID_INFORMATION {
+        HeaderSize: u32,
+        ProcessId: u32,
+        ProcessStartKey: u64,
+        CreateTime: u64,
+        CreateInterruptTime: u64,
+        CreateUnbiasedInterruptTime: u64,
+        ProcessSequenceNumber: u64,
+        SessionCreateTime: u64,
+        SessionId: u32,
+        BootId: u32,
+        ImageChecksum: u32,
+        ImageTimeDateStamp: u32,
+        UserSidOffset: u32,
+        ImagePathOffset: u32,
+        PackageNameOffset: u32,
+        RelativeAppNameOffset: u32,
+        CommandLineOffset: u32,
+    }
+    let mut telemetry = PROCESS_TELEMETRY_ID_INFORMATION::default();
+    let res = unsafe {
+        NtThreading::NtQueryInformationProcess(
+            Foundation::HANDLE(process),
+            NtThreading::ProcessTelemetryIdInformation,
+            (&raw mut telemetry).cast(),
+            size_of::<PROCESS_TELEMETRY_ID_INFORMATION>() as u32,
+            core::ptr::null_mut(),
+        )
+    };
+    // The definition of `PROCESS_TELEMETRY_ID_INFORMATION` in devnotes seems to be incomplete, make
+    // sure to allow truncated data.
+    if res != Foundation::STATUS_BUFFER_OVERFLOW {
+        res.ok()?;
+    }
+    Ok(telemetry.ProcessSequenceNumber)
 }
