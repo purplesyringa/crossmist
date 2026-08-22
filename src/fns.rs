@@ -424,45 +424,19 @@ impl<Args: Tuple, T: Object + std::ops::Fn<Args>> FnObject<Args> for T {
     }
 }
 
-#[doc(hidden)]
-pub trait BindValue<Head: Object, Tail>: Object + Sized {
-    fn bind_value(self, head: Head) -> BoundValue<Self, Head>;
-}
-#[doc(hidden)]
-pub trait BindMut<Head: Object, Tail>: Object + Sized {
-    fn bind_mut(self, head: Head) -> BoundMut<Self, Head>;
-}
-#[doc(hidden)]
-pub trait BindRef<Head: Object, Tail>: Object + Sized {
-    fn bind_ref(self, head: Head) -> BoundRef<Self, Head>;
-}
-
 #[allow(missing_debug_implementations)]
 #[doc(hidden)]
 #[derive(Object)]
-pub struct BoundValue<Func: Object, Head: Object> {
+pub struct Bound<Func: Object, ByValue: Object, ByRef: Object, ByRefMut: Object> {
     pub func: Func,
-    pub head: Head,
-}
-#[allow(missing_debug_implementations)]
-#[doc(hidden)]
-#[derive(Object)]
-pub struct BoundMut<Func: Object, Head: Object> {
-    pub func: Func,
-    pub head: Head,
-}
-#[allow(missing_debug_implementations)]
-#[doc(hidden)]
-#[derive(Object)]
-pub struct BoundRef<Func: Object, Head: Object> {
-    pub func: Func,
-    pub head: Head,
+    pub by_value: ByValue,
+    pub by_ref: ByRef,
+    pub by_ref_mut: ByRefMut,
 }
 
 macro_rules! reverse {
     ([$($acc:tt)*]) => { ($($acc)*) };
-    ([$($acc:tt)*] $single:tt) => { reverse!([$single, $($acc)*]) };
-    ([$($acc:tt)*] $head:tt, $($tail:tt),*) => { reverse!([$head, $($acc)*] $($tail),*) };
+    ([$($acc:tt)*] $head:tt $($tail:tt)*) => { reverse!([$head, $($acc)*] $($tail)*) };
 }
 
 macro_rules! decl_fn {
@@ -472,94 +446,34 @@ macro_rules! decl_fn {
         decl_fn!($($tail)*);
 
         paste! {
-            impl<[<T $head>]: Object $(, [<T $tail>])*, Func: FnOnceObject<([<T $head>], $([<T $tail>]),*)>> BindValue<[<T $head>], ($([<T $tail>],)*)> for Func {
-                fn bind_value(self, head: [<T $head>]) -> BoundValue<Self, [<T $head>]> {
-                    BoundValue {
-                        func: self,
-                        head,
-                    }
-                }
-            }
-            impl<'a, [<T $head>]: 'a + Object $(, [<T $tail>])*, Func: FnOnceObject<(&'a mut [<T $head>], $([<T $tail>]),*)>> BindMut<[<T $head>], ($([<T $tail>],)*)> for Func {
-                fn bind_mut(self, head: [<T $head>]) -> BoundMut<Self, [<T $head>]> {
-                    BoundMut {
-                        func: self,
-                        head,
-                    }
-                }
-            }
-            impl<'a, [<T $head>]: 'a + Object $(, [<T $tail>])*, Func: FnOnceObject<(&'a [<T $head>], $([<T $tail>]),*)>> BindRef<[<T $head>], ($([<T $tail>],)*)> for Func {
-                fn bind_ref(self, head: [<T $head>]) -> BoundRef<Self, [<T $head>]> {
-                    BoundRef {
-                        func: self,
-                        head,
-                    }
+            impl_fn! {
+                impl[ByValue: Object, ByRef: Object, ByRefMut: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(ByValue, &'a ByRef, &'a mut ByRefMut, $([<T $tail>]),*), Output = Output>] FnOnce<($([<T $tail>],)*), Output = Output> for Bound<Func, ByValue, ByRef, ByRefMut> =
+                #[allow(unused_variables)]
+                |self, args| {
+                    self.func.call_object_once(reverse!([] $((args.$tail))* (&mut self.by_ref_mut) (&self.by_ref) (self.by_value)))
                 }
             }
 
             impl_fn! {
-                impl[[<T $head>]: Object $(, [<T $tail>])*, Func: FnOnceObject<([<T $head>], $([<T $tail>]),*)>] FnOnce<($([<T $tail>],)*), Output = Func::Output> for BoundValue<Func, [<T $head>]> =
+                impl[ByValue: Copy + Object, ByRef: Object, ByRefMut: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(ByValue, &'a ByRef, &'a mut ByRefMut, $([<T $tail>]),*), Output = Output>] FnMut<($([<T $tail>],)*)> for Bound<Func, ByValue, ByRef, ByRefMut> =
                 #[allow(unused_variables)]
                 |self, args| {
-                    self.func.call_object_once(reverse!([] $((args.$tail),)* (self.head)))
-                }
-            }
-            impl_fn! {
-                impl[[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: FnMutObject<([<T $head>], $([<T $tail>]),*)>] FnMut<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> =
-                #[allow(unused_variables)]
-                |self, args| {
-                    self.func.call_object_mut(reverse!([] $((args.$tail),)* (self.head)))
-                }
-            }
-            impl_fn! {
-                impl[[<T $head>]: Copy + Object $(, [<T $tail>])*, Func: FnObject<([<T $head>], $([<T $tail>]),*)>] Fn<($([<T $tail>],)*)> for BoundValue<Func, [<T $head>]> =
-                #[allow(unused_variables)]
-                |self, args| {
-                    self.func.call_object(reverse!([] $((args.$tail),)* (self.head)))
+                    self.func.call_object_mut(reverse!([] $((args.$tail))* (&mut self.by_ref_mut) (&self.by_ref) (self.by_value)))
                 }
             }
 
             impl_fn! {
-                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output>] FnOnce<($([<T $tail>],)*), Output = Output> for BoundMut<Func, [<T $head>]> =
+                impl[ByValue: Copy + Object, ByRef: Object $(, [<T $tail>])*, Output, Func: for<'a> FnObject<(ByValue, &'a ByRef, &'a mut (), $([<T $tail>]),*), Output = Output>] Fn<($([<T $tail>],)*)> for Bound<Func, ByValue, ByRef, ()> =
                 #[allow(unused_variables)]
                 |self, args| {
-                    self.func.call_object_once(reverse!([] $((args.$tail),)* (&mut self.head)))
-                }
-            }
-            impl_fn! {
-                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(&'a mut [<T $head>], $([<T $tail>]),*), Output = Output>] FnMut<($([<T $tail>],)*)> for BoundMut<Func, [<T $head>]> =
-                #[allow(unused_variables)]
-                |self, args| {
-                    self.func.call_object_mut(reverse!([] $((args.$tail),)* (&mut self.head)))
-                }
-            }
-
-            impl_fn! {
-                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnOnceObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>] FnOnce<($([<T $tail>],)*), Output = Output> for BoundRef<Func, [<T $head>]> =
-                #[allow(unused_variables)]
-                |self, args| {
-                    self.func.call_object_once(reverse!([] $((args.$tail),)* (&self.head)))
-                }
-            }
-            impl_fn! {
-                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnMutObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>] FnMut<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> =
-                #[allow(unused_variables)]
-                |self, args| {
-                    self.func.call_object_mut(reverse!([] $((args.$tail),)* (&self.head)))
-                }
-            }
-            impl_fn! {
-                impl[[<T $head>]: Object $(, [<T $tail>])*, Output, Func: for<'a> FnObject<(&'a [<T $head>], $([<T $tail>]),*), Output = Output>] Fn<($([<T $tail>],)*)> for BoundRef<Func, [<T $head>]> =
-                #[allow(unused_variables)]
-                |self, args| {
-                    self.func.call_object(reverse!([] $((args.$tail),)* (&self.head)))
+                    self.func.call_object(reverse!([] $((args.$tail))* (&mut ()) (&self.by_ref) (self.by_value)))
                 }
             }
         }
     }
 }
 
-decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
+decl_fn!(x 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 
 /// Metaprogramming on `fn(...) -> ...` types.
 ///

@@ -233,6 +233,7 @@ struct ExplicitCapture {
     by_ref: Option<syn::Token![ref]>,
     mutability: Option<syn::Token![mut]>,
     ident: syn::Ident,
+    #[allow(unused)]
     colon_token: syn::Token![:],
     ty: syn::Type,
 }
@@ -280,42 +281,73 @@ impl Parse for ExplicitCapture {
 #[proc_macro]
 pub fn lambda(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ExplicitlyCapturingClosure);
+    let has_captures = input.captures.is_some();
 
-    let mut bound_args = Vec::new();
-    let mut binds = Vec::new();
+    let mut captured_by_value_idents = Vec::new();
+    let mut captured_by_value_types = Vec::new();
+    let mut captured_by_ref_idents = Vec::new();
+    let mut captured_by_ref_types = Vec::new();
+    let mut captured_by_ref_mut_idents = Vec::new();
+    let mut captured_by_ref_mut_types = Vec::new();
     if let Some(ExplicitCaptures { captures, .. }) = input.captures {
         for capture in captures {
-            let ident = capture.ident;
-            let colon = capture.colon_token;
-            let ty = capture.ty;
-            if capture.by_ref.is_none() {
-                bound_args.push(quote! { #ident #colon #ty, });
-                binds.push(quote! { .bind_value(#ident) });
+            let (idents, types) = if capture.by_ref.is_none() {
+                (&mut captured_by_value_idents, &mut captured_by_value_types)
             } else if capture.mutability.is_none() {
-                bound_args.push(quote! { #ident #colon &#ty, });
-                binds.push(quote! { .bind_ref(#ident) });
+                (&mut captured_by_ref_idents, &mut captured_by_ref_types)
             } else {
-                bound_args.push(quote! { #ident #colon &mut #ty, });
-                binds.push(quote! { .bind_mut(#ident) });
-            }
+                (
+                    &mut captured_by_ref_mut_idents,
+                    &mut captured_by_ref_mut_types,
+                )
+            };
+            idents.push(capture.ident);
+            types.push(capture.ty);
         }
     }
 
     let inputs = input.closure.inputs;
     let output = input.closure.output;
     let body = input.closure.body;
+
+    if !has_captures {
+        return quote! {
+            {
+                #[::crossmist::func]
+                fn _unnamed(#inputs) #output {
+                    // create a closure for `unused_braces` lint to work correctly
+                    (move || #body)()
+                }
+                Box::new(_unnamed)
+            }
+        }
+        .into();
+    }
+
     quote! {
         {
             #[::crossmist::func]
-            fn _unnamed(#(#bound_args)* #inputs) #output {
+            fn _unnamed(
+                _by_value: (#(#captured_by_value_types,)*),
+                _by_ref: &(#(#captured_by_ref_types,)*),
+                _by_ref_mut: &mut (#(#captured_by_ref_mut_types,)*),
+                #inputs
+            ) #output {
+                // TODO: inline into the signature once `#[crossmist::func]` supports that
+                let (#(#captured_by_value_idents,)*) = _by_value;
+                let (#(#captured_by_ref_idents,)*) = _by_ref;
+                let (#(#captured_by_ref_mut_idents,)*) = _by_ref_mut;
                 // create a closure for `unused_braces` lint to work correctly
                 (move || #body)()
             }
-            {
-                #[allow(unused)]
-                use ::crossmist::{BindValue, BindMut, BindRef};
-                ::std::boxed::Box::new(_unnamed #(#binds)*)
-            }
+            ::std::boxed::Box::new(
+                ::crossmist::Bound {
+                    func: _unnamed,
+                    by_value: (#(#captured_by_value_idents,)*),
+                    by_ref: (#(#captured_by_ref_idents,)*),
+                    by_ref_mut: (#(#captured_by_ref_mut_idents,)*),
+                },
+            )
         }
     }
     .into()
