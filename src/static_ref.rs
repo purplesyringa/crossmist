@@ -88,7 +88,7 @@ use std::ops::Deref;
 /// ```
 #[derive(Object)]
 #[crossmist(bound = "")]
-pub struct StaticRef<T: 'static> {
+pub struct StaticRef<T> {
     ptr: RelocatablePtr<T>,
 }
 
@@ -141,14 +141,15 @@ impl<T> StaticRef<T> {
 
 impl<T: fmt::Debug> fmt::Debug for StaticRef<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:?}", self.get())
+        write!(fmt, "{:?}", **self)
     }
 }
 
 impl<T> Deref for StaticRef<T> {
     type Target = T;
     fn deref(&self) -> &T {
-        self.get()
+        // Don't call `self.get()` here so that we don't have to add `T: 'static`
+        unsafe { &*self.ptr.0 }
     }
 }
 
