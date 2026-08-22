@@ -43,7 +43,7 @@ impl Parse for ExplicitCaptures {
         Ok(Self {
             move_token: input.parse()?,
             paren_token: parenthesized!(captures in input),
-            captures: captures.parse_terminated(ExplicitCapture::parse)?,
+            captures: captures.parse_terminated(ExplicitCapture::parse, Token![,])?,
         })
     }
 }

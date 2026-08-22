@@ -14,5 +14,5 @@ categories = ["asynchronous", "concurrency"]
 proc-macro = true
 
 [dependencies]
-syn = { version = "1.0.89", features = ["full"] }
+syn = { version = "3.0.3", features = ["full"] }
 quote = "1.0.16"

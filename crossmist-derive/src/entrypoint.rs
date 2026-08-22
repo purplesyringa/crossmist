@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::{
-    FnArg, GenericParam, Index, ItemFn, Meta, MetaList, Pat, ReturnType, Token, VisPublic,
-    Visibility, parse_macro_input, punctuated::Punctuated, spanned::Spanned,
+    FnArg, GenericParam, Index, ItemFn, Meta, MetaList, Pat, ReturnType, Token, Visibility,
+    parse_macro_input, punctuated::Punctuated, spanned::Spanned,
 };
 
 pub fn entrypoint(meta: TokenStream, input: TokenStream) -> TokenStream {
@@ -48,9 +48,7 @@ pub fn entrypoint(meta: TokenStream, input: TokenStream) -> TokenStream {
     input.sig.ident = format_ident!("invoke");
 
     let vis = input.vis;
-    input.vis = Visibility::Public(VisPublic {
-        pub_token: <Token![pub] as Default>::default(),
-    });
+    input.vis = Visibility::Public(Default::default());
 
     let fn_args = &input.sig.inputs;
 
@@ -78,7 +76,7 @@ pub fn entrypoint(meta: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(arg) = tokio_argument {
         let async_attribute = match arg {
             Meta::Path(_) => quote! { #[tokio::main] },
-            Meta::List(MetaList { nested, .. }) => quote! { #[tokio::main(#nested)] },
+            Meta::List(MetaList { tokens, .. }) => quote! { #[tokio::main(#tokens)] },
             Meta::NameValue(..) => {
                 return quote_spanned! { arg.span() => compile_error!("Invalid syntax for 'tokio' argument"); }.into();
             }
