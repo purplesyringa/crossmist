@@ -72,30 +72,19 @@ pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let expanded = quote! {
-        impl #generic_params ::crossmist::InternalFnOnce<(#(#fn_types,)*)> for #type_ident {
-            type Output = #return_type_wrapped;
-            fn call_object_once(self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::invoke::#generics(#(#args_from_tuple,)*))
-            }
-        }
-        impl #generic_params ::crossmist::InternalFnMut<(#(#fn_types,)*)> for #type_ident {
-            fn call_object_mut(&mut self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::invoke::#generics(#(#args_from_tuple,)*))
-            }
-        }
-        impl #generic_params ::crossmist::InternalFn<(#(#fn_types,)*)> for #type_ident {
-            fn call_object(&self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::invoke::#generics(#(#args_from_tuple,)*))
-            }
-        }
-
         #[allow(non_camel_case_types)]
         #[derive(::crossmist::Object)]
         #vis struct #type_ident;
 
-        #[allow(unused_mut)]
         impl #type_ident {
             #input
+        }
+
+        impl #generic_params ::crossmist::FnItem<(#(#fn_types,)*)> for #type_ident {
+            type Output = #return_type_wrapped;
+            fn call(&self, args: (#(#fn_types,)*)) -> Self::Output {
+                #pin(Self::invoke::#generics(#(#args_from_tuple,)*))
+            }
         }
 
         #[allow(non_upper_case_globals)]

@@ -72,7 +72,6 @@
 use crate::{Object, relocation::RelocatablePtr};
 use paste::paste;
 use std::marker::PhantomData;
-use std::ops::Deref;
 
 macro_rules! impl_fn {
     (
@@ -188,42 +187,25 @@ macro_rules! decl_tuple {
 #[cfg(not(feature = "nightly"))]
 decl_tuple!(x T20 T19 T18 T17 T16 T15 T14 T13 T12 T11 T10 T9 T8 T7 T6 T5 T4 T3 T2 T1 T0);
 
-impl<T: Object> Deref for CallWrapper<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
 #[doc(hidden)]
-pub trait InternalFnOnce<Args>: Object {
+pub trait FnItem<Args>: Object {
     type Output;
-    fn call_object_once(self, args: Args) -> Self::Output;
+    fn call(&self, args: Args) -> Self::Output;
 }
 impl_fn! {
-    impl[Args: Tuple, T: InternalFnOnce<Args>] FnOnce<Args, Output = T::Output> for CallWrapper<T> =
+    impl[Args: Tuple, T: FnItem<Args>] FnOnce<Args, Output = T::Output> for CallWrapper<T> =
     |self, args| {
-        self.0.call_object_once(args)
+        self.0.call(args)
     }
 }
-
-#[doc(hidden)]
-pub trait InternalFnMut<Args>: InternalFnOnce<Args> {
-    fn call_object_mut(&mut self, args: Args) -> Self::Output;
-}
 impl_fn! {
-    impl[Args: Tuple, T: InternalFnMut<Args>] FnMut<Args> for CallWrapper<T> = |self, args| {
-        self.0.call_object_mut(args)
+    impl[Args: Tuple, T: FnItem<Args>] FnMut<Args> for CallWrapper<T> = |self, args| {
+        self.0.call(args)
     }
 }
-
-#[doc(hidden)]
-pub trait InternalFn<Args>: InternalFnMut<Args> {
-    fn call_object(&self, args: Args) -> Self::Output;
-}
 impl_fn! {
-    impl[Args: Tuple, T: InternalFn<Args>] Fn<Args> for CallWrapper<T> = |self, args| {
-        self.0.call_object(args)
+    impl[Args: Tuple, T: FnItem<Args>] Fn<Args> for CallWrapper<T> = |self, args| {
+        self.0.call(args)
     }
 }
 
