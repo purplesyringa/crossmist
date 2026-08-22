@@ -464,7 +464,8 @@ pub use crossmist_derive::func;
 /// Enable a `struct` or an `enum` to be sent across processes.
 ///
 /// [`Object`] can be implemented if all fields of the `struct`/`enum` implement [`Object`]. For
-/// generic definitions, [`Object`] bounds are automatically added for all generic parameters:
+/// generic definitions, [`Object`] bounds are automatically added for all generic parameters, so
+/// you don't need to add them on the type itself:
 ///
 /// ```rust
 /// # use crossmist::Object;
