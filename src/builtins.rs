@@ -34,6 +34,7 @@ macro_rules! impl_pod {
     };
 }
 
+impl_pod!(for ());
 impl_pod!(for bool);
 impl_pod!(for char);
 impl_pod!([T] for std::marker::PhantomData<T>);
@@ -141,9 +142,9 @@ unsafe impl<T: Object> Object for (T,) {
 }
 
 macro_rules! impl_tuple {
-    () => {};
+    ($head:tt) => {};
 
-    ($head:tt $($tail:tt)*) => {
+    ($head:tt $($tail:tt)+) => {
         impl_tuple!($($tail)*);
 
         paste! {
