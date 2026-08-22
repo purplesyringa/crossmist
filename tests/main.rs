@@ -1,6 +1,5 @@
 use crossmist::{
-    BindValue, Duplex, FnOnceObject, Object, Receiver, Sender, StaticRef, channel, duplex,
-    static_ref,
+    Duplex, FnOnceObject, Object, Receiver, Sender, StaticRef, channel, duplex, static_ref,
 };
 
 mod testing;
@@ -193,9 +192,14 @@ fn with_passed_bound_fn() {
             func.call_object_once((7,))
         }
     }
+    let x = 5;
     assert_eq!(
         inner
-            .spawn(Box::new(add_with_arguments_impl.bind_value(5)))
+            .spawn(crossmist::lambda! {
+                move(x: i32) |y: i32| -> i32 {
+                    add_with_arguments_impl.call_object_once((x, y))
+                }
+            })
             .unwrap()
             .join()
             .unwrap(),
@@ -216,11 +220,15 @@ fn with_passed_double_bound_fn() {
             func.call_object_once(())
         }
     }
+    let x = 5;
+    let y = 7;
     assert_eq!(
         inner
-            .spawn(Box::new(
-                add_with_arguments_impl.bind_value(5).bind_value(7)
-            ))
+            .spawn(crossmist::lambda! {
+                move(x: i32, y: i32) || -> i32 {
+                    add_with_arguments_impl.call_object_once((x, y))
+                }
+            })
             .unwrap()
             .join()
             .unwrap(),

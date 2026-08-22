@@ -67,28 +67,7 @@
 //! `x` into the lambda.
 //!
 //! Under the hood, the macro uses currying, replacing `|y| x + y` with `|x, y| x + y` with a
-//! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`:
-//!
-//! ```standalone_crate
-//! use crossmist::{BindValue, FnObject};
-//!
-//! fn main() {
-//!     crossmist::init();
-//!
-//!     #[crossmist::func]
-//!     fn add(x: i32, y: i32) -> i32 {
-//!         x + y
-//!     }
-//!
-//!     let x = 7;
-//!     println!("{}", go.run(5, Box::new(add.bind_value(x))).unwrap());
-//! }
-//!
-//! #[crossmist::func]
-//! fn go(x: i32, f: Box<dyn FnObject<(i32,), Output = i32>>) -> i32 {
-//!     f.call_object((x,))
-//! }
-//! ```
+//! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`.
 
 use crate::{Object, relocation::RelocatablePtr};
 use paste::paste;
