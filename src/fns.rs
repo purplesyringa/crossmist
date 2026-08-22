@@ -31,7 +31,7 @@
 //! fn main() {
 //!     crossmist::init();
 //!     let x = 7;
-//!     println!("{}", go.run(5, lambda! { move(x) |y| x + y }).unwrap());
+//!     println!("{}", go.run(5, lambda! { move(ref x) |y| x + y }).unwrap());
 //! }
 //!
 //! #[crossmist::entrypoint]
@@ -417,7 +417,7 @@ impl_fn! {
 }
 
 impl_fn! {
-    impl[ByValue: Copy + Object, ByRef: Object, ByRefMut: Object, Args: Tuple, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, Args) -> Output] FnMut<Args> for Closure<Func, ByValue, ByRef, ByRefMut> =
+    impl[ByRef: Object, ByRefMut: Object, Args: Tuple, Output, Func: for<'a> Fn((), &'a ByRef, &'a mut ByRefMut, Args) -> Output] FnMut<Args> for Closure<Func, (), ByRef, ByRefMut> =
     #[allow(unused_variables)]
     |self, args| {
         (self.conjure())(self.by_value, &self.by_ref, &mut self.by_ref_mut, args)
@@ -425,7 +425,7 @@ impl_fn! {
 }
 
 impl_fn! {
-    impl[ByValue: Copy + Object, ByRef: Object, Args: Tuple, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut (), Args) -> Output] Fn<Args> for Closure<Func, ByValue, ByRef, ()> =
+    impl[ByRef: Object, Args: Tuple, Output, Func: for<'a> Fn((), &'a ByRef, &'a mut (), Args) -> Output] Fn<Args> for Closure<Func, (), ByRef, ()> =
     #[allow(unused_variables)]
     |self, args| {
         (self.conjure())(self.by_value, &self.by_ref, &mut (), args)

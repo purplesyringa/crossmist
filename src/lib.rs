@@ -399,7 +399,7 @@ pub use crossmist_derive::entrypoint;
 ///     crossmist::init();
 ///     let a = 5;
 ///     let func = lambda! { move(a) |b| a + b };
-///     assert_eq!(func.call_object((7,)), 12);
+///     assert_eq!(func.call_object_once((7,)), 12);
 /// }
 /// ```
 ///
