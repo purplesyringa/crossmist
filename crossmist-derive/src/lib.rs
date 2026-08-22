@@ -3,6 +3,7 @@ extern crate quote;
 
 use proc_macro::TokenStream;
 use quote::ToTokens;
+use syn::parse::{Parse, ParseStream};
 use syn::parse_macro_input;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -214,6 +215,110 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+struct ExplicitlyCapturingClosure {
+    captures: Option<ExplicitCaptures>,
+    closure: syn::ExprClosure,
+}
+
+#[allow(dead_code)]
+struct ExplicitCaptures {
+    move_token: syn::Token![move],
+    paren_token: syn::token::Paren,
+    captures: Punctuated<ExplicitCapture, syn::Token![,]>,
+}
+
+struct ExplicitCapture {
+    by_ref: Option<syn::Token![ref]>,
+    mutability: Option<syn::Token![mut]>,
+    ident: syn::Ident,
+    colon_token: syn::Token![:],
+    ty: syn::Type,
+}
+
+impl Parse for ExplicitlyCapturingClosure {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut captures = None;
+        if input.peek(syn::Token![move]) {
+            captures = Some(input.parse()?);
+        }
+        let closure = input.parse()?;
+        Ok(Self { captures, closure })
+    }
+}
+
+impl Parse for ExplicitCaptures {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let captures;
+        Ok(Self {
+            move_token: input.parse()?,
+            paren_token: syn::parenthesized!(captures in input),
+            captures: captures.parse_terminated(ExplicitCapture::parse)?,
+        })
+    }
+}
+
+impl Parse for ExplicitCapture {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let by_ref: Option<syn::Token![ref]> = input.parse()?;
+        let mutability = if by_ref.is_some() {
+            input.parse()?
+        } else {
+            None
+        };
+        Ok(Self {
+            by_ref,
+            mutability,
+            ident: input.parse()?,
+            colon_token: input.parse()?,
+            ty: input.parse()?,
+        })
+    }
+}
+
+#[proc_macro]
+pub fn lambda(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as ExplicitlyCapturingClosure);
+
+    let mut bound_args = Vec::new();
+    let mut binds = Vec::new();
+    if let Some(ExplicitCaptures { captures, .. }) = input.captures {
+        for capture in captures {
+            let ident = capture.ident;
+            let colon = capture.colon_token;
+            let ty = capture.ty;
+            if capture.by_ref.is_none() {
+                bound_args.push(quote! { #ident #colon #ty, });
+                binds.push(quote! { .bind_value(#ident) });
+            } else if capture.mutability.is_none() {
+                bound_args.push(quote! { #ident #colon &#ty, });
+                binds.push(quote! { .bind_ref(#ident) });
+            } else {
+                bound_args.push(quote! { #ident #colon &mut #ty, });
+                binds.push(quote! { .bind_mut(#ident) });
+            }
+        }
+    }
+
+    let inputs = input.closure.inputs;
+    let output = input.closure.output;
+    let body = input.closure.body;
+    quote! {
+        {
+            #[::crossmist::func]
+            fn _unnamed(#(#bound_args)* #inputs) #output {
+                // create a closure for `unused_braces` lint to work correctly
+                (move || #body)()
+            }
+            {
+                #[allow(unused)]
+                use ::crossmist::{BindValue, BindMut, BindRef};
+                ::std::boxed::Box::new(_unnamed #(#binds)*)
+            }
+        }
+    }
+    .into()
 }
 
 #[proc_macro_derive(Object)]
