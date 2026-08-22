@@ -1,91 +1,76 @@
-//! Serializing references to constant objects.
-//!
-//! Serializing objects that are already present in each process in a `static` is wasteful. For
-//! example, if you store a list of "actions" subprocesses may perform in a `static` array, you
-//! likely want to send across references to the actions instead of deserializing them and dealing
-//! with temporary lifetimes.
-//!
-//! [`StaticRef`] is similar to `&'static T`, but implements [`Object`] by serializing a pointer. It
-//! can be created from a constant value of type `T` with [`static_ref!`] and sent over:
-//!
-//! ```standalone_crate
-//! use crossmist::{StaticRef, static_ref};
-//!
-//! struct Configuration {
-//!     meows: bool,
-//!     woofs: bool,
-//! }
-//!
-//! const CAT: Configuration = Configuration { meows: true, woofs: false };
-//! const DOG: Configuration = Configuration { meows: false, woofs: true };
-//!
-//! fn main() {
-//!     crossmist::init();
-//!     test.run(static_ref!(CAT)); // sends a referene to an anonymous `static` with value `CAT`
-//! }
-//!
-//! #[crossmist::entrypoint]
-//! fn test(conf: StaticRef<Configuration>) {
-//!     assert_eq!(conf.meows, true);
-//!     assert_eq!(conf.woofs, false);
-//! }
-//! ```
-//!
-//! Here's a more complicated example featuring `StaticRef<&'static dyn Trait>` (similar to
-//! `&'static &'static dyn Trait`). The double indirection is required because [`StaticRef`] can
-//! only reference sized values, and `dyn Trait` is unsized.
-//!
-//! ```standalone_crate
-//! use crossmist::{StaticRef, static_ref};
-//!
-//! trait Speak {
-//!     fn speak(&self) -> String;
-//! }
-//!
-//! struct Cat;
-//! impl Speak for Cat {
-//!     fn speak(&self) -> String {
-//!         "Meow!".to_string()
-//!     }
-//! }
-//!
-//! struct Dog;
-//! impl Speak for Dog {
-//!     fn speak(&self) -> String {
-//!         "Woof!".to_string()
-//!     }
-//! }
-//!
-//! fn main() {
-//!     crossmist::init();
-//!     test.run(static_ref!(&Cat as &dyn Speak));
-//! }
-//!
-//! #[crossmist::entrypoint]
-//! fn test(animal: StaticRef<&'static dyn Speak>) {
-//!     assert_eq!(animal.speak(), "Meow!");
-//! }
-//! ```
-
 use crate::{Object, relocation::RelocatablePtr};
 use std::fmt;
 use std::ops::Deref;
 
 /// A `&'static T` implementing [`Object`].
 ///
-/// See the documentation for [`mod@crossmist::static_ref`] for a tutorial-grade explanation.
+/// Serializing objects that are already present in each process in a `static` is wasteful. For
+/// example, if you store a list of actions subprocesses may perform in a `static` array, you likely
+/// want to send across references to the actions instead of serializing them and dealing with
+/// temporary lifetimes. In extreme cases, the actions may not even be objects in the first place.
 ///
-/// [`StaticRef`] can be created safely with [`static_ref!`] or unsafely with
-/// [`StaticRef::new_unchecked`].
+/// [`StaticRef`] is similar to `&'static T`, but implements [`Object`] by serializing a pointer. It
+/// can be created from a constant value of type `T` with [`static_ref!`] and sent over:
 ///
-/// # Example
-///
-/// ```rust
+/// ```standalone_crate
 /// use crossmist::{StaticRef, static_ref};
 ///
-/// let num = static_ref!(123);
-/// assert_eq!(*num, 123);
+/// struct Configuration {
+///     meows: bool,
+///     woofs: bool,
+/// }
+///
+/// const CAT: Configuration = Configuration { meows: true, woofs: false };
+/// const DOG: Configuration = Configuration { meows: false, woofs: true };
+///
+/// fn main() {
+///     crossmist::init();
+///     test.run(static_ref!(CAT)); // sends a reference to an anonymous `static` with value `CAT`
+/// }
+///
+/// #[crossmist::entrypoint]
+/// fn test(conf: StaticRef<Configuration>) {
+///     assert_eq!(conf.meows, true);
+///     assert_eq!(conf.woofs, false);
+/// }
 /// ```
+///
+/// [`StaticRef`] can only point at sized data. Referencing `dyn Trait` requires double indirection
+/// using `StaticRef<&'static dyn Trait>`:
+///
+/// ```standalone_crate
+/// use crossmist::{StaticRef, static_ref};
+///
+/// trait Speak {
+///     fn speak(&self) -> String;
+/// }
+///
+/// struct Cat;
+/// impl Speak for Cat {
+///     fn speak(&self) -> String {
+///         "Meow!".to_string()
+///     }
+/// }
+///
+/// struct Dog;
+/// impl Speak for Dog {
+///     fn speak(&self) -> String {
+///         "Woof!".to_string()
+///     }
+/// }
+///
+/// fn main() {
+///     crossmist::init();
+///     test.run(static_ref!(&Cat as &dyn Speak));
+/// }
+///
+/// #[crossmist::entrypoint]
+/// fn test(animal: StaticRef<&'static dyn Speak>) {
+///     assert_eq!(animal.speak(), "Meow!");
+/// }
+/// ```
+///
+/// If necessary, [`StaticRef`] can be created unsafely with [`StaticRef::new_unchecked`].
 #[derive(Object)]
 #[crossmist(bound = "")]
 pub struct StaticRef<T> {
@@ -174,4 +159,3 @@ macro_rules! static_ref {
         unsafe { $crate::StaticRef::new_unchecked(r) }
     }};
 }
-pub use static_ref;

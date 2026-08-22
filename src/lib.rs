@@ -543,5 +543,5 @@ mod unsized_builtins;
 pub mod fns;
 pub use fns::*;
 
-pub mod static_ref;
+mod static_ref;
 pub use static_ref::StaticRef;
