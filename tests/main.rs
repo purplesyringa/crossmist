@@ -36,15 +36,13 @@ fn add_with_arguments_spawn() {
     assert_eq!(entrypoint.spawn(5, 7).unwrap().join().unwrap(), 12);
 }
 
-#[crossmist::func]
-fn add_with_arguments_func(x: i32, y: i32) -> i32 {
-    x + y
-}
-
+#[cfg(feature = "nightly")]
 #[macro_rules_attribute::apply(test!)]
 fn add_with_arguments_call() {
-    #[cfg(feature = "nightly")]
-    assert_eq!(add_with_arguments_func(5, 7), 12);
+    let add_with_arguments = crossmist::lambda! {
+        |x: i32, y: i32| -> i32 { x + y}
+    };
+    assert_eq!(add_with_arguments(5, 7), 12);
 }
 
 #[macro_rules_attribute::apply(test!)]
@@ -169,7 +167,9 @@ fn with_passed_fn() {
     }
     assert_eq!(
         inner
-            .spawn(Box::new(add_with_arguments_func))
+            .spawn(crossmist::lambda! {
+                |x: i32, y: i32| -> i32 { x + y }
+            })
             .unwrap()
             .join()
             .unwrap(),

@@ -186,13 +186,11 @@ extern crate self as crossmist;
 /// ```standalone_crate
 /// use crossmist::FnObject;
 ///
-/// #[crossmist::func]
-/// fn example(a: i32, b: i32) -> i32 {
-///     a + b
-/// }
-///
 /// fn main() {
 ///     crossmist::init();
+///     let example = crossmist::lambda! {
+///         |a: i32, b: i32| -> i32 { a + b }
+///     };
 ///     assert_eq!(example.call_object((5, 7)), 12);
 /// }
 /// ```
@@ -373,8 +371,7 @@ pub use crossmist_derive::func;
 
 pub use crossmist_derive::entrypoint;
 
-/// A short-cut for turning a (possible capturing) closure into an object function, just like as if
-/// `#[crossmist::func]` was used.
+/// A short-cut for turning a (possible capturing) closure into an object function.
 ///
 /// Syntax is similar to that of closure, except that types of all arguments and the type of the
 /// return value are not inferred. Additionally, all moved values have to be listed manually,

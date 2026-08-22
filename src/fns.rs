@@ -368,10 +368,9 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> + std::ops::Fn<Args> {
     /// ```rust
     /// use crossmist::FnObject;
     ///
-    /// #[crossmist::func]
-    /// fn add(a: i32, b: i32) -> i32 {
-    ///     a + b
-    /// }
+    /// let add = crossmist::lambda! {
+    ///     |a: i32, b: i32| -> i32 { a + b }
+    /// };
     ///
     /// assert_eq!(add.call_object((5, 7)), 12);
     /// ```
@@ -390,10 +389,9 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     /// ```rust
     /// use crossmist::FnObject;
     ///
-    /// #[crossmist::func]
-    /// fn add(a: i32, b: i32) -> i32 {
-    ///     a + b
-    /// }
+    /// let add = crossmist::lambda! {
+    ///     |a: i32, b: i32| -> i32 { a + b }
+    /// };
     ///
     /// assert_eq!(add.call_object((5, 7)), 12);
     /// ```
