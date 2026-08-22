@@ -114,7 +114,7 @@ fn bound_function() {
 fn ref_bound_function() {
     let s = "abc".to_string();
     let func: Box<dyn FnOnceObject<(), Output = usize>> =
-        lambda! { move(&s: &String) || -> usize { s.len() } };
+        lambda! { move(ref s: String) || -> usize { s.len() } };
     assert_eq!(serde(func).call_object_box(()), 3);
 }
 

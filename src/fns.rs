@@ -54,7 +54,7 @@
 //! fn main() {
 //!     crossmist::init();
 //!     let x = Box::new(7);
-//!     println!("{}", go.run(5, lambda! { move(&x: &Box<i32>) |y: i32| -> i32 { **x + y } }).unwrap());
+//!     println!("{}", go.run(5, lambda! { move(ref x: Box<i32>) |y: i32| -> i32 { **x + y } }).unwrap());
 //! }
 //!
 //! #[crossmist::func]
@@ -63,8 +63,8 @@
 //! }
 //! ```
 //!
-//! Similarly, `&mut x` can be used if the object is to be modified. Note that this still moves `x`
-//! into the lambda.
+//! Similarly, `ref mut x` can be used if the object is to be modified. Note that this still moves
+//! `x` into the lambda.
 //!
 //! Under the hood, the macro uses currying, replacing `|y| x + y` with `|x, y| x + y` with a
 //! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`:
@@ -354,7 +354,7 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> + std::ops::FnMut<Args> {
     ///
     /// let counter = 0;
     /// let mut increment = lambda! {
-    ///     move(&mut counter: &mut i32) || -> i32 { *counter += 1; *counter }
+    ///     move(ref mut counter: i32) || -> i32 { *counter += 1; *counter }
     /// };
     ///
     /// assert_eq!(increment.call_object_mut(()), 1);
@@ -378,7 +378,7 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     ///
     /// let counter = 0;
     /// let mut increment = lambda! {
-    ///     move(&mut counter: &mut i32) || -> i32 { *counter += 1; *counter }
+    ///     move(ref mut counter: i32) || -> i32 { *counter += 1; *counter }
     /// };
     ///
     /// assert_eq!(increment.call_object_mut(()), 1);
@@ -645,7 +645,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// let cache = vec![0, 1];
 /// // cache is accessible by a mutable reference when the lambda is executed
 /// let mut fibonacci: Box<dyn FnMutObject<(usize,), Output = u32>> = lambda! {
-///     move(&mut cache: &mut Vec<u32>) |n: usize| -> u32 {
+///     move(ref mut cache: Vec<u32>) |n: usize| -> u32 {
 ///         while cache.len() <= n {
 ///             cache.push(cache[cache.len() - 2..].iter().sum());
 ///         }
@@ -665,7 +665,7 @@ decl_fn!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 /// let s = "Hello, world!".to_string();
 /// // s is accessible by an immutable reference when the lambda is executed
 /// let count_occurrences: Box<dyn FnObject<(char,), Output = usize>> =
-///     lambda! { move(&s: &String) |c: char| -> usize { s.matches(c).count() } };
+///     lambda! { move(ref s: String) |c: char| -> usize { s.matches(c).count() } };
 /// assert_eq!(count_occurrences.call_object(('o',)), 2);
 /// // Can be called multiple times and be immutable
 /// assert_eq!(count_occurrences.call_object(('e',)), 1);
@@ -722,28 +722,42 @@ macro_rules! lambda_parse {
     (
         [$($args:tt)*],
         [$($append:tt)*],
-        &mut $name:ident: $type:ty, $($rest:tt)*
+        ref mut $name:ident: $type:ty, $($rest:tt)*
+    ) => {
+        $crate::lambda_parse! { [$($args)* $name: &mut $type,], [$($append)*], $($rest)* }
+    };
+    (
+        [$($args:tt)*],
+        [$($append:tt)*],
+        ref $name:ident: $type:ty, $($rest:tt)*
+    ) => {
+        $crate::lambda_parse! { [$($args)* $name: &$type,], [$($append)*], $($rest)* }
+    };
+    (
+        [$($args:tt)*],
+        [$($append:tt)*],
+        $name:ident: $type:ty, $($rest:tt)*
     ) => {
         $crate::lambda_parse! { [$($args)* $name: $type,], [$($append)*], $($rest)* }
     };
     (
         [$($args:tt)*],
         [$($append:tt)*],
-        $(&)? $name:ident: $type:ty, $($rest:tt)*
+        ref mut $name:ident: $type:ty| $($rest:tt)*
     ) => {
-        $crate::lambda_parse! { [$($args)* $name: $type,], [$($append)*], $($rest)* }
+        $crate::lambda_parse! { [$($args)* $name: &mut $type,], [$($append)*], |$($rest)* }
     };
     (
         [$($args:tt)*],
         [$($append:tt)*],
-        &mut $name:ident: $type:ty| $($rest:tt)*
+        ref $name:ident: $type:ty| $($rest:tt)*
     ) => {
-        $crate::lambda_parse! { [$($args)* $name: $type,], [$($append)*], |$($rest)* }
+        $crate::lambda_parse! { [$($args)* $name: &$type,], [$($append)*], |$($rest)* }
     };
     (
         [$($args:tt)*],
         [$($append:tt)*],
-        $(&)? $name:ident: $type:ty| $($rest:tt)*
+        $name:ident: $type:ty| $($rest:tt)*
     ) => {
         $crate::lambda_parse! { [$($args)* $name: $type,], [$($append)*], |$($rest)* }
     };
@@ -772,16 +786,16 @@ macro_rules! lambda_parse {
 macro_rules! lambda_bind {
     ([$($acc:tt)*],) => { $($acc)* };
 
-    ([$($acc:tt)*], &mut $name:ident: $type:ty, $($rest:tt)*) => {
+    ([$($acc:tt)*], ref mut $name:ident: $type:ty, $($rest:tt)*) => {
         $crate::lambda_bind! { [$($acc)*.bind_mut($name)], $($rest)* }
     };
-    ([$($acc:tt)*], &mut $name:ident: $type:ty) => {
+    ([$($acc:tt)*], ref mut $name:ident: $type:ty) => {
         $($acc)*.bind_mut($name)
     };
-    ([$($acc:tt)*], &$name:ident: $type:ty, $($rest:tt)*) => {
+    ([$($acc:tt)*], ref $name:ident: $type:ty, $($rest:tt)*) => {
         $crate::lambda_bind! { [$($acc)*.bind_ref($name)], $($rest)* }
     };
-    ([$($acc:tt)*], &$name:ident: $type:ty) => {
+    ([$($acc:tt)*], ref $name:ident: $type:ty) => {
         $($acc)*.bind_ref($name)
     };
     ([$($acc:tt)*], $name:ident: $type:ty, $($rest:tt)*) => {
