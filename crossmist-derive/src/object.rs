@@ -17,6 +17,14 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             .collect(),
         Data::Union(_) => unimplemented!(),
     };
+
+    let discriminant_type = if variants.len() <= 1 {
+        // explicitly handle the 0-variant case because type inference fails otherwise
+        quote! { () }
+    } else {
+        quote! { usize }
+    };
+
     let (serialize_variants, deserialize_variants): (Vec<_>, Vec<_>) = variants
         .iter()
         .enumerate()
@@ -55,7 +63,7 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                 }
             }
             unsafe fn deserialize_self(d: &mut ::crossmist::Deserializer) -> Self {
-                match d.deserialize() {
+                match d.deserialize::<#discriminant_type>() {
                     #(#deserialize_variants)*
                     _ => panic!("Unexpected enum variant"),
                 }
