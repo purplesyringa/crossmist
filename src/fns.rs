@@ -17,7 +17,7 @@
 //!     println!("{}", go.run(5, Box::new(|y| x + y)).unwrap());
 //! }
 //!
-//! #[crossmist::func]
+//! #[crossmist::entrypoint]
 //! fn go(x: i32, f: Box<dyn Object + Fn(i32) -> i32>) -> i32 {
 //!     f(x)
 //! }
@@ -34,7 +34,7 @@
 //!     println!("{}", go.run(5, lambda! { move(x: i32) |y: i32| -> i32 { x + y } }).unwrap());
 //! }
 //!
-//! #[crossmist::func]
+//! #[crossmist::entrypoint]
 //! fn go(x: i32, f: Box<dyn FnObject<(i32,), Output = i32>>) -> i32 {
 //!     f.call_object((x,))
 //! }
@@ -57,7 +57,7 @@
 //!     println!("{}", go.run(5, lambda! { move(ref x: Box<i32>) |y: i32| -> i32 { **x + y } }).unwrap());
 //! }
 //!
-//! #[crossmist::func]
+//! #[crossmist::entrypoint]
 //! fn go(x: i32, f: Box<dyn FnObject<(i32,), Output = i32>>) -> i32 {
 //!     f.call_object((x,))
 //! }
@@ -499,7 +499,7 @@ pub trait FnPtr: Copy + fn_ptr_private::Sealed {
 /// A wrapper for `fn(...) -> ...` implementing `Object`.
 ///
 /// This type enables you to pass `fn` and `unsafe fn` pointers between processes soundly without
-/// requiring [`lambda`] or [`crossmist::func`].
+/// requiring [`lambda`] or [`crossmist::entrypoint`].
 ///
 /// Creating the wrapper from a function pointer is `unsafe` because functions might not be
 /// available in the child process if they were created in runtime by JIT compilation or alike.

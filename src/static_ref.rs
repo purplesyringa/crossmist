@@ -24,7 +24,7 @@
 //!     test.run(static_ref!(CAT)); // sends a referene to an anonymous `static` with value `CAT`
 //! }
 //!
-//! #[crossmist::func]
+//! #[crossmist::entrypoint]
 //! fn test(conf: StaticRef<Configuration>) {
 //!     assert_eq!(conf.meows, true);
 //!     assert_eq!(conf.woofs, false);
@@ -61,7 +61,7 @@
 //!     test.run(static_ref!(&Cat as &dyn Speak));
 //! }
 //!
-//! #[crossmist::func]
+//! #[crossmist::entrypoint]
 //! fn test(animal: StaticRef<&'static dyn Speak>) {
 //!     assert_eq!(animal.speak(), "Meow!");
 //! }

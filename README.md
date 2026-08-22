@@ -35,7 +35,7 @@ fn main() {
     println!("5 + 7 = {}", add.run(vec![5, 7]).unwrap());
 }
 
-#[crossmist::func]
+#[crossmist::entrypoint]
 fn add(nums: Vec<i32>) -> i32 {
     nums.into_iter().sum()
 }
@@ -55,7 +55,7 @@ fn main() {
     }
 }
 
-#[crossmist::func]
+#[crossmist::entrypoint]
 fn add(mut chan: crossmist::Duplex<i32, Vec<i32>>) {
     while let Some(nums) = chan.recv().unwrap() {
         chan.send(&nums.into_iter().sum());

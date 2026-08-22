@@ -94,7 +94,7 @@ fn _wrapped_function<
     Box::new(func.call_object_once(()))
 }
 
-#[crossmist::func(tokio(flavor = "current_thread"))]
+#[crossmist::entrypoint(tokio(flavor = "current_thread"))]
 async fn worker(
     mut channel: Duplex<TypeErased, Box<dyn FnOnceObject<(), Output = TypeErased> + Send + Sync>>,
 ) {

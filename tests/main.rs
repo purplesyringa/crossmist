@@ -1,6 +1,4 @@
-use crossmist::{
-    Duplex, FnOnceObject, Object, Receiver, Sender, StaticRef, channel, duplex, static_ref,
-};
+use crossmist::{Duplex, Object, Receiver, Sender, StaticRef, channel, duplex, static_ref};
 
 mod testing;
 testing::setup!();
@@ -13,7 +11,7 @@ struct SimplePair {
 
 #[macro_rules_attribute::apply(test!)]
 fn simple() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner() -> i64 {
         0x123456789abcdef
     }
@@ -22,36 +20,36 @@ fn simple() {
 
 #[macro_rules_attribute::apply(test!)]
 fn ret_string() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner() -> String {
         "hello".to_string()
     }
     assert_eq!(inner.spawn().unwrap().join().unwrap(), "hello");
 }
 
+#[macro_rules_attribute::apply(test!)]
+fn add_with_arguments_spawn() {
+    #[crossmist::entrypoint]
+    fn entrypoint(x: i32, y: i32) -> i32 {
+        x + y
+    }
+    assert_eq!(entrypoint.spawn(5, 7).unwrap().join().unwrap(), 12);
+}
+
 #[crossmist::func]
-fn add_with_arguments_impl(x: i32, y: i32) -> i32 {
+fn add_with_arguments_func(x: i32, y: i32) -> i32 {
     x + y
 }
 
 #[macro_rules_attribute::apply(test!)]
-fn add_with_arguments_spawn() {
-    assert_eq!(
-        add_with_arguments_impl.spawn(5, 7).unwrap().join().unwrap(),
-        12
-    );
-}
-
-#[macro_rules_attribute::apply(test!)]
 fn add_with_arguments_call() {
-    assert_eq!(add_with_arguments_impl.call_object_once((5, 7)), 12);
     #[cfg(feature = "nightly")]
-    assert_eq!(add_with_arguments_impl(5, 7), 12);
+    assert_eq!(add_with_arguments_func(5, 7), 12);
 }
 
 #[macro_rules_attribute::apply(test!)]
 fn add_with_template() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner<T: std::ops::Add<Output = T> + Object + 'static>(x: T, y: T) -> T {
         x + y
     }
@@ -60,7 +58,7 @@ fn add_with_template() {
 
 #[macro_rules_attribute::apply(test!)]
 fn swap_complex_argument() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(pair: SimplePair) -> SimplePair {
         SimplePair {
             x: pair.y,
@@ -79,7 +77,7 @@ fn swap_complex_argument() {
 
 #[macro_rules_attribute::apply(test!)]
 fn inc_with_boxed() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     #[expect(clippy::boxed_local, reason = "intended")]
     fn inner(item: Box<i32>) -> Box<i32> {
         Box::new(*item + 1)
@@ -89,7 +87,7 @@ fn inc_with_boxed() {
 
 #[macro_rules_attribute::apply(test!)]
 fn inc_with_vec_and_box() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     #[expect(clippy::boxed_local, reason = "intended")]
     fn inner(vec: Vec<i32>, box_: Box<[i32]>) -> (i32, i32) {
         (vec.iter().sum(), box_.iter().sum())
@@ -134,7 +132,7 @@ impl Trait for bool {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_trait() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(arg: Box<dyn Trait>) -> String {
         arg.say()
     }
@@ -158,7 +156,7 @@ fn with_passed_trait() {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_fn() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
         #[cfg(feature = "nightly")]
         {
@@ -171,7 +169,7 @@ fn with_passed_fn() {
     }
     assert_eq!(
         inner
-            .spawn(Box::new(add_with_arguments_impl))
+            .spawn(Box::new(add_with_arguments_func))
             .unwrap()
             .join()
             .unwrap(),
@@ -181,7 +179,7 @@ fn with_passed_fn() {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_bound_fn() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(i32,), Output = i32>>) -> i32 {
         #[cfg(feature = "nightly")]
         {
@@ -196,9 +194,7 @@ fn with_passed_bound_fn() {
     assert_eq!(
         inner
             .spawn(crossmist::lambda! {
-                move(x: i32) |y: i32| -> i32 {
-                    add_with_arguments_impl.call_object_once((x, y))
-                }
+                move(x: i32) |y: i32| -> i32 { x + y }
             })
             .unwrap()
             .join()
@@ -209,7 +205,7 @@ fn with_passed_bound_fn() {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_double_bound_fn() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(func: Box<dyn crossmist::FnOnceObject<(), Output = i32>>) -> i32 {
         #[cfg(feature = "nightly")]
         {
@@ -225,9 +221,7 @@ fn with_passed_double_bound_fn() {
     assert_eq!(
         inner
             .spawn(crossmist::lambda! {
-                move(x: i32, y: i32) || -> i32 {
-                    add_with_arguments_impl.call_object_once((x, y))
-                }
+                move(x: i32, y: i32) || -> i32 { x + y }
             })
             .unwrap()
             .join()
@@ -238,7 +232,7 @@ fn with_passed_double_bound_fn() {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_rx() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(mut rx: Receiver<i32>) -> i32 {
         let a = rx.recv().unwrap().unwrap();
         let b = rx.recv().unwrap().unwrap();
@@ -253,7 +247,7 @@ fn with_passed_rx() {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_tx() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(mut tx: Sender<i32>) {
         tx.send(5).unwrap();
         tx.send(7).unwrap();
@@ -269,7 +263,7 @@ fn with_passed_tx() {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_duplex() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(mut chan: Duplex<i32, (i32, i32)>) {
         while let Some((x, y)) = chan.recv().unwrap() {
             chan.send(x - y).unwrap();
@@ -287,7 +281,7 @@ fn with_passed_duplex() {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_nested_channel() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(mut chan: Receiver<Receiver<i32>>) -> i32 {
         let mut chan1 = chan.recv().unwrap().unwrap();
         chan1.recv().unwrap().unwrap()
@@ -301,7 +295,7 @@ fn with_passed_nested_channel() {
 
 #[macro_rules_attribute::apply(test!)]
 fn exitting() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner() {
         std::process::exit(0);
     }
@@ -310,7 +304,7 @@ fn exitting() {
 
 #[macro_rules_attribute::apply(test!)]
 fn with_static_ref() {
-    #[crossmist::func]
+    #[crossmist::entrypoint]
     fn inner(a: StaticRef<&'static str>) -> String {
         a.to_string()
     }

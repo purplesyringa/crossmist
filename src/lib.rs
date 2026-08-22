@@ -11,7 +11,7 @@
 //!     println!("5 + 7 = {}", add.run(vec![5, 7]).unwrap());
 //! }
 //!
-//! #[crossmist::func]
+//! #[crossmist::entrypoint]
 //! fn add(nums: Vec<i32>) -> i32 {
 //!     nums.into_iter().sum()
 //! }
@@ -31,7 +31,7 @@
 //!     }
 //! }
 //!
-//! #[crossmist::func]
+//! #[crossmist::entrypoint]
 //! fn add(mut chan: crossmist::Duplex<i32, Vec<i32>>) {
 //!     while let Some(nums) = chan.recv().unwrap() {
 //!         chan.send(nums.into_iter().sum());
@@ -106,7 +106,7 @@
 //!     child.join().unwrap_err();
 //! }
 //!
-//! #[crossmist::func]
+//! #[crossmist::entrypoint]
 //! fn long_computation() {
 //!     loop {}
 //! }
@@ -148,7 +148,7 @@ extern crate self as crossmist;
 /// For a function declared as
 ///
 /// ```ignore
-/// #[crossmist::func]
+/// #[crossmist::entrypoint]
 /// fn example(arg1: Type1, ...) -> Output;
 /// ```
 ///
@@ -167,7 +167,7 @@ extern crate self as crossmist;
 /// For example:
 ///
 /// ```standalone_crate
-/// #[crossmist::func]
+/// #[crossmist::entrypoint]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
@@ -198,12 +198,12 @@ extern crate self as crossmist;
 /// ```
 ///
 /// If the `nightly` feature is enabled, the function can also directly be called, providing the
-/// same behavior as if `#[crossmist::func]` was not used:
+/// same behavior as if `#[crossmist::entrypoint]` was not used:
 ///
 /// ```ignore
 /// use crossmist::FnObject;
 ///
-/// #[crossmist::func]
+/// #[crossmist::entrypoint]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
@@ -238,7 +238,7 @@ extern crate self as crossmist;
 ///     }
 /// }
 ///
-/// #[crossmist::func]
+/// #[crossmist::entrypoint]
 /// fn long_running_task() -> u32 {
 ///     std::thread::sleep(std::time::Duration::from_secs(1));
 ///     123
@@ -259,7 +259,7 @@ extern crate self as crossmist;
 ///     }
 /// }
 ///
-/// #[crossmist::func]
+/// #[crossmist::entrypoint]
 /// fn long_running_task() -> u32 {
 ///     std::thread::sleep(std::time::Duration::from_secs(1));
 ///     123
@@ -278,7 +278,7 @@ extern crate self as crossmist;
 ///     long_running_task.spawn().expect("Failed to spawn child");
 /// }
 ///
-/// #[crossmist::func]
+/// #[crossmist::entrypoint]
 /// fn long_running_task() {
 ///     std::thread::sleep(std::time::Duration::from_secs(1));
 /// }
@@ -294,7 +294,7 @@ extern crate self as crossmist;
 ///     child.join().expect("Child died");
 /// }
 ///
-/// #[crossmist::func]
+/// #[crossmist::entrypoint]
 /// fn long_running_task() {
 ///     std::thread::sleep(std::time::Duration::from_secs(1));
 ///     std::process::exit(0);
@@ -319,21 +319,21 @@ extern crate self as crossmist;
 /// use as follows:
 ///
 /// ```ignore
-/// #[crossmist::func(tokio)]
+/// #[crossmist::entrypoint(tokio)]
 /// async fn example_tokio() {}
 ///
-/// #[crossmist::func(smol)]
+/// #[crossmist::entrypoint(smol)]
 /// async fn example_smol() {}
 /// ```
 ///
 /// With this syntax, the arguments to the functions are deserialized after the async runtime is
-/// initialized. Simply using `#[crossmist::func]` followed by `#[tokio::main]` would deserialize
+/// initialized. Simply using `#[crossmist::entrypoint]` followed by `#[tokio::main]` would deserialize
 /// arguments before the runtime is started, leading to errors when deserializing channels.
 ///
 /// You may pass operands to forward to `tokio::main` like this:
 ///
 /// ```rust
-/// #[crossmist::func(tokio(flavor = "current_thread"))]
+/// #[crossmist::entrypoint(tokio(flavor = "current_thread"))]
 /// async fn example() {}
 /// ```
 ///
@@ -342,7 +342,7 @@ extern crate self as crossmist;
 /// vice versa:
 ///
 /// ```standalone_crate
-/// #[crossmist::func]
+/// #[crossmist::entrypoint]
 /// fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
@@ -359,7 +359,7 @@ extern crate self as crossmist;
 /// ```
 ///
 /// ```standalone_crate
-/// #[crossmist::func(tokio(flavor = "current_thread"))]
+/// #[crossmist::entrypoint(tokio(flavor = "current_thread"))]
 /// async fn example(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
@@ -371,6 +371,8 @@ extern crate self as crossmist;
 /// ```
 pub use crossmist_derive::func;
 
+pub use crossmist_derive::entrypoint;
+
 /// A short-cut for turning a (possible capturing) closure into an object function, just like as if
 /// `#[crossmist::func]` was used.
 ///
@@ -381,11 +383,18 @@ pub use crossmist_derive::func;
 /// Simplest example:
 ///
 /// ```standalone_crate
-/// # use crossmist::lambda;
+/// # use crossmist::{FnObject, FnOnceObject, lambda};
 /// fn main() {
 ///     crossmist::init();
 ///     let func = lambda! { |a: i32, b: i32| -> i32 { a + b } };
-///     assert_eq!(func.run(5, 7).unwrap(), 12);
+///     // run/spawn do not work directly, but you may still call/pass the function
+///     assert_eq!(func.call_object((5, 7)), 12);
+///     assert_eq!(gate.run(func).unwrap(), 12);
+/// }
+///
+/// #[crossmist::entrypoint]
+/// fn gate(f: Box<dyn FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
+///     f.call_object_once((5, 7))
 /// }
 /// ```
 ///
@@ -397,14 +406,7 @@ pub use crossmist_derive::func;
 ///     crossmist::init();
 ///     let a = 5;
 ///     let func = lambda! { move(a: i32) |b: i32| -> i32 { a + b } };
-///     // run/spawn do not work directly, but you may still call/pass the function
 ///     assert_eq!(func.call_object((7,)), 12);
-///     assert_eq!(gate.run(func, 7).unwrap(), 12);
-/// }
-///
-/// #[crossmist::func]
-/// fn gate(f: Box<dyn FnOnceObject<(i32,), Output = i32>>, arg: i32) -> i32 {
-///     f.call_object_once((arg,))
 /// }
 /// ```
 ///
