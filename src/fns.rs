@@ -1,8 +1,8 @@
 //! Utilities for passing function callbacks between processes.
 //!
-//! It is common to use callbacks to specialize function behavior. Capturing lambdas play an
+//! It is common to use callbacks to specialize function behavior. Closures play an
 //! especially big role in this. They are, however, of complex opaque types that cannot be
-//! inspected. Therefore, passing lambdas is not just complicated because they would have to be of
+//! inspected. Therefore, passing closures is not just complicated because they would have to be of
 //! type `dyn Object + Fn() -> ()`, which Rust does not support at the moment, but downright
 //! impossible in case of captures.
 //!
@@ -26,12 +26,12 @@
 //! ...we have to use a macro, and also a different invocation syntax:
 //!
 //! ```standalone_crate
-//! use crossmist::{FnObject, lambda};
+//! use crossmist::{FnObject, func};
 //!
 //! fn main() {
 //!     crossmist::init();
 //!     let x = 7;
-//!     println!("{}", go.run(5, lambda! { move(ref x) |y| x + y }).unwrap());
+//!     println!("{}", go.run(5, func! { move(ref x) |y| x + y }).unwrap());
 //! }
 //!
 //! #[crossmist::entrypoint]
@@ -40,7 +40,7 @@
 //! }
 //! ```
 //!
-//! The macro syntax is somewhat similar to that of capturing lambdas. `call_object` is similar to
+//! The macro syntax is somewhat similar to that of closures. `call_object` is similar to
 //! [`std::ops::Fn::call`]. If you're using nightly Rust, you can directly do `f(x)` if you opt in
 //! by enabling the `nightly` feature.
 //!
@@ -49,12 +49,12 @@
 //! syntax is used:
 //!
 //! ```standalone_crate
-//! use crossmist::{FnObject, lambda};
+//! use crossmist::{FnObject, func};
 //!
 //! fn main() {
 //!     crossmist::init();
 //!     let x = Box::new(7);
-//!     println!("{}", go.run(5, lambda! { move(ref x) |y| **x + y }).unwrap());
+//!     println!("{}", go.run(5, func! { move(ref x) |y| **x + y }).unwrap());
 //! }
 //!
 //! #[crossmist::entrypoint]
@@ -64,7 +64,7 @@
 //! ```
 //!
 //! Similarly, `ref mut x` can be used if the object is to be modified. Note that this still moves
-//! `x` into the lambda.
+//! `x` into the func.
 //!
 //! Under the hood, the macro uses currying, replacing `|y| x + y` with `|x, y| x + y` with a
 //! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`.
@@ -195,10 +195,10 @@ pub trait FnOnceObject<Args: Tuple>: Object {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnOnceObject, lambda};
+    /// use crossmist::{FnOnceObject, func};
     ///
     /// let s = "Hello, world!".to_string();
-    /// let mut increment = lambda! { move(s) || s };
+    /// let mut increment = func! { move(s) || s };
     ///
     /// assert_eq!(increment.call_object_once(()), "Hello, world!");
     /// ```
@@ -228,10 +228,10 @@ pub trait FnOnceObject<Args: Tuple>: Object + std::ops::FnOnce<Args> {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnOnceObject, lambda};
+    /// use crossmist::{FnOnceObject, func};
     ///
     /// let s = "Hello, world!".to_string();
-    /// let mut increment = lambda! { move(s) || s };
+    /// let mut increment = func! { move(s) || s };
     ///
     /// assert_eq!(increment.call_object_once(()), "Hello, world!");
     /// ```
@@ -284,10 +284,10 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> + std::ops::FnMut<Args> {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnMutObject, lambda};
+    /// use crossmist::{FnMutObject, func};
     ///
     /// let counter = 0;
-    /// let mut increment = lambda! {
+    /// let mut increment = func! {
     ///     move(ref mut counter) || { *counter += 1; *counter }
     /// };
     ///
@@ -308,10 +308,10 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnMutObject, lambda};
+    /// use crossmist::{FnMutObject, func};
     ///
     /// let counter = 0;
-    /// let mut increment = lambda! {
+    /// let mut increment = func! {
     ///     move(ref mut counter) || { *counter += 1; *counter }
     /// };
     ///
@@ -340,7 +340,7 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> + std::ops::Fn<Args> {
     ///
     /// ```rust
     /// use crossmist::FnObject;
-    /// let add = crossmist::lambda! { |a, b| a + b };
+    /// let add = crossmist::func! { |a, b| a + b };
     /// assert_eq!(add.call_object((5, 7)), 12);
     /// ```
     fn call_object(&self, args: Args) -> Self::Output;
@@ -358,7 +358,7 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     /// ```rust
     /// use crossmist::FnObject;
     ///
-    /// let add = crossmist::lambda! { |a, b| a + b };
+    /// let add = crossmist::func! { |a, b| a + b };
     ///
     /// assert_eq!(add.call_object((5, 7)), 12);
     /// ```
@@ -456,7 +456,7 @@ pub trait FnPtr: Copy + fn_ptr_private::Sealed {
 /// A wrapper for `fn(...) -> ...` implementing `Object`.
 ///
 /// This type enables you to pass `fn` and `unsafe fn` pointers between processes soundly without
-/// requiring [`lambda`] or [`crossmist::entrypoint`].
+/// requiring [`func`] or [`crossmist::entrypoint`].
 ///
 /// Creating the wrapper from a function pointer is `unsafe` because functions might not be
 /// available in the child process if they were created in runtime by JIT compilation or alike.

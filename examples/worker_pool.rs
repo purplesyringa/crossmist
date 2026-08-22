@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use crossmist::{
-    FnOnceObject, Object, lambda,
+    FnOnceObject, Object, func,
     tokio::{Child, Duplex, duplex},
 };
 use std::any::Any;
@@ -58,7 +58,7 @@ impl WorkerPool {
             .ok_or_else(|| anyhow!("Pool is closed"))?;
         let wrapped_function: Box<
             dyn FnOnceObject<(), Output = TypeErased> + Send + Sync + 'static,
-        > = crossmist::lambda! {
+        > = crossmist::func! {
             move(func) || Box::new(func.call_object_once(())) as TypeErased
         };
         let mut workers_receiver = self.workers_receiver.lock().await;
@@ -103,7 +103,7 @@ async fn async_main() -> Result<()> {
         for y in 1..=5 {
             let pool = pool.clone();
             tasks.push(tokio::spawn(async move {
-                let func = lambda! { move(x, y) || x + y };
+                let func = func! { move(x, y) || x + y };
                 println!("{x} + {y} = {}", pool.run(func).await?);
                 Result::<()>::Ok(())
             }));

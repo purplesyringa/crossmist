@@ -188,7 +188,7 @@ extern crate self as crossmist;
 ///
 /// fn main() {
 ///     crossmist::init();
-///     let example = crossmist::lambda! { |a, b| a + b };
+///     let example = crossmist::func! { |a, b| a + b };
 ///     assert_eq!(example.call_object((5, 7)), 12);
 /// }
 /// ```
@@ -376,10 +376,10 @@ pub use crossmist_derive::entrypoint;
 /// Simplest example:
 ///
 /// ```standalone_crate
-/// # use crossmist::{FnObject, FnOnceObject, lambda};
+/// # use crossmist::{FnObject, FnOnceObject, func};
 /// fn main() {
 ///     crossmist::init();
-///     let func = lambda! { |a, b| a + b };
+///     let func = func! { |a, b| a + b };
 ///     // run/spawn do not work directly, but you may still call/pass the function
 ///     assert_eq!(func.call_object((5, 7)), 12);
 ///     assert_eq!(gate.run(func).unwrap(), 12);
@@ -394,11 +394,11 @@ pub use crossmist_derive::entrypoint;
 /// With captures:
 ///
 /// ```standalone_crate
-/// # use crossmist::{FnObject, FnOnceObject, lambda};
+/// # use crossmist::{FnObject, FnOnceObject, func};
 /// fn main() {
 ///     crossmist::init();
 ///     let a = 5;
-///     let func = lambda! { move(a) |b| a + b };
+///     let func = func! { move(a) |b| a + b };
 ///     assert_eq!(func.call_object_once((7,)), 12);
 /// }
 /// ```
@@ -409,13 +409,13 @@ pub use crossmist_derive::entrypoint;
 /// unnecessary):
 ///
 /// ```standalone_crate
-/// # use crossmist::{FnOnceObject, lambda};
+/// # use crossmist::{FnOnceObject, func};
 /// # fn main() {
 /// # crossmist::init();
 /// let a = "Hello, ".to_string();
-/// // a is accessible by value when the lambda is executed
+/// // a is accessible by value when the func is executed
 /// let prepend_hello: Box<dyn FnOnceObject<(&str,), Output = String>> =
-///     lambda! { move(a) |b| a + b };
+///     func! { move(a) |b| a + b };
 /// assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
 /// // Can only be called once. The line below fails to compile when uncommented:
 /// // assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
@@ -423,12 +423,12 @@ pub use crossmist_derive::entrypoint;
 /// ```
 ///
 /// ```standalone_crate
-/// # use crossmist::{FnMutObject, lambda};
+/// # use crossmist::{FnMutObject, func};
 /// # fn main() {
 /// # crossmist::init();
 /// let cache = vec![0, 1];
-/// // cache is accessible by a mutable reference when the lambda is executed
-/// let mut fibonacci: Box<dyn FnMutObject<(usize,), Output = u32>> = lambda! {
+/// // cache is accessible by a mutable reference when the func is executed
+/// let mut fibonacci: Box<dyn FnMutObject<(usize,), Output = u32>> = func! {
 ///     move(ref mut cache) |n| {
 ///         while cache.len() <= n {
 ///             cache.push(cache[cache.len() - 2..].iter().sum());
@@ -443,19 +443,19 @@ pub use crossmist_derive::entrypoint;
 /// ```
 ///
 /// ```standalone_crate
-/// # use crossmist::{FnObject, lambda};
+/// # use crossmist::{FnObject, func};
 /// # fn main() {
 /// # crossmist::init();
 /// let s = "Hello, world!".to_string();
-/// // s is accessible by an immutable reference when the lambda is executed
+/// // s is accessible by an immutable reference when the func is executed
 /// let count_occurrences: Box<dyn FnObject<(char,), Output = usize>> =
-///     lambda! { move(ref s) |c| s.matches(c).count() };
+///     func! { move(ref s) |c| s.matches(c).count() };
 /// assert_eq!(count_occurrences.call_object(('o',)), 2);
 /// // Can be called multiple times and be immutable
 /// assert_eq!(count_occurrences.call_object(('e',)), 1);
 /// # }
 /// ```
-pub use crossmist_derive::lambda;
+pub use crossmist_derive::func;
 
 /// Make a structure or a enum serializable.
 ///

@@ -220,7 +220,7 @@ impl Parse for ExplicitCapture {
 }
 
 #[proc_macro]
-pub fn lambda(input: TokenStream) -> TokenStream {
+pub fn func(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ExplicitlyCapturingClosure);
 
     let mut captured_by_value = Vec::new();

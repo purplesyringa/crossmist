@@ -39,7 +39,7 @@ fn add_with_arguments_spawn() {
 #[cfg(feature = "nightly")]
 #[macro_rules_attribute::apply(test!)]
 fn add_with_arguments_call() {
-    let add_with_arguments = crossmist::lambda! { |x, y| x + y };
+    let add_with_arguments = crossmist::func! { |x, y| x + y };
     assert_eq!(add_with_arguments(5, 7), 12);
 }
 
@@ -165,7 +165,7 @@ fn with_passed_fn() {
     }
     assert_eq!(
         inner
-            .spawn(crossmist::lambda! { |x, y| x + y })
+            .spawn(crossmist::func! { |x, y| x + y })
             .unwrap()
             .join()
             .unwrap(),
@@ -189,7 +189,7 @@ fn with_passed_bound_fn() {
     let x = 5;
     assert_eq!(
         inner
-            .spawn(crossmist::lambda! { move(x) |y| x + y })
+            .spawn(crossmist::func! { move(x) |y| x + y })
             .unwrap()
             .join()
             .unwrap(),
@@ -214,7 +214,7 @@ fn with_passed_double_bound_fn() {
     let y = 7;
     assert_eq!(
         inner
-            .spawn(crossmist::lambda! { move(x, y) || x + y })
+            .spawn(crossmist::func! { move(x, y) || x + y })
             .unwrap()
             .join()
             .unwrap(),
