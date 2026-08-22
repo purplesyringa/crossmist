@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use crossmist::{
-    BindValue, FnOnceObject, Object, lambda,
+    FnOnceObject, Object, lambda,
     tokio::{Child, Duplex, duplex},
 };
 use std::any::Any;
@@ -58,7 +58,9 @@ impl WorkerPool {
             .ok_or_else(|| anyhow!("Pool is closed"))?;
         let wrapped_function: Box<
             dyn FnOnceObject<(), Output = TypeErased> + Send + Sync + 'static,
-        > = Box::new(_wrapped_function.bind_value(func));
+        > = crossmist::lambda! {
+            move(func) || Box::new(func.call_object_once(())) as TypeErased
+        };
         let mut workers_receiver = self.workers_receiver.lock().await;
         let mut worker_obj = workers_receiver
             .recv()
@@ -82,16 +84,6 @@ impl WorkerPool {
         }
         Ok(())
     }
-}
-
-#[crossmist::func]
-fn _wrapped_function<
-    Output: Object + 'static,
-    Func: FnOnceObject<(), Output = Output> + Send + Sync + 'static,
->(
-    func: Func,
-) -> TypeErased {
-    Box::new(func.call_object_once(()))
 }
 
 #[crossmist::entrypoint(tokio(flavor = "current_thread"))]
