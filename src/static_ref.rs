@@ -70,7 +70,18 @@ use std::ops::Deref;
 /// }
 /// ```
 ///
-/// If necessary, [`StaticRef`] can be created unsafely with [`StaticRef::new_unchecked`].
+/// [`static_ref!`] creates a new `static` and cannot reference an already existing one. If that is
+/// necessary, you can use indirection:
+///
+/// ```rust
+/// use crossmist::{StaticRef, static_ref};
+///
+/// static EXISTING: i32 = 123;
+/// let r: StaticRef<&'static i32> = static_ref!(&EXISTING);
+/// assert!(core::ptr::addr_eq(*r, &EXISTING));
+/// ```
+///
+/// Alternatively, [`StaticRef`] can be created unsafely with [`StaticRef::new_unchecked`].
 #[derive(Object)]
 #[crossmist(bound = "")]
 pub struct StaticRef<T> {
@@ -146,7 +157,7 @@ impl<T> Deref for StaticRef<T> {
 /// # Example
 ///
 /// ```rust
-/// use crossmist::{StaticRef, static_ref};
+/// use crossmist::static_ref;
 ///
 /// const NUM: i32 = 123;
 /// let num = static_ref!(NUM);
