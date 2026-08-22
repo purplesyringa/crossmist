@@ -189,7 +189,7 @@ fn with_passed_bound_fn() {
     let x = 5;
     assert_eq!(
         inner
-            .spawn(crossmist::lambda! { move(x: i32) |y| x + y })
+            .spawn(crossmist::lambda! { move(x) |y| x + y })
             .unwrap()
             .join()
             .unwrap(),
@@ -214,7 +214,7 @@ fn with_passed_double_bound_fn() {
     let y = 7;
     assert_eq!(
         inner
-            .spawn(crossmist::lambda! { move(x: i32, y: i32) || x + y })
+            .spawn(crossmist::lambda! { move(x, y) || x + y })
             .unwrap()
             .join()
             .unwrap(),

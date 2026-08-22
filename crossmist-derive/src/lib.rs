@@ -179,9 +179,6 @@ struct ExplicitCapture {
     by_ref: Option<syn::Token![ref]>,
     mutability: Option<syn::Token![mut]>,
     ident: syn::Ident,
-    #[allow(unused)]
-    colon_token: syn::Token![:],
-    ty: syn::Type,
 }
 
 impl Parse for ExplicitlyCapturingClosure {
@@ -218,8 +215,6 @@ impl Parse for ExplicitCapture {
             by_ref,
             mutability,
             ident: input.parse()?,
-            colon_token: input.parse()?,
-            ty: input.parse()?,
         })
     }
 }
@@ -228,42 +223,42 @@ impl Parse for ExplicitCapture {
 pub fn lambda(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ExplicitlyCapturingClosure);
 
-    let mut captured_by_value_idents = Vec::new();
-    let mut captured_by_value_types = Vec::new();
-    let mut captured_by_ref_idents = Vec::new();
-    let mut captured_by_ref_types = Vec::new();
-    let mut captured_by_ref_mut_idents = Vec::new();
-    let mut captured_by_ref_mut_types = Vec::new();
+    let mut captured_by_value = Vec::new();
+    let mut captured_by_ref = Vec::new();
+    let mut captured_by_ref_mut = Vec::new();
     if let Some(ExplicitCaptures { captures, .. }) = input.captures {
         for capture in captures {
-            let (idents, types) = if capture.by_ref.is_none() {
-                (&mut captured_by_value_idents, &mut captured_by_value_types)
+            let group = if capture.by_ref.is_none() {
+                &mut captured_by_value
             } else if capture.mutability.is_none() {
-                (&mut captured_by_ref_idents, &mut captured_by_ref_types)
+                &mut captured_by_ref
             } else {
-                (
-                    &mut captured_by_ref_mut_idents,
-                    &mut captured_by_ref_mut_types,
-                )
+                &mut captured_by_ref_mut
             };
-            idents.push(capture.ident);
-            types.push(capture.ty);
+            group.push(capture.ident);
         }
     }
 
+    // Add captures and group arguments into a single tuple so that `crossmist` has an easier time
+    // defining `Closure`.
     let mut closure = input.closure;
-    let prepended_inputs: syn::ExprClosure = parse_quote! {
-        |
-            (#(#captured_by_value_idents,)*): (#(#captured_by_value_types,)*),
-            (#(#captured_by_ref_idents,)*): &(#(#captured_by_ref_types,)*),
-            (#(#captured_by_ref_mut_idents,)*): &mut (#(#captured_by_ref_mut_types,)*),
-        | ()
-    };
-    closure.inputs = prepended_inputs
+    let (input_patterns, input_types): (Vec<_>, Vec<_>) = closure
         .inputs
-        .into_pairs()
-        .chain(closure.inputs.into_pairs())
-        .collect();
+        .into_iter()
+        .map(|input| match input {
+            syn::Pat::Type(pattype) => (*pattype.pat, pattype.ty),
+            pat => (pat, parse_quote! { _ }),
+        })
+        .unzip();
+    let new_inputs: syn::ExprClosure = parse_quote! {
+        |
+            (#(#captured_by_value,)*): _,
+            (#(#captured_by_ref,)*): &_,
+            (#(#captured_by_ref_mut,)*): &mut _,
+            (#(#input_patterns,)*): (#(#input_types,)*),
+        | {}
+    };
+    closure.inputs = new_inputs.inputs;
 
     let input_underscores = closure
         .inputs
@@ -273,19 +268,17 @@ pub fn lambda(input: TokenStream) -> TokenStream {
 
     quote! {
         {
-            let closure = #closure;
+            // The closure must be part of the same expression that links the bound identifiers to
+            // their values, so that bound types can inferred.
+            let closure = ::crossmist::Closure::unsafe_new(
+                #closure,
+                (#(#captured_by_value,)*),
+                (#(#captured_by_ref,)*),
+                (#(#captured_by_ref_mut,)*),
+            );
             // assert that the closure doesn't borrow
-            let _ = closure as fn(#(#input_underscores,)*) -> _;
-            ::std::boxed::Box::new(
-                unsafe {
-                    ::crossmist::Closure::new(
-                        closure,
-                        (#(#captured_by_value_idents,)*),
-                        (#(#captured_by_ref_idents,)*),
-                        (#(#captured_by_ref_mut_idents,)*),
-                    )
-                },
-            )
+            let _ = closure.conjure() as fn(#(#input_underscores,)*) -> _;
+            ::std::boxed::Box::new(closure)
         }
     }
     .into()

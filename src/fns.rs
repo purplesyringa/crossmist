@@ -31,7 +31,7 @@
 //! fn main() {
 //!     crossmist::init();
 //!     let x = 7;
-//!     println!("{}", go.run(5, lambda! { move(x: i32) |y| x + y }).unwrap());
+//!     println!("{}", go.run(5, lambda! { move(x) |y| x + y }).unwrap());
 //! }
 //!
 //! #[crossmist::entrypoint]
@@ -54,7 +54,7 @@
 //! fn main() {
 //!     crossmist::init();
 //!     let x = Box::new(7);
-//!     println!("{}", go.run(5, lambda! { move(ref x: Box<i32>) |y| **x + y }).unwrap());
+//!     println!("{}", go.run(5, lambda! { move(ref x) |y| **x + y }).unwrap());
 //! }
 //!
 //! #[crossmist::entrypoint]
@@ -198,7 +198,7 @@ pub trait FnOnceObject<Args: Tuple>: Object {
     /// use crossmist::{FnOnceObject, lambda};
     ///
     /// let s = "Hello, world!".to_string();
-    /// let mut increment = lambda! { move(s: String) || s };
+    /// let mut increment = lambda! { move(s) || s };
     ///
     /// assert_eq!(increment.call_object_once(()), "Hello, world!");
     /// ```
@@ -231,7 +231,7 @@ pub trait FnOnceObject<Args: Tuple>: Object + std::ops::FnOnce<Args> {
     /// use crossmist::{FnOnceObject, lambda};
     ///
     /// let s = "Hello, world!".to_string();
-    /// let mut increment = lambda! { move(s: String) || s };
+    /// let mut increment = lambda! { move(s) || s };
     ///
     /// assert_eq!(increment.call_object_once(()), "Hello, world!");
     /// ```
@@ -288,7 +288,7 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> + std::ops::FnMut<Args> {
     ///
     /// let counter = 0;
     /// let mut increment = lambda! {
-    ///     move(ref mut counter: i32) || { *counter += 1; *counter }
+    ///     move(ref mut counter) || { *counter += 1; *counter }
     /// };
     ///
     /// assert_eq!(increment.call_object_mut(()), 1);
@@ -312,7 +312,7 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     ///
     /// let counter = 0;
     /// let mut increment = lambda! {
-    ///     move(ref mut counter: i32) || { *counter += 1; *counter }
+    ///     move(ref mut counter) || { *counter += 1; *counter }
     /// };
     ///
     /// assert_eq!(increment.call_object_mut(()), 1);
@@ -384,7 +384,17 @@ pub struct Closure<Func, ByValue: Object, ByRef: Object, ByRefMut: Object> {
 impl<Func, ByValue: Object, ByRef: Object, ByRefMut: Object>
     Closure<Func, ByValue, ByRef, ByRefMut>
 {
-    pub unsafe fn new(_func: Func, by_value: ByValue, by_ref: ByRef, by_ref_mut: ByRefMut) -> Self {
+    // Has to be safe for macros to not wrap user code in `unsafe`
+    pub fn unsafe_new<Args, Output>(
+        _func: Func,
+        by_value: ByValue,
+        by_ref: ByRef,
+        by_ref_mut: ByRefMut,
+    ) -> Self
+    where
+        // necessary so that the borrowed types get inferred
+        Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, Args) -> Output,
+    {
         Self {
             by_value,
             by_ref,
@@ -393,14 +403,9 @@ impl<Func, ByValue: Object, ByRef: Object, ByRefMut: Object>
         }
     }
 
-    fn conjure() -> Func {
+    pub fn conjure(&self) -> Func {
         unsafe { core::ptr::dangling::<Func>().read() }
     }
-}
-
-macro_rules! reverse_call {
-    ([$($acc:tt)*]) => { (Self::conjure())($($acc)*) };
-    ([$($acc:tt)*] $head:tt $($tail:tt)*) => { reverse_call!([$head, $($acc)*] $($tail)*) };
 }
 
 macro_rules! decl_fn {
@@ -411,26 +416,26 @@ macro_rules! decl_fn {
 
         paste! {
             impl_fn! {
-                impl[ByValue: Object, ByRef: Object, ByRefMut: Object $(, [<T $tail>])*, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, $([<T $tail>]),*) -> Output] FnOnce<($([<T $tail>],)*), Output = Output> for Closure<Func, ByValue, ByRef, ByRefMut> =
+                impl[ByValue: Object, ByRef: Object, ByRefMut: Object $(, [<T $tail>])*, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, ($([<T $tail>],)*)) -> Output] FnOnce<($([<T $tail>],)*), Output = Output> for Closure<Func, ByValue, ByRef, ByRefMut> =
                 #[allow(unused_variables)]
                 |self, args| {
-                    reverse_call!([] $((args.$tail))* (&mut self.by_ref_mut) (&self.by_ref) (self.by_value))
+                    (self.conjure())(self.by_value, &self.by_ref, &mut self.by_ref_mut, args)
                 }
             }
 
             impl_fn! {
-                impl[ByValue: Copy + Object, ByRef: Object, ByRefMut: Object $(, [<T $tail>])*, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, $([<T $tail>]),*) -> Output] FnMut<($([<T $tail>],)*)> for Closure<Func, ByValue, ByRef, ByRefMut> =
+                impl[ByValue: Copy + Object, ByRef: Object, ByRefMut: Object $(, [<T $tail>])*, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, ($([<T $tail>],)*)) -> Output] FnMut<($([<T $tail>],)*)> for Closure<Func, ByValue, ByRef, ByRefMut> =
                 #[allow(unused_variables)]
                 |self, args| {
-                    reverse_call!([] $((args.$tail))* (&mut self.by_ref_mut) (&self.by_ref) (self.by_value))
+                    (self.conjure())(self.by_value, &self.by_ref, &mut self.by_ref_mut, args)
                 }
             }
 
             impl_fn! {
-                impl[ByValue: Copy + Object, ByRef: Object $(, [<T $tail>])*, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut (), $([<T $tail>]),*) -> Output] Fn<($([<T $tail>],)*)> for Closure<Func, ByValue, ByRef, ()> =
+                impl[ByValue: Copy + Object, ByRef: Object $(, [<T $tail>])*, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut (), ($([<T $tail>],)*)) -> Output] Fn<($([<T $tail>],)*)> for Closure<Func, ByValue, ByRef, ()> =
                 #[allow(unused_variables)]
                 |self, args| {
-                    reverse_call!([] $((args.$tail))* (&mut ()) (&self.by_ref) (self.by_value))
+                    (self.conjure())(self.by_value, &self.by_ref, &mut (), args)
                 }
             }
         }

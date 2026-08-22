@@ -104,15 +104,14 @@ fn function() {
 #[macro_rules_attribute::apply(test!)]
 fn bound_function() {
     let a = 5;
-    let func: Box<dyn FnOnceObject<(i32,), Output = i32>> = lambda! { move(a: i32) |b| a + b };
+    let func: Box<dyn FnOnceObject<(i32,), Output = i32>> = lambda! { move(a) |b| a + b };
     assert_eq!(serde(func).call_object_box((7,)), 12);
 }
 
 #[macro_rules_attribute::apply(test!)]
 fn ref_bound_function() {
     let s = "abc".to_string();
-    let func: Box<dyn FnOnceObject<(), Output = usize>> =
-        lambda! { move(ref s: String) || s.len() };
+    let func: Box<dyn FnOnceObject<(), Output = usize>> = lambda! { move(ref s) || s.len() };
     assert_eq!(serde(func).call_object_box(()), 3);
 }
 
@@ -120,7 +119,7 @@ fn ref_bound_function() {
 fn double_bound_function() {
     let a = 5;
     let b = 7;
-    let func: Box<dyn FnOnceObject<(), Output = i32>> = lambda! { move(a: i32, b: i32) || a + b };
+    let func: Box<dyn FnOnceObject<(), Output = i32>> = lambda! { move(a, b) || a + b };
     assert_eq!(serde(func).call_object_box(()), 12);
 }
 
