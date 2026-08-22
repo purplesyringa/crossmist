@@ -112,7 +112,7 @@ pub fn entrypoint(meta: TokenStream, input: TokenStream) -> TokenStream {
 
     let spawn = quote! { spawn(#ident::entry::#generics, (#(#arg_names,)*)) };
 
-    let expanded = quote! {
+    quote! {
         #[allow(non_camel_case_types)]
         #[derive(::crossmist::Object)]
         #vis struct #ident;
@@ -151,7 +151,5 @@ pub fn entrypoint(meta: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }
         }
-    };
-
-    TokenStream::from(expanded)
+    }.into()
 }
