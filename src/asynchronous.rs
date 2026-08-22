@@ -116,7 +116,8 @@ pub unsafe trait AsyncStream: Object + AsSocket + AsRawSocket + Sized {
 ///
 /// `T` is the type of the objects this side sends via the channel and the other side receives.
 #[derive(Object)]
-pub struct Sender<Stream: AsyncStream, T: Object> {
+#[crossmist(bound = "Stream: Object")]
+pub struct Sender<Stream, T> {
     pub(crate) fd: Stream,
     marker: PhantomData<fn(T)>,
 }
@@ -125,7 +126,8 @@ pub struct Sender<Stream: AsyncStream, T: Object> {
 ///
 /// `T` is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
-pub struct Receiver<Stream: AsyncStream, T: Object> {
+#[crossmist(bound = "Stream: Object")]
+pub struct Receiver<Stream, T> {
     pub(crate) fd: Stream,
     marker: PhantomData<fn() -> T>,
 }
@@ -135,21 +137,20 @@ pub struct Receiver<Stream: AsyncStream, T: Object> {
 /// `S` is the type of the objects this side sends via the channel and the other side receives, `R`
 /// is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Object)]
-pub struct Duplex<Stream: AsyncStream, S: Object, R: Object> {
+#[crossmist(bound = "Stream: Object")]
+pub struct Duplex<Stream, S, R> {
     pub(crate) fd: Stream,
     marker: PhantomData<fn(S) -> R>,
 }
 
 /// Create a unidirectional channel.
-pub fn channel<Stream: AsyncStream, T: Object>() -> Result<(Sender<Stream, T>, Receiver<Stream, T>)>
-{
+pub fn channel<Stream: AsyncStream, T>() -> Result<(Sender<Stream, T>, Receiver<Stream, T>)> {
     let (tx, rx) = duplex::<Stream, T, T>()?;
     Ok((tx.into_sender(), rx.into_receiver()))
 }
 
 /// Create a bidirectional channel.
-pub fn duplex<Stream: AsyncStream, A: Object, B: Object>()
--> Result<(Duplex<Stream, A, B>, Duplex<Stream, B, A>)> {
+pub fn duplex<Stream: AsyncStream, A, B>() -> Result<(Duplex<Stream, A, B>, Duplex<Stream, B, A>)> {
     let (tx, rx) = socketpair()?;
     unsafe {
         Ok((
@@ -159,7 +160,7 @@ pub fn duplex<Stream: AsyncStream, A: Object, B: Object>()
     }
 }
 
-impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
+impl<Stream, T> Sender<Stream, T> {
     pub(crate) unsafe fn from_stream(fd: Stream) -> Self {
         Sender {
             fd,
@@ -168,7 +169,11 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
     }
 
     /// Send a value to the other side.
-    pub async fn send(&mut self, value: T) -> Result<()> {
+    pub async fn send(&mut self, value: T) -> Result<()>
+    where
+        Stream: AsyncStream,
+        T: Object,
+    {
         #[cfg(unix)]
         {
             let mut sender = SingleObjectSender::new(self.fd.as_fd(), value, Stream::IS_BLOCKING);
@@ -183,13 +188,13 @@ impl<Stream: AsyncStream, T: Object> Sender<Stream, T> {
     }
 }
 
-impl<Stream: AsyncStream + fmt::Debug, T: Object> fmt::Debug for Sender<Stream, T> {
+impl<Stream: fmt::Debug, T> fmt::Debug for Sender<Stream, T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_tuple("Sender").field(&self.fd).finish()
     }
 }
 
-impl<Stream: AsyncStream, T: Object> TryFrom<crate::Sender<T>> for Sender<Stream, T> {
+impl<Stream: AsyncStream, T> TryFrom<crate::Sender<T>> for Sender<Stream, T> {
     type Error = Error;
     fn try_from(value: crate::Sender<T>) -> Result<Self> {
         unsafe { Ok(Self::from_stream(Stream::try_new(value.0.fd.0)?)) }
@@ -197,19 +202,19 @@ impl<Stream: AsyncStream, T: Object> TryFrom<crate::Sender<T>> for Sender<Stream
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> AsRawFd for Sender<Stream, T> {
+impl<Stream: AsyncStream, T> AsRawFd for Sender<Stream, T> {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, T: Object> AsRawSocket for Sender<Stream, T> {
+impl<Stream: AsyncStream, T> AsRawSocket for Sender<Stream, T> {
     fn as_raw_socket(&self) -> RawSocket {
         self.fd.as_raw_socket()
     }
 }
 
-impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
+impl<Stream, T> Receiver<Stream, T> {
     pub(crate) unsafe fn from_stream(fd: Stream) -> Self {
         Receiver {
             fd,
@@ -220,7 +225,11 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
     /// Receive a value from the other side.
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
-    pub async fn recv(&mut self) -> Result<Option<T>> {
+    pub async fn recv(&mut self) -> Result<Option<T>>
+    where
+        Stream: AsyncStream,
+        T: Object,
+    {
         #[cfg(unix)]
         {
             let mut receiver =
@@ -245,13 +254,13 @@ impl<Stream: AsyncStream, T: Object> Receiver<Stream, T> {
     }
 }
 
-impl<Stream: AsyncStream + fmt::Debug, T: Object> fmt::Debug for Receiver<Stream, T> {
+impl<Stream: fmt::Debug, T> fmt::Debug for Receiver<Stream, T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_tuple("Receiver").field(&self.fd).finish()
     }
 }
 
-impl<Stream: AsyncStream, T: Object> TryFrom<crate::Receiver<T>> for Receiver<Stream, T> {
+impl<Stream: AsyncStream, T> TryFrom<crate::Receiver<T>> for Receiver<Stream, T> {
     type Error = Error;
     fn try_from(value: crate::Receiver<T>) -> Result<Self> {
         unsafe { Ok(Self::from_stream(Stream::try_new(value.0.fd.0)?)) }
@@ -259,19 +268,19 @@ impl<Stream: AsyncStream, T: Object> TryFrom<crate::Receiver<T>> for Receiver<St
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, T: Object> AsRawFd for Receiver<Stream, T> {
+impl<Stream: AsyncStream, T> AsRawFd for Receiver<Stream, T> {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, T: Object> AsRawSocket for Receiver<Stream, T> {
+impl<Stream: AsyncStream, T> AsRawSocket for Receiver<Stream, T> {
     fn as_raw_socket(&self) -> RawSocket {
         self.fd.as_raw_socket()
     }
 }
 
-impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
+impl<Stream, S, R> Duplex<Stream, S, R> {
     pub(crate) unsafe fn from_stream(fd: Stream) -> Self {
         Duplex {
             fd,
@@ -280,7 +289,11 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     }
 
     /// Send a value to the other side.
-    pub async fn send(&mut self, value: S) -> Result<()> {
+    pub async fn send(&mut self, value: S) -> Result<()>
+    where
+        Stream: AsyncStream,
+        S: Object,
+    {
         #[cfg(unix)]
         {
             let mut sender = SingleObjectSender::new(self.fd.as_fd(), value, Stream::IS_BLOCKING);
@@ -297,7 +310,11 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     /// Receive a value from the other side.
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
-    pub async fn recv(&mut self) -> Result<Option<R>> {
+    pub async fn recv(&mut self) -> Result<Option<R>>
+    where
+        Stream: AsyncStream,
+        R: Object,
+    {
         #[cfg(unix)]
         {
             let mut receiver =
@@ -324,7 +341,12 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     /// Send a value from the other side and wait for a response immediately.
     ///
     /// If the other side closes the channel before responding, an error is returned.
-    pub async fn request(&mut self, value: S) -> Result<R> {
+    pub async fn request(&mut self, value: S) -> Result<R>
+    where
+        Stream: AsyncStream,
+        S: Object,
+        R: Object,
+    {
         self.send(value).await?;
         self.recv().await?.ok_or_else(|| {
             Error::new(
@@ -343,15 +365,13 @@ impl<Stream: AsyncStream, S: Object, R: Object> Duplex<Stream, S, R> {
     }
 }
 
-impl<Stream: AsyncStream + fmt::Debug, S: Object, R: Object> fmt::Debug for Duplex<Stream, S, R> {
+impl<Stream: fmt::Debug, S, R> fmt::Debug for Duplex<Stream, S, R> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_tuple("Duplex").field(&self.fd).finish()
     }
 }
 
-impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
-    for Duplex<Stream, S, R>
-{
+impl<Stream: AsyncStream, S, R> TryFrom<crate::Duplex<S, R>> for Duplex<Stream, S, R> {
     type Error = Error;
     fn try_from(value: crate::Duplex<S, R>) -> Result<Self> {
         unsafe { Ok(Self::from_stream(Stream::try_new(value.0.fd.0)?)) }
@@ -359,13 +379,13 @@ impl<Stream: AsyncStream, S: Object, R: Object> TryFrom<crate::Duplex<S, R>>
 }
 
 #[cfg(unix)]
-impl<Stream: AsyncStream, S: Object, R: Object> AsRawFd for Duplex<Stream, S, R> {
+impl<Stream: AsyncStream, S, R> AsRawFd for Duplex<Stream, S, R> {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<Stream: AsyncStream, S: Object, R: Object> AsRawSocket for Duplex<Stream, S, R> {
+impl<Stream: AsyncStream, S, R> AsRawSocket for Duplex<Stream, S, R> {
     fn as_raw_socket(&self) -> RawSocket {
         self.fd.as_raw_socket()
     }
@@ -382,7 +402,7 @@ pub(crate) type ProcID = rustix::process::RawPid;
 pub(crate) type ProcID = HANDLE;
 
 /// A subprocess.
-pub struct Child<Stream: AsyncStream, T: Object> {
+pub struct Child<Stream, T> {
     pub(crate) proc_handle: ProcHandle,
     output_rx: Receiver<Stream, T>,
     may_kill: Arc<Mutex<bool>>,
@@ -397,7 +417,7 @@ pub struct KillHandle {
 unsafe impl Send for KillHandle {}
 unsafe impl Sync for KillHandle {}
 
-impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
+impl<Stream, T> Child<Stream, T> {
     fn new(proc_handle: ProcHandle, output_rx: Receiver<Stream, T>) -> Child<Stream, T> {
         Child {
             proc_handle,
@@ -431,7 +451,11 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     /// An error is returned if the process panics or is terminated. An error is also delivered if
     /// it exits via [`std::process::exit`] or alike instead of returning a value, unless the return
     /// type is `()`. In that case, `Ok(())` is returned.
-    pub async fn join(mut self) -> Result<T> {
+    pub async fn join(mut self) -> Result<T>
+    where
+        Stream: AsyncStream,
+        T: Object,
+    {
         let mut value = self.output_rx.recv().await?;
         if typeid::of::<T>() == typeid::of::<()>() {
             // Functions returning `()` don't submit their results explicitly; see the explanation
@@ -490,7 +514,7 @@ impl<Stream: AsyncStream, T: Object> Child<Stream, T> {
     }
 }
 
-impl<Stream: AsyncStream + fmt::Debug, T: Object> fmt::Debug for Child<Stream, T> {
+impl<Stream: fmt::Debug, T> fmt::Debug for Child<Stream, T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("Child")
             .field("proc_handle", &self.proc_handle)

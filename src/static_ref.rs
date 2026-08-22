@@ -87,6 +87,7 @@ use std::ops::Deref;
 /// assert_eq!(*num, 123);
 /// ```
 #[derive(Object)]
+#[crossmist(bound = "")]
 pub struct StaticRef<T: 'static> {
     ptr: RelocatablePtr<T>,
 }

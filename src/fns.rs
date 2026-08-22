@@ -374,16 +374,15 @@ impl<Args: Tuple, T: Object + std::ops::Fn<Args>> FnObject<Args> for T {
 #[allow(missing_debug_implementations)]
 #[doc(hidden)]
 #[derive(Object)]
-pub struct Closure<Func, ByValue: Object, ByRef: Object, ByRefMut: Object> {
+#[crossmist(bound = "ByValue: Object, ByRef: Object, ByRefMut: Object")]
+pub struct Closure<Func, ByValue, ByRef, ByRefMut> {
     pub by_value: ByValue,
     pub by_ref: ByRef,
     pub by_ref_mut: ByRefMut,
     pub _phantom: PhantomData<Func>,
 }
 
-impl<Func, ByValue: Object, ByRef: Object, ByRefMut: Object>
-    Closure<Func, ByValue, ByRef, ByRefMut>
-{
+impl<Func, ByValue, ByRef, ByRefMut> Closure<Func, ByValue, ByRef, ByRefMut> {
     // Has to be safe for macros to not wrap user code in `unsafe`
     pub fn unsafe_new<Args, Output>(
         _func: Func,
@@ -515,7 +514,8 @@ pub trait FnPtr: Copy + fn_ptr_private::Sealed {
 /// assert_eq!(safe_read(&123), 123);
 /// ```
 #[derive(Clone, Copy, Debug, Object)]
-pub struct StaticFn<F: FnPtr> {
+#[crossmist(bound = "")]
+pub struct StaticFn<F> {
     ptr: RelocatablePtr<()>,
     phantom: PhantomData<F>,
 }

@@ -463,22 +463,34 @@ pub use crossmist_derive::func;
 
 /// Enable a `struct` or an `enum` to be sent across processes.
 ///
-/// [`Object`] can be implemented if all fields of the `struct`/`enum` implement [`Object`]. In
-/// particular, for generic implementations, constraints on the definition are currently necessary:
+/// [`Object`] can be implemented if all fields of the `struct`/`enum` implement [`Object`]. For
+/// generic definitions, [`Object`] bounds are automatically added for all generic parameters:
 ///
 /// ```rust
 /// # use crossmist::Object;
 /// #[derive(Object)]
-/// struct MyPair<T: Object>(T, T);
-/// ```
-///
-/// This won't work:
-///
-/// ```compile_fail
-/// # use crossmist::Object;
-/// #[derive(Object)]
 /// struct MyPair<T>(T, T);
 /// ```
+///
+/// This generates:
+///
+/// ```ignore
+/// impl<T: Object> Object for MyPair<T> { ... }
+/// ```
+///
+/// In case the automatically generated bounds are incorrect (e.g. if `T` is actually only stored in
+/// [`PhantomData`](core::marker::PhantomData)), the `#[crossmist(bound = "...")]` attribute can be
+/// used:
+///
+/// ```rust
+/// # use crossmist::Object;
+/// # use core::marker::PhantomData;
+/// #[derive(Object)]
+/// #[crossmist(bound = "U: Object")] // don't add T: Object
+/// struct Partial<T, U>(PhantomData<T>, U);
+/// ```
+///
+/// An empty `bound` parameter can be used to generate an [`Object`] implementation unconditionally.
 pub use crossmist_derive::Object;
 
 #[doc(hidden)]

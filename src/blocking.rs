@@ -155,74 +155,80 @@ impl IntoRawSocket for Blocking {
 ///
 /// `T` is the type of the objects this side sends via the channel and the other side receives.
 #[derive(Debug, Object)]
-pub struct Sender<T: Object>(pub(crate) asynchronous::Sender<Blocking, T>);
+#[crossmist(bound = "")]
+pub struct Sender<T>(pub(crate) asynchronous::Sender<Blocking, T>);
 
 /// The receiving side of a unidirectional channel.
 ///
 /// `T` is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Debug, Object)]
-pub struct Receiver<T: Object>(pub(crate) asynchronous::Receiver<Blocking, T>);
+#[crossmist(bound = "")]
+pub struct Receiver<T>(pub(crate) asynchronous::Receiver<Blocking, T>);
 
 /// A side of a bidirectional channel.
 ///
 /// `S` is the type of the objects this side sends via the channel and the other side receives, `R`
 /// is the type of the objects the other side sends via the channel and this side receives.
 #[derive(Debug, Object)]
-pub struct Duplex<S: Object, R: Object>(pub(crate) asynchronous::Duplex<Blocking, S, R>);
+#[crossmist(bound = "")]
+pub struct Duplex<S, R>(pub(crate) asynchronous::Duplex<Blocking, S, R>);
 
 /// Create a unidirectional channel.
-pub fn channel<T: Object>() -> Result<(Sender<T>, Receiver<T>)> {
+pub fn channel<T>() -> Result<(Sender<T>, Receiver<T>)> {
     let (tx, rx) = asynchronous::channel::<Blocking, T>()?;
     Ok((Sender(tx), Receiver(rx)))
 }
 
 /// Create a bidirectional channel.
-pub fn duplex<A: Object, B: Object>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
+pub fn duplex<A, B>() -> Result<(Duplex<A, B>, Duplex<B, A>)> {
     let (tx, rx) = asynchronous::duplex::<Blocking, A, B>()?;
     Ok((Duplex(tx), Duplex(rx)))
 }
 
-impl<T: Object> Sender<T> {
+impl<T> Sender<T> {
     /// Send a value to the other side.
-    pub fn send(&mut self, value: T) -> Result<()> {
+    pub fn send(&mut self, value: T) -> Result<()>
+    where
+        T: Object,
+    {
         block_on(self.0.send(value))
     }
 }
 
 #[cfg(unix)]
-impl<T: Object> AsRawFd for Sender<T> {
+impl<T> AsRawFd for Sender<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<T: Object> AsRawSocket for Sender<T> {
+impl<T> AsRawSocket for Sender<T> {
     fn as_raw_socket(&self) -> RawSocket {
         self.0.as_raw_socket()
     }
 }
 
 #[cfg(unix)]
-impl<T: Object> IntoRawFd for Sender<T> {
+impl<T> IntoRawFd for Sender<T> {
     fn into_raw_fd(self) -> RawFd {
         self.0.fd.into_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<T: Object> IntoRawSocket for Sender<T> {
+impl<T> IntoRawSocket for Sender<T> {
     fn into_raw_socket(self) -> RawSocket {
         self.0.fd.into_raw_socket()
     }
 }
 
 #[cfg(unix)]
-impl<T: Object> FromRawFd for Sender<T> {
+impl<T> FromRawFd for Sender<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         unsafe { Self(asynchronous::Sender::from_stream(Blocking::from_raw_fd(fd))) }
     }
 }
 #[cfg(windows)]
-impl<T: Object> FromRawSocket for Sender<T> {
+impl<T> FromRawSocket for Sender<T> {
     unsafe fn from_raw_socket(fd: RawSocket) -> Self {
         unsafe {
             Self(asynchronous::Sender::from_stream(
@@ -232,43 +238,46 @@ impl<T: Object> FromRawSocket for Sender<T> {
     }
 }
 
-impl<T: Object> Receiver<T> {
+impl<T> Receiver<T> {
     /// Receive a value from the other side.
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
-    pub fn recv(&mut self) -> Result<Option<T>> {
+    pub fn recv(&mut self) -> Result<Option<T>>
+    where
+        T: Object,
+    {
         block_on(self.0.recv())
     }
 }
 
 #[cfg(unix)]
-impl<T: Object> AsRawFd for Receiver<T> {
+impl<T> AsRawFd for Receiver<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<T: Object> AsRawSocket for Receiver<T> {
+impl<T> AsRawSocket for Receiver<T> {
     fn as_raw_socket(&self) -> RawSocket {
         self.0.as_raw_socket()
     }
 }
 
 #[cfg(unix)]
-impl<T: Object> IntoRawFd for Receiver<T> {
+impl<T> IntoRawFd for Receiver<T> {
     fn into_raw_fd(self) -> RawFd {
         self.0.fd.into_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<T: Object> IntoRawSocket for Receiver<T> {
+impl<T> IntoRawSocket for Receiver<T> {
     fn into_raw_socket(self) -> RawSocket {
         self.0.fd.into_raw_socket()
     }
 }
 
 #[cfg(unix)]
-impl<T: Object> FromRawFd for Receiver<T> {
+impl<T> FromRawFd for Receiver<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         unsafe {
             Self(asynchronous::Receiver::from_stream(Blocking::from_raw_fd(
@@ -278,7 +287,7 @@ impl<T: Object> FromRawFd for Receiver<T> {
     }
 }
 #[cfg(windows)]
-impl<T: Object> FromRawSocket for Receiver<T> {
+impl<T> FromRawSocket for Receiver<T> {
     unsafe fn from_raw_socket(fd: RawSocket) -> Self {
         unsafe {
             Self(asynchronous::Receiver::from_stream(
@@ -288,23 +297,33 @@ impl<T: Object> FromRawSocket for Receiver<T> {
     }
 }
 
-impl<S: Object, R: Object> Duplex<S, R> {
+impl<S, R> Duplex<S, R> {
     /// Send a value to the other side.
-    pub fn send(&mut self, value: S) -> Result<()> {
+    pub fn send(&mut self, value: S) -> Result<()>
+    where
+        S: Object,
+    {
         block_on(self.0.send(value))
     }
 
     /// Receive a value from the other side.
     ///
     /// Returns `Ok(None)` if the other side has dropped the channel.
-    pub fn recv(&mut self) -> Result<Option<R>> {
+    pub fn recv(&mut self) -> Result<Option<R>>
+    where
+        R: Object,
+    {
         block_on(self.0.recv())
     }
 
     /// Send a value from the other side and wait for a response immediately.
     ///
     /// If the other side closes the channel before responding, an error is returned.
-    pub fn request(&mut self, value: S) -> Result<R> {
+    pub fn request(&mut self, value: S) -> Result<R>
+    where
+        S: Object,
+        R: Object,
+    {
         block_on(self.0.request(value))
     }
 
@@ -318,39 +337,39 @@ impl<S: Object, R: Object> Duplex<S, R> {
 }
 
 #[cfg(unix)]
-impl<S: Object, R: Object> AsRawFd for Duplex<S, R> {
+impl<S, R> AsRawFd for Duplex<S, R> {
     fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<S: Object, R: Object> AsRawSocket for Duplex<S, R> {
+impl<S, R> AsRawSocket for Duplex<S, R> {
     fn as_raw_socket(&self) -> RawSocket {
         self.0.as_raw_socket()
     }
 }
 
 #[cfg(unix)]
-impl<S: Object, R: Object> IntoRawFd for Duplex<S, R> {
+impl<S, R> IntoRawFd for Duplex<S, R> {
     fn into_raw_fd(self) -> RawFd {
         self.0.fd.into_raw_fd()
     }
 }
 #[cfg(windows)]
-impl<S: Object, R: Object> IntoRawSocket for Duplex<S, R> {
+impl<S, R> IntoRawSocket for Duplex<S, R> {
     fn into_raw_socket(self) -> RawSocket {
         self.0.fd.into_raw_socket()
     }
 }
 
 #[cfg(unix)]
-impl<S: Object, R: Object> FromRawFd for Duplex<S, R> {
+impl<S, R> FromRawFd for Duplex<S, R> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         unsafe { Self(asynchronous::Duplex::from_stream(Blocking::from_raw_fd(fd))) }
     }
 }
 #[cfg(windows)]
-impl<S: Object, R: Object> FromRawSocket for Duplex<S, R> {
+impl<S, R> FromRawSocket for Duplex<S, R> {
     unsafe fn from_raw_socket(handle: RawSocket) -> Self {
         unsafe {
             Self(asynchronous::Duplex::from_stream(
@@ -362,9 +381,9 @@ impl<S: Object, R: Object> FromRawSocket for Duplex<S, R> {
 
 /// The subprocess object created by calling `spawn` on a function annottated with `#[func]`.
 #[derive(Debug)]
-pub struct Child<T: Object>(pub(crate) asynchronous::Child<Blocking, T>);
+pub struct Child<T>(pub(crate) asynchronous::Child<Blocking, T>);
 
-impl<T: Object> Child<T> {
+impl<T> Child<T> {
     /// Get a handle for process termination.
     pub fn get_kill_handle(&self) -> KillHandle {
         self.0.get_kill_handle()
@@ -380,7 +399,10 @@ impl<T: Object> Child<T> {
     /// An error is returned if the process panics or is terminated. An error is also delivered if
     /// it exits via [`std::process::exit`] or alike instead of returning a value, unless the return
     /// type is `()`. In that case, `Ok(())` is returned.
-    pub fn join(self) -> Result<T> {
+    pub fn join(self) -> Result<T>
+    where
+        T: Object,
+    {
         block_on(self.0.join())
     }
 }

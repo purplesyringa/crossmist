@@ -14,7 +14,7 @@ pub fn func(input: TokenStream) -> TokenStream {
     func::func(input)
 }
 
-#[proc_macro_derive(Object)]
+#[proc_macro_derive(Object, attributes(crossmist))]
 pub fn derive_object(input: TokenStream) -> TokenStream {
     object::derive_object(input)
 }

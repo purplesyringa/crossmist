@@ -1,9 +1,20 @@
+use darling::FromDeriveInput;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Data, DeriveInput, parse_macro_input};
+use syn::{Data, DeriveInput, WherePredicate, parse_macro_input, parse_quote};
+
+#[derive(FromDeriveInput)]
+#[darling(attributes(crossmist))]
+pub struct ObjectOpts {
+    bound: Option<Vec<WherePredicate>>,
+}
 
 pub fn derive_object(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+    let mut input = parse_macro_input!(input as DeriveInput);
+    let opts = match ObjectOpts::from_derive_input(&input) {
+        Ok(opts) => opts,
+        Err(err) => return err.write_errors().into(),
+    };
 
     let variants = match input.data {
         Data::Struct(struct_) => vec![(struct_.fields, quote! { Self })],
@@ -52,6 +63,18 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
             )
         })
         .unzip();
+
+    let bound: Vec<WherePredicate> = opts.bound.unwrap_or_else(|| {
+        input
+            .generics
+            .type_params()
+            .map(|type_param| {
+                let ident = &type_param.ident;
+                parse_quote! { #ident: ::crossmist::Object }
+            })
+            .collect()
+    });
+    input.generics.make_where_clause().predicates.extend(bound);
 
     let ident = &input.ident;
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
