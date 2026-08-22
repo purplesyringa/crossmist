@@ -167,19 +167,21 @@ impl From<Serializer> for Deserializer {
     }
 }
 
-/// A serializable object.
+/// A value that can be sent between processes.
 ///
-/// This trait is already implemented for most types from the standard library for which it can
-/// reasonably be implemented, and if you need it for your structs and enums, you can use
-/// `#[derive(Object)]`.
+/// This trait is implemented for most types from the standard library for which it can reasonably
+/// be implemented, and if you need it for your structs and enums, you can use
+/// [`#[derive(Object)]`](derive@crate::Object).
 ///
-/// You don't need to call the methods of this trait directly: crossmist does this for you whenever
-/// you pass objects over channels. In case you need to transmit data via other ways of
-/// communication, use [`Serializer`] and [`Deserializer`] APIs.
+/// You don't need to call the methods of this trait directly: crossmist does this for you when you
+/// send values over channels. This trait is not suited as a general serialization mechanism and
+/// should be used only for crossmist-based cross-process communication.
 ///
-/// If you have a type for which `#[derive(Object)]` does not produce the desired semantics (e.g.
-/// you have additional state stored elsewhere that should be dumped in the serialization stream),
-/// implement this trait based on this template:
+/// # Custom implementations
+///
+/// If you have a type for which `#[derive(Object)]` does not produce the desired semantics, e.g. if
+/// you have additional state stored elsewhere that should be dumped in the serialization stream,
+/// implement this trait based on the following template:
 ///
 /// ```rust
 /// use crossmist::{Deserializer, Object, Serializer};
@@ -203,15 +205,10 @@ impl From<Serializer> for Deserializer {
 /// }
 /// ```
 ///
-/// Note that DSTs cannot be objects (but `Box<dyn Trait>` and `Box<[T]>` are fine).
-///
-///
-/// # File descriptors
-///
-/// Most objects that store references to files can be serialized automatically, including
-/// [`std::fs::File`]. If you need to serialize a custom type with a file descriptor (on Unix) or
-/// a handle (on Windows), you can use [`OwnedFd`](std::os::unix::io::OwnedFd) or
-/// [`OwnedHandle`](std::os::windows::io::OwnedHandle):
+/// Objects referencing file descriptors (on Unix) or handles/sockets (on Windows) can be serialized
+/// by converting to [`OwnedFd`](std::os::unix::io::OwnedFd) or
+/// [`OwnedHandle`](std::os::windows::io::OwnedHandle)/[`OwnedSocket`](std::os::windows::io::OwnedSocket),
+/// for example:
 ///
 /// ```rust
 /// use crossmist::{Deserializer, Object, Serializer};
@@ -237,12 +234,11 @@ impl From<Serializer> for Deserializer {
 ///
 /// # Safety
 ///
-/// An implementation of this trait function is safe if the order of serialized types during
-/// serialization and deserialization matches, up to serialization layout. See the documentation of
-/// [`Deserializer::deserialize`] for more details.
+/// An implementation of this trait is safe if the order of types used during serialization and
+/// deserialization matches. See the documentation of [`Deserializer::deserialize`] for details.
 #[allow(private_bounds)]
 pub unsafe trait Object: BaseObject {
-    /// Serialize a single object into a serializer.
+    /// Serialize a single object.
     fn serialize_self(self, s: &mut Serializer);
     /// Serialize an array of objects into a serializer.
     ///
@@ -256,15 +252,13 @@ pub unsafe trait Object: BaseObject {
             s.serialize(element);
         }
     }
-    /// Deserialize a single object from a deserializer.
-    ///
-    /// This function may assume the input data is produced by [`Self::serialize_self`].
+    /// Deserialize a single object.
     ///
     /// # Safety
     ///
-    /// This function is safe to call if the order of serialized types during serialization and
-    /// deserialization matches, up to serialization layout. See the documentation of
-    /// [`Deserializer::deserialize`] for more details.
+    /// This function is safe to call if the value at the current position in the serialized stream
+    /// was produced by calling [`serialize_self`](Self::serialize_self) on an instance of the same
+    /// type. See the documentation of [`Deserializer::deserialize`] for details.
     unsafe fn deserialize_self(d: &mut Deserializer) -> Self
     where
         Self: Sized;

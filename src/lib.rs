@@ -1,31 +1,42 @@
-//! Efficient and seamless cross-process communication, providing semantics similar to
-//! [`std::thread::spawn`] and alike, both synchronously and asynchronously (via tokio or smol).
+//! crossmist implements of [`std::thread::spawn`] for processes and channels for cross-process
+//! communication.
 //!
-//! This crate allows you to easily perform computations in another process without creating a
-//! separate executable or parsing command line arguments manually. For example, the simplest
-//! example, computing a sum of several numbers in a one-shot subprocess, looks like this:
+//! This allows you to easily move computations to another process, insulating you from the OOM
+//! killer and global mutexes locks and allowing processes running in different environments (e.g.
+//! [pidns](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html)) to coordinate.
+//!
+//!
+//! # Example
+//!
+//! Here's a simple example computing a sum of several numbers in a one-shot subprocess:
 //!
 //! ```standalone_crate
 //! fn main() {
+//!     // Let crossmist redirect control flow to other entrypoints
 //!     crossmist::init();
+//!     // Run `add` in a separate process and wait for it to finish
 //!     println!("5 + 7 = {}", add.run(vec![5, 7]).unwrap());
 //! }
 //!
+//! // Mark the function as a valid entrypoint
 //! #[crossmist::entrypoint]
 //! fn add(nums: Vec<i32>) -> i32 {
 //!     nums.into_iter().sum()
 //! }
 //! ```
 //!
-//! This crate also supports long-lived tasks with constant cross-process communication:
+//! Here's an example demonstrating using channels to coordinate long-living tasks:
 //!
 //! ```standalone_crate
 //! fn main() {
 //!     crossmist::init();
+//!     // Create a bidirectional channel and spawn `add` in a separate process, passing one end of
+//!     // the channel as an argument
 //!     let (mut ours, theirs) = crossmist::duplex().unwrap();
 //!     add.spawn(theirs).expect("Failed to spawn child");
 //!     for i in 1..=5 {
 //!         for j in 1..=5 {
+//!             // Send the input and wait for a response
 //!             println!("{i} + {j} = {}", ours.request(vec![i, j]).unwrap());
 //!         }
 //!     }
@@ -40,28 +51,21 @@
 //! ```
 //!
 //!
-//! # Passing objects
+//! # Nouns
 //!
-//! Almost arbitrary objects can be passed between processes and across channels, including file
-//! handles, sockets, and other channels.
+//! The two terms crossmist introduces are *objects* and *entrypoints*.
 //!
-//! For numeric types, strings, vectors, hashmaps, other common containers, and files/sockets, the
-//! [`Object`] trait is implemented automatically. For user-defined structures and enums, use
-//! `#[derive(Object)]`. You may use generics, but make sure to add `: Object` constraint to stored
-//! types:
+//! Objects are values that can be passed between processes, either when starting a new process or
+//! over a channel. Since processes don't share memory, objects have to be serialized when sent.
+//! This is covered by the [`Object`] trait. Its implementors include:
+//! - Most vocabulary types, like [`i32`], [`String`], and [`HashMap`](std::collections::HashMap).
+//! - Compound types annotated with [`#[derive(Object)]`](derive@Object).
+//! - File descriptors: you can send [`File`](std::fs::File) and [`TcpStream`](std::net::TcpStream)
+//!   over a channel, or even a channel over another channel.
+//! - Callbacks (closures) built with the [`func`] macro.
+//! - `Box<dyn Trait>` when [`Object`] is a supertrait of `Trait`.
 //!
-//! ```rust
-//! use crossmist::Object;
-//!
-//! #[derive(Object)]
-//! struct MyPair<T: Object, U: Object> {
-//!     first: T,
-//!     second: U,
-//! }
-//! ```
-//!
-//! Occasionally, e.g. for custom hash tables or externally defined types, you might have to
-//! implement [`Object`] manually. Check out the documentation for [`Object`] for more information.
+//! Entrypoints are .
 //!
 //!
 //! # Channels
@@ -457,34 +461,10 @@ pub use crossmist_derive::entrypoint;
 /// ```
 pub use crossmist_derive::func;
 
-/// Make a structure or a enum serializable.
+/// Enable a `struct` or an `enum` to be sent across processes.
 ///
-/// This derive macro enables the corresponding type to be passed via channels and to and from child
-/// processes. [`Object`] can be implemented for a struct/enum if all of its fields implement
-/// [`Object`]:
-///
-/// This is okay:
-///
-/// ```rust
-/// # use crossmist::Object;
-/// #[derive(Object)]
-/// struct Test(String, i32);
-/// ```
-///
-/// This is not okay:
-///
-/// ```compile_fail
-/// # use crossmist::Object;
-/// struct NotObject;
-///
-/// #[derive(Object)]
-/// struct Test(String, i32, NotObject);
-/// ```
-///
-/// Generics are supported. In this case, to ensure that all fields implement [`Object`],
-/// constraints might be necessary:
-///
-/// This is okay:
+/// [`Object`] can be implemented if all fields of the `struct`/`enum` implement [`Object`]. In
+/// particular, for generic implementations, constraints on the definition are currently necessary:
 ///
 /// ```rust
 /// # use crossmist::Object;
@@ -492,7 +472,7 @@ pub use crossmist_derive::func;
 /// struct MyPair<T: Object>(T, T);
 /// ```
 ///
-/// This is not okay:
+/// This won't work:
 ///
 /// ```compile_fail
 /// # use crossmist::Object;
@@ -505,7 +485,7 @@ pub use crossmist_derive::Object;
 pub mod imp;
 pub use imp::init;
 
-pub mod serde;
+mod serde;
 pub use serde::*;
 
 mod owning_ref;
