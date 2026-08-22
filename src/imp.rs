@@ -17,8 +17,17 @@ pub(crate) fn perform_sanity_checks() {
 /// This function should always be called at the beginning of `main`.
 ///
 /// When crossmist spawns child processes, they start executing the same `main` function as the root
-/// process. Calling [`init`] lets crossmist pass control to the function that the process is
+/// process. Calling [`init`] lets crossmist pass control to the entrypoint that the process is
 /// actually supposed to be executing.
+///
+/// [`init`] should not be invoked before `main`, e.g. with crates like `ctor`, since it assumes
+/// `std` has been fully initialized. Attempting to do so may result in anything from misbehaving
+/// user code to recursively re-executing the same program instead of running an entrypoint.
+/// In particular, using `crossmist` in tests requires
+/// [a custom harness](https://www.unwoundstack.com/blog/integration-testing-rust-binaries.html)
+/// with a global setup hook calling [`init`].
+///
+/// # Async
 ///
 /// In asynchronous programs, avoid annotating `main` with `#[tokio::main]` directly, and prefer:
 ///
@@ -34,11 +43,8 @@ pub(crate) fn perform_sanity_checks() {
 /// }
 /// ```
 ///
-/// [`init`] should not be invoked before `main`, e.g. with crates like `ctor`, since it assumes
-/// `std` has been fully initialized. Attempting to do so may result in anything from misbehaving
-/// user code to recursively re-executing the same program instead of running a function. Using
-/// `crossmist` from tests requires [a custom harness](https://www.unwoundstack.com/blog/integration-testing-rust-binaries.html)
-/// with a global setup hook calling [`init`].
+/// Otherwise the async runtime can start unnecessarily if the entrypoint is synchronous, or it can
+/// start twice if it's asynchronous.
 pub fn init() {
     if INITIALIZED.swap(true, Ordering::Relaxed) {
         panic!("crossmist::init() is called twice");
