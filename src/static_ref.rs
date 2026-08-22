@@ -130,22 +130,21 @@ impl<T> StaticRef<T> {
     /// [`StaticRef<T>`] implements [`Deref`], so this function should seldom be used: instead of
     /// `static_ref.get().<...>` just do `static_ref.<...>`. It is only useful to get a reference
     /// with a `'static` lifetime.
-    pub fn get(self) -> &'static T {
+    pub fn get<'a>(self) -> &'a T {
         unsafe { &*self.ptr.0 }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for StaticRef<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:?}", **self)
+        write!(fmt, "{:?}", self.get())
     }
 }
 
 impl<T> Deref for StaticRef<T> {
     type Target = T;
     fn deref(&self) -> &T {
-        // Don't call `self.get()` here so that we don't have to add `T: 'static`
-        unsafe { &*self.ptr.0 }
+        self.get()
     }
 }
 
