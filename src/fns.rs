@@ -31,7 +31,7 @@
 //! fn main() {
 //!     crossmist::init();
 //!     let x = 7;
-//!     println!("{}", go.run(5, lambda! { move(x: i32) |y: i32| -> i32 { x + y } }).unwrap());
+//!     println!("{}", go.run(5, lambda! { move(x: i32) |y| x + y }).unwrap());
 //! }
 //!
 //! #[crossmist::entrypoint]
@@ -54,7 +54,7 @@
 //! fn main() {
 //!     crossmist::init();
 //!     let x = Box::new(7);
-//!     println!("{}", go.run(5, lambda! { move(ref x: Box<i32>) |y: i32| -> i32 { **x + y } }).unwrap());
+//!     println!("{}", go.run(5, lambda! { move(ref x: Box<i32>) |y| **x + y }).unwrap());
 //! }
 //!
 //! #[crossmist::entrypoint]
@@ -198,7 +198,7 @@ pub trait FnOnceObject<Args: Tuple>: Object {
     /// use crossmist::{FnOnceObject, lambda};
     ///
     /// let s = "Hello, world!".to_string();
-    /// let mut increment = lambda! { move(s: String) || -> String { s } };
+    /// let mut increment = lambda! { move(s: String) || s };
     ///
     /// assert_eq!(increment.call_object_once(()), "Hello, world!");
     /// ```
@@ -231,7 +231,7 @@ pub trait FnOnceObject<Args: Tuple>: Object + std::ops::FnOnce<Args> {
     /// use crossmist::{FnOnceObject, lambda};
     ///
     /// let s = "Hello, world!".to_string();
-    /// let mut increment = lambda! { move(s: String) || -> String { s } };
+    /// let mut increment = lambda! { move(s: String) || s };
     ///
     /// assert_eq!(increment.call_object_once(()), "Hello, world!");
     /// ```
@@ -288,7 +288,7 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> + std::ops::FnMut<Args> {
     ///
     /// let counter = 0;
     /// let mut increment = lambda! {
-    ///     move(ref mut counter: i32) || -> i32 { *counter += 1; *counter }
+    ///     move(ref mut counter: i32) || { *counter += 1; *counter }
     /// };
     ///
     /// assert_eq!(increment.call_object_mut(()), 1);
@@ -312,7 +312,7 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     ///
     /// let counter = 0;
     /// let mut increment = lambda! {
-    ///     move(ref mut counter: i32) || -> i32 { *counter += 1; *counter }
+    ///     move(ref mut counter: i32) || { *counter += 1; *counter }
     /// };
     ///
     /// assert_eq!(increment.call_object_mut(()), 1);
@@ -340,11 +340,7 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> + std::ops::Fn<Args> {
     ///
     /// ```rust
     /// use crossmist::FnObject;
-    ///
-    /// let add = crossmist::lambda! {
-    ///     |a: i32, b: i32| -> i32 { a + b }
-    /// };
-    ///
+    /// let add = crossmist::lambda! { |a, b| a + b };
     /// assert_eq!(add.call_object((5, 7)), 12);
     /// ```
     fn call_object(&self, args: Args) -> Self::Output;
@@ -362,9 +358,7 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     /// ```rust
     /// use crossmist::FnObject;
     ///
-    /// let add = crossmist::lambda! {
-    ///     |a: i32, b: i32| -> i32 { a + b }
-    /// };
+    /// let add = crossmist::lambda! { |a, b| a + b };
     ///
     /// assert_eq!(add.call_object((5, 7)), 12);
     /// ```

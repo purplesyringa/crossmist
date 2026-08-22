@@ -111,7 +111,7 @@ async fn async_main() -> Result<()> {
         for y in 1..=5 {
             let pool = pool.clone();
             tasks.push(tokio::spawn(async move {
-                let func = lambda! { move(x: i32, y: i32) || -> i32 { x + y } };
+                let func = lambda! { move(x, y) || x + y };
                 println!("{x} + {y} = {}", pool.run(func).await?);
                 Result::<()>::Ok(())
             }));

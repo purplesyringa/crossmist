@@ -188,9 +188,7 @@ extern crate self as crossmist;
 ///
 /// fn main() {
 ///     crossmist::init();
-///     let example = crossmist::lambda! {
-///         |a: i32, b: i32| -> i32 { a + b }
-///     };
+///     let example = crossmist::lambda! { |a, b| a + b };
 ///     assert_eq!(example.call_object((5, 7)), 12);
 /// }
 /// ```
@@ -381,7 +379,7 @@ pub use crossmist_derive::entrypoint;
 /// # use crossmist::{FnObject, FnOnceObject, lambda};
 /// fn main() {
 ///     crossmist::init();
-///     let func = lambda! { |a: i32, b: i32| -> i32 { a + b } };
+///     let func = lambda! { |a, b| a + b };
 ///     // run/spawn do not work directly, but you may still call/pass the function
 ///     assert_eq!(func.call_object((5, 7)), 12);
 ///     assert_eq!(gate.run(func).unwrap(), 12);
@@ -400,7 +398,7 @@ pub use crossmist_derive::entrypoint;
 /// fn main() {
 ///     crossmist::init();
 ///     let a = 5;
-///     let func = lambda! { move(a: i32) |b: i32| -> i32 { a + b } };
+///     let func = lambda! { move(a: i32) |b| a + b };
 ///     assert_eq!(func.call_object((7,)), 12);
 /// }
 /// ```
@@ -417,7 +415,7 @@ pub use crossmist_derive::entrypoint;
 /// let a = "Hello, ".to_string();
 /// // a is accessible by value when the lambda is executed
 /// let prepend_hello: Box<dyn FnOnceObject<(&str,), Output = String>> =
-///     lambda! { move(a: String) |b: &str| -> String { a + b } };
+///     lambda! { move(a: String) |b| a + b };
 /// assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
 /// // Can only be called once. The line below fails to compile when uncommented:
 /// // assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
@@ -431,7 +429,7 @@ pub use crossmist_derive::entrypoint;
 /// let cache = vec![0, 1];
 /// // cache is accessible by a mutable reference when the lambda is executed
 /// let mut fibonacci: Box<dyn FnMutObject<(usize,), Output = u32>> = lambda! {
-///     move(ref mut cache: Vec<u32>) |n: usize| -> u32 {
+///     move(ref mut cache: Vec<u32>) |n| {
 ///         while cache.len() <= n {
 ///             cache.push(cache[cache.len() - 2..].iter().sum());
 ///         }
@@ -451,7 +449,7 @@ pub use crossmist_derive::entrypoint;
 /// let s = "Hello, world!".to_string();
 /// // s is accessible by an immutable reference when the lambda is executed
 /// let count_occurrences: Box<dyn FnObject<(char,), Output = usize>> =
-///     lambda! { move(ref s: String) |c: char| -> usize { s.matches(c).count() } };
+///     lambda! { move(ref s: String) |c| s.matches(c).count() };
 /// assert_eq!(count_occurrences.call_object(('o',)), 2);
 /// // Can be called multiple times and be immutable
 /// assert_eq!(count_occurrences.call_object(('e',)), 1);
