@@ -119,7 +119,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             async fn entry #generic_params(args: Box<dyn ::core::ops::FnOnce() -> (#(#fn_types,)*)>) -> #return_type {
                 // `args` must be deserialized only after the reactor has started.
                 let args = args();
-                Self::invoke(#(#args_from_tuple,)*).await
+                Self::invoke::#generics(#(#args_from_tuple,)*).await
             }
         };
     } else if let Some(arg) = smol_argument {
@@ -130,7 +130,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
             fn entry #generic_params(args: Box<dyn ::core::ops::FnOnce() -> (#(#fn_types,)*)>) -> #return_type {
                 ::crossmist::imp::async_io::block_on(async {
                     let args = args();
-                    Self::invoke(#(#args_from_tuple,)*).await
+                    Self::invoke::#generics(#(#args_from_tuple,)*).await
                 })
             }
         };
@@ -138,7 +138,7 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         entry_code = quote! {
             fn entry #generic_params(args: Box<dyn ::core::ops::FnOnce() -> (#(#fn_types,)*)>) -> #return_type {
                 let args = args();
-                Self::invoke(#(#args_from_tuple,)*)
+                Self::invoke::#generics(#(#args_from_tuple,)*)
             }
         };
     }
@@ -180,17 +180,17 @@ pub fn func(meta: TokenStream, input: TokenStream) -> TokenStream {
         impl #generic_params ::crossmist::InternalFnOnce<(#(#fn_types,)*)> for #type_ident {
             type Output = #return_type_wrapped;
             fn call_object_once(self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::invoke(#(#args_from_tuple,)*))
+                #pin(#type_ident::invoke::#generics(#(#args_from_tuple,)*))
             }
         }
         impl #generic_params ::crossmist::InternalFnMut<(#(#fn_types,)*)> for #type_ident {
             fn call_object_mut(&mut self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::invoke(#(#args_from_tuple,)*))
+                #pin(#type_ident::invoke::#generics(#(#args_from_tuple,)*))
             }
         }
         impl #generic_params ::crossmist::InternalFn<(#(#fn_types,)*)> for #type_ident {
             fn call_object(&self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(#type_ident::invoke(#(#args_from_tuple,)*))
+                #pin(#type_ident::invoke::#generics(#(#args_from_tuple,)*))
             }
         }
 
