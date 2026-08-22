@@ -4,95 +4,10 @@ extern crate quote;
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use syn::parse::{Parse, ParseStream};
-use syn::parse_macro_input;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{DeriveInput, Meta, MetaList};
-
-#[proc_macro_attribute]
-pub fn func(_meta: TokenStream, input: TokenStream) -> TokenStream {
-    let mut input = parse_macro_input!(input as syn::ItemFn);
-
-    let return_type = match input.sig.output {
-        syn::ReturnType::Default => quote! { () },
-        syn::ReturnType::Type(_, ref ty) => quote! { #ty },
-    };
-
-    let generic_params = &input.sig.generics;
-    let generics = {
-        let params: Vec<_> = input
-            .sig
-            .generics
-            .params
-            .iter()
-            .map(|param| match param {
-                syn::GenericParam::Type(ty) => ty.ident.to_token_stream(),
-                syn::GenericParam::Lifetime(lt) => lt.lifetime.to_token_stream(),
-                syn::GenericParam::Const(con) => con.ident.to_token_stream(),
-            })
-            .collect();
-        quote! { <#(#params,)*> }
-    };
-
-    let type_ident = format_ident!(
-        "T_crossmist_{}_{}",
-        input.sig.ident,
-        format!("{:?}", &input as *const syn::ItemFn), // pray all &input are distinct
-    );
-
-    let ident = input.sig.ident;
-    input.sig.ident = format_ident!("invoke");
-
-    let vis = input.vis;
-    input.vis = syn::Visibility::Public(syn::VisPublic {
-        pub_token: <syn::Token![pub] as std::default::Default>::default(),
-    });
-
-    let mut fn_types = Vec::new();
-    let mut args_from_tuple = Vec::new();
-    for (i, arg) in input.sig.inputs.iter().enumerate() {
-        let i = syn::Index::from(i);
-        if let syn::FnArg::Typed(pattype) = arg {
-            let ty = &pattype.ty;
-            fn_types.push(quote! { #ty });
-            args_from_tuple.push(quote! { args.#i });
-        } else {
-            unreachable!();
-        }
-    }
-
-    let return_type_wrapped;
-    let pin;
-    if input.sig.asyncness.is_some() {
-        return_type_wrapped = quote! { ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = #return_type>>> };
-        pin = quote! { ::std::boxed::Box::pin };
-    } else {
-        return_type_wrapped = return_type.clone();
-        pin = quote! {};
-    }
-
-    let expanded = quote! {
-        #[allow(non_camel_case_types)]
-        #[derive(::crossmist::Object)]
-        #vis struct #type_ident;
-
-        impl #type_ident {
-            #input
-        }
-
-        impl #generic_params ::crossmist::FnItem<(#(#fn_types,)*)> for #type_ident {
-            type Output = #return_type_wrapped;
-            fn call(&self, args: (#(#fn_types,)*)) -> Self::Output {
-                #pin(Self::invoke::#generics(#(#args_from_tuple,)*))
-            }
-        }
-
-        #[allow(non_upper_case_globals)]
-        #vis const #ident: ::crossmist::CallWrapper<#type_ident> = ::crossmist::CallWrapper(#type_ident);
-    };
-
-    TokenStream::from(expanded)
-}
+use syn::{parse_macro_input, parse_quote};
 
 #[proc_macro_attribute]
 pub fn entrypoint(meta: TokenStream, input: TokenStream) -> TokenStream {
@@ -336,32 +251,39 @@ pub fn lambda(input: TokenStream) -> TokenStream {
         }
     }
 
-    let inputs = input.closure.inputs;
-    let output = input.closure.output;
-    let body = input.closure.body;
+    let mut closure = input.closure;
+    let prepended_inputs: syn::ExprClosure = parse_quote! {
+        |
+            (#(#captured_by_value_idents,)*): (#(#captured_by_value_types,)*),
+            (#(#captured_by_ref_idents,)*): &(#(#captured_by_ref_types,)*),
+            (#(#captured_by_ref_mut_idents,)*): &mut (#(#captured_by_ref_mut_types,)*),
+        | ()
+    };
+    closure.inputs = prepended_inputs
+        .inputs
+        .into_pairs()
+        .chain(closure.inputs.into_pairs())
+        .collect();
+
+    let input_underscores = closure
+        .inputs
+        .iter()
+        .map(|_| quote! { _ })
+        .collect::<Vec<_>>();
 
     quote! {
         {
-            #[::crossmist::func]
-            fn _unnamed(
-                _by_value: (#(#captured_by_value_types,)*),
-                _by_ref: &(#(#captured_by_ref_types,)*),
-                _by_ref_mut: &mut (#(#captured_by_ref_mut_types,)*),
-                #inputs
-            ) #output {
-                // TODO: inline into the signature once `#[crossmist::func]` supports that
-                let (#(#captured_by_value_idents,)*) = _by_value;
-                let (#(#captured_by_ref_idents,)*) = _by_ref;
-                let (#(#captured_by_ref_mut_idents,)*) = _by_ref_mut;
-                // create a closure for `unused_braces` lint to work correctly
-                (move || #body)()
-            }
+            let closure = #closure;
+            // assert that the closure doesn't borrow
+            let _ = closure as fn(#(#input_underscores,)*) -> _;
             ::std::boxed::Box::new(
-                ::crossmist::Bound {
-                    func: _unnamed,
-                    by_value: (#(#captured_by_value_idents,)*),
-                    by_ref: (#(#captured_by_ref_idents,)*),
-                    by_ref_mut: (#(#captured_by_ref_mut_idents,)*),
+                unsafe {
+                    ::crossmist::Closure::new(
+                        closure,
+                        (#(#captured_by_value_idents,)*),
+                        (#(#captured_by_ref_idents,)*),
+                        (#(#captured_by_ref_mut_idents,)*),
+                    )
                 },
             )
         }

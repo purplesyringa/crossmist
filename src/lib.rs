@@ -367,8 +367,6 @@ extern crate self as crossmist;
 ///     assert_eq!(example.run(5, 7).unwrap(), 12);
 /// }
 /// ```
-pub use crossmist_derive::func;
-
 pub use crossmist_derive::entrypoint;
 
 /// A short-cut for turning a (possible capturing) closure into an object function.
