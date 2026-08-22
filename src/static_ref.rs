@@ -10,7 +10,8 @@ use std::ops::Deref;
 /// temporary lifetimes. In extreme cases, the actions may not even be objects in the first place.
 ///
 /// [`StaticRef`] is similar to `&'static T`, but implements [`Object`] by serializing a pointer. It
-/// can be created from a constant value of type `T` with [`static_ref!`] and sent over:
+/// can be created from a constant value of type `T` with [`static_ref!`](crate::static_ref) and
+/// sent over:
 ///
 /// ```standalone_crate
 /// use crossmist::{StaticRef, static_ref};
@@ -70,8 +71,8 @@ use std::ops::Deref;
 /// }
 /// ```
 ///
-/// [`static_ref!`] creates a new `static` and cannot reference an already existing one. If that is
-/// necessary, you can use indirection:
+/// [`static_ref!`](crate::static_ref) creates a new `static` and cannot reference an already
+/// existing one. If that is necessary, you can use indirection:
 ///
 /// ```rust
 /// use crossmist::{StaticRef, static_ref};
@@ -102,7 +103,8 @@ impl<T> Copy for StaticRef<T> {}
 impl<T> StaticRef<T> {
     /// Create [`StaticRef`] from a `'static` reference.
     ///
-    /// This is an unsafe function -- you should almost always use [`static_ref!`] instead.
+    /// This is an unsafe function -- you should almost always use
+    /// [`static_ref!`](crate::static_ref) instead.
     ///
     /// # Safety
     ///
