@@ -312,7 +312,6 @@ impl Parse for ExplicitCapture {
 #[proc_macro]
 pub fn lambda(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ExplicitlyCapturingClosure);
-    let has_captures = input.captures.is_some();
 
     let mut captured_by_value_idents = Vec::new();
     let mut captured_by_value_types = Vec::new();
@@ -340,20 +339,6 @@ pub fn lambda(input: TokenStream) -> TokenStream {
     let inputs = input.closure.inputs;
     let output = input.closure.output;
     let body = input.closure.body;
-
-    if !has_captures {
-        return quote! {
-            {
-                #[::crossmist::func]
-                fn _unnamed(#inputs) #output {
-                    // create a closure for `unused_braces` lint to work correctly
-                    (move || #body)()
-                }
-                Box::new(_unnamed)
-            }
-        }
-        .into();
-    }
 
     quote! {
         {
