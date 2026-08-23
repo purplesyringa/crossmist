@@ -1,4 +1,6 @@
-use crossmist::{Duplex, Object, Receiver, Sender, StaticRef, channel, duplex, static_ref};
+use crossmist::{
+    Duplex, FnOnceObject, Object, Receiver, Sender, StaticRef, channel, duplex, static_ref,
+};
 
 mod testing;
 testing::setup!();
@@ -153,7 +155,7 @@ fn with_passed_trait() {
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_fn() {
     #[crossmist::entrypoint]
-    fn inner(func: Box<dyn crossmist::FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
+    fn inner(func: Box<dyn FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
         #[cfg(feature = "nightly")]
         {
             func(5, 7)
@@ -176,7 +178,7 @@ fn with_passed_fn() {
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_bound_fn() {
     #[crossmist::entrypoint]
-    fn inner(func: Box<dyn crossmist::FnOnceObject<(i32,), Output = i32>>) -> i32 {
+    fn inner(func: Box<dyn FnOnceObject<(i32,), Output = i32>>) -> i32 {
         #[cfg(feature = "nightly")]
         {
             func(7)
@@ -200,7 +202,7 @@ fn with_passed_bound_fn() {
 #[macro_rules_attribute::apply(test!)]
 fn with_passed_double_bound_fn() {
     #[crossmist::entrypoint]
-    fn inner(func: Box<dyn crossmist::FnOnceObject<(), Output = i32>>) -> i32 {
+    fn inner(func: Box<dyn FnOnceObject<(), Output = i32>>) -> i32 {
         #[cfg(feature = "nightly")]
         {
             func()
