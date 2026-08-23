@@ -135,23 +135,14 @@ impl<F> Deref for StaticFnPtr<F> {
 
 #[cfg(not(feature = "nightly"))]
 mod polyfill {
-    use paste::paste;
-
-    #[cfg(not(feature = "nightly"))]
     pub trait FnPtr: Copy {}
-
-    #[cfg(not(feature = "nightly"))]
     macro_rules! impl_fn_pointer {
         () => {};
         ($head:tt $($tail:tt)*) => {
-            paste! {
-                impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {}
-                impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {}
-            }
-
+            impl<Output, $($tail),*> FnPtr for fn($($tail),*) -> Output {}
+            impl<Output, $($tail),*> FnPtr for unsafe fn($($tail),*) -> Output {}
             impl_fn_pointer!($($tail)*);
         };
     }
-    #[cfg(not(feature = "nightly"))]
-    impl_fn_pointer!(x 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
+    impl_fn_pointer!(x T20 T19 T18 T17 T16 T15 T14 T13 T12 T11 T10 T9 T8 T7 T6 T5 T4 T3 T2 T1);
 }
