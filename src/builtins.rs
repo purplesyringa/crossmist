@@ -149,11 +149,9 @@ macro_rules! impl_tuple {
 
         paste! {
             unsafe impl<$([<T $tail>]: Object),*> Object for ($([<T $tail>],)*) {
-                #[allow(unused_variables)]
                 fn serialize_self(self, s: &mut Serializer) {
                     serialize_rev!(s, $(self.$tail,)*);
                 }
-                #[allow(unused_variables, clippy::unused_unit)]
                 unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
                     $( let [<x $tail>] = unsafe { d.deserialize() }; )*
                     ($([<x $tail>],)*)

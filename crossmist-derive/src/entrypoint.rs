@@ -117,7 +117,6 @@ pub fn entrypoint(meta: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(::crossmist::Object)]
         #vis struct #ident;
 
-        #[allow(unused_mut)]
         impl #ident {
             #input
 

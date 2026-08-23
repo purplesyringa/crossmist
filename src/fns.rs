@@ -406,7 +406,6 @@ impl<Func, ByValue, ByRef, ByRefMut> Closure<Func, ByValue, ByRef, ByRefMut> {
 
 impl_fn! {
     impl[ByValue: Object, ByRef: Object, ByRefMut: Object, Args: Tuple, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, Args) -> Output] FnOnce<Args, Output = Output> for Closure<Func, ByValue, ByRef, ByRefMut> =
-    #[allow(unused_variables)]
     |self, args| {
         (self.conjure())(self.by_value, &self.by_ref, &mut self.by_ref_mut, args)
     }
@@ -414,7 +413,6 @@ impl_fn! {
 
 impl_fn! {
     impl[ByRef: Object, ByRefMut: Object, Args: Tuple, Output, Func: for<'a> Fn((), &'a ByRef, &'a mut ByRefMut, Args) -> Output] FnMut<Args> for Closure<Func, (), ByRef, ByRefMut> =
-    #[allow(unused_variables)]
     |self, args| {
         (self.conjure())((), &self.by_ref, &mut self.by_ref_mut, args)
     }
@@ -422,7 +420,6 @@ impl_fn! {
 
 impl_fn! {
     impl[ByRef: Object, Args: Tuple, Output, Func: for<'a> Fn((), &'a ByRef, &'a mut (), Args) -> Output] Fn<Args> for Closure<Func, (), ByRef, ()> =
-    #[allow(unused_variables)]
     |self, args| {
         (self.conjure())((), &self.by_ref, &mut (), args)
     }
