@@ -167,7 +167,7 @@ fn with_passed_fn() {
     }
     assert_eq!(
         inner
-            .spawn(crossmist::func! { |x, y| x + y })
+            .spawn(Box::new(crossmist::func! { |x, y| x + y }))
             .unwrap()
             .join()
             .unwrap(),
@@ -191,7 +191,7 @@ fn with_passed_bound_fn() {
     let x = 5;
     assert_eq!(
         inner
-            .spawn(crossmist::func! { move(x) |y| x + y })
+            .spawn(Box::new(crossmist::func! { move(x) |y| x + y }))
             .unwrap()
             .join()
             .unwrap(),
@@ -216,7 +216,7 @@ fn with_passed_double_bound_fn() {
     let y = 7;
     assert_eq!(
         inner
-            .spawn(crossmist::func! { move(x, y) || x + y })
+            .spawn(Box::new(crossmist::func! { move(x, y) || x + y }))
             .unwrap()
             .join()
             .unwrap(),

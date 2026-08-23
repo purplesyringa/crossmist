@@ -28,7 +28,7 @@
 ///
 /// fn main() {
 ///     crossmist::init();
-///     println!("{}", go.run(1, 2, crossmist::func! { |a, b| a + b }).unwrap());
+///     println!("{}", go.run(1, 2, Box::new(crossmist::func! { |a, b| a + b })).unwrap());
 /// }
 ///
 /// #[crossmist::entrypoint]
@@ -71,12 +71,12 @@
 /// Here is an example combining explicit capture lists with type erasure and invocation:
 ///
 /// ```standalone_crate
-/// use crossmist::func;
+/// use crossmist::FnObject;
 ///
 /// fn main() {
 ///     crossmist::init();
 ///     let s = String::from("abc");
-///     println!("{}", go.run(crossmist::func! { move(ref s) |x| s.len() + x }).unwrap());
+///     println!("{}", go.run(Box::new(crossmist::func! { move(ref s) |x| s.len() + x })).unwrap());
 /// }
 ///
 /// #[crossmist::entrypoint]
@@ -85,8 +85,7 @@
 /// }
 /// ```
 ///
-/// Captuing more complex objects (type annotations are provided for completeness and are
-/// unnecessary):
+/// More complex capture examples:
 ///
 /// ```standalone_crate
 /// # use crossmist::FnOnceObject;
@@ -94,7 +93,7 @@
 /// # crossmist::init();
 /// let a = "Hello, ".to_string();
 /// // a is accessible by value when the closure is executed
-/// let prepend_hello: Box<dyn FnOnceObject<(&str,), Output = String>> =
+/// let prepend_hello /* : impl FnOnceObject<(&str,), Output = String> */ =
 ///     crossmist::func! { move(a) |b| a + b };
 /// assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
 /// // Can only be called once. The line below fails to compile when uncommented:
@@ -108,7 +107,7 @@
 /// # crossmist::init();
 /// let cache = vec![0, 1];
 /// // cache is accessible by a mutable reference when the closure is executed
-/// let mut fibonacci: Box<dyn FnMutObject<(usize,), Output = u32>> = crossmist::func! {
+/// let mut fibonacci /* : impl FnMutObject<(usize,), Output = u32> */ = crossmist::func! {
 ///     move(ref mut cache) |n| {
 ///         while cache.len() <= n {
 ///             cache.push(cache[cache.len() - 2..].iter().sum());
@@ -128,7 +127,7 @@
 /// # crossmist::init();
 /// let s = "Hello, world!".to_string();
 /// // s is accessible by an immutable reference when the closure is executed
-/// let count_occurrences: Box<dyn FnObject<(char,), Output = usize>> =
+/// let count_occurrences /* : impl FnObject<(char,), Output = usize> */ =
 ///     crossmist::func! { move(ref s) |c| s.matches(c).count() };
 /// assert_eq!(count_occurrences.call_object(('o',)), 2);
 /// // Can be called multiple times without a mutable reference

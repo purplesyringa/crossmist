@@ -122,7 +122,7 @@ pub fn func(input: TokenStream) -> TokenStream {
             );
             // assert that the closure doesn't borrow
             let _ = closure.conjure() as fn(#(#input_underscores,)*) -> _;
-            ::std::boxed::Box::new(closure)
+            closure
         }
     }
     .into()

@@ -58,9 +58,9 @@ impl WorkerPool {
             .ok_or_else(|| anyhow!("Pool is closed"))?;
         let wrapped_function: Box<
             dyn FnOnceObject<(), Output = TypeErased> + Send + Sync + 'static,
-        > = crossmist::func! {
+        > = Box::new(crossmist::func! {
             move(func) || Box::new(func.call_object_once(())) as TypeErased
-        };
+        });
         let mut workers_receiver = self.workers_receiver.lock().await;
         let mut worker_obj = workers_receiver
             .recv()

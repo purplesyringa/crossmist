@@ -100,30 +100,30 @@ fn box_trait() {
 
 #[macro_rules_attribute::apply(test!)]
 fn function() {
-    let func: Box<dyn FnOnceObject<(i32, i32), Output = i32>> = func! { |a, b| a + b };
-    assert_eq!(serde(func).call_object_box((5, 7)), 12);
+    let func = func! { |a, b| a + b };
+    assert_eq!(serde(func).call_object_once((5, 7)), 12);
 }
 
 #[macro_rules_attribute::apply(test!)]
 fn bound_function() {
     let a = 5;
-    let func: Box<dyn FnOnceObject<(i32,), Output = i32>> = func! { move(a) |b| a + b };
-    assert_eq!(serde(func).call_object_box((7,)), 12);
+    let func = func! { move(a) |b| a + b };
+    assert_eq!(serde(func).call_object_once((7,)), 12);
 }
 
 #[macro_rules_attribute::apply(test!)]
 fn ref_bound_function() {
     let s = "abc".to_string();
-    let func: Box<dyn FnOnceObject<(), Output = usize>> = func! { move(ref s) || s.len() };
-    assert_eq!(serde(func).call_object_box(()), 3);
+    let func = func! { move(ref s) || s.len() };
+    assert_eq!(serde(func).call_object_once(()), 3);
 }
 
 #[macro_rules_attribute::apply(test!)]
 fn double_bound_function() {
     let a = 5;
     let b = 7;
-    let func: Box<dyn FnOnceObject<(), Output = i32>> = func! { move(a, b) || a + b };
-    assert_eq!(serde(func).call_object_box(()), 12);
+    let func = func! { move(a, b) || a + b };
+    assert_eq!(serde(func).call_object_once(()), 12);
 }
 
 #[macro_rules_attribute::apply(test!)]
