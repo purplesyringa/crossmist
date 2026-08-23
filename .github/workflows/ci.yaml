@@ -89,10 +89,8 @@ jobs:
         machine:
           # Ubuntu needs to be recent enough to package Wine with WoW64 support
           - os: ubuntu-26.04
-            ubuntu_arch: amd64
             rust_arch: x86_64
           - os: ubuntu-26.04
-            ubuntu_arch: i386
             rust_arch: i686
           # Wine packaged by new Ubuntu is broken on arm64 due to [1], Wine packaged by old Ubuntu
           # is broken due to [2], and upstream doesn't publish binaries for arm64, leaving us to
@@ -100,33 +98,30 @@ jobs:
           # [1] https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1100695
           # [2] https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1140177
           # - os: ubuntu-26.04-arm
-          #   ubuntu_arch: arm64
           #   rust_arch: aarch64
           # Wine doesn't support arm64ec out of the box yet, see
           # https://bugs.winehq.org/show_bug.cgi?id=58092
           # - os: ubuntu-22.04-arm
-          #   ubuntu_arch: arm64
           #   rust_arch: arm64ec
     env:
-      WINEPREFIX: /tmp/prefix
       WINEDEBUG: fixme+all,err+all  # :ferrisClueless:
-      target: ${{ matrix.machine.rust_arch }}-pc-windows-msvc
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install wine
         run: |
           set -exuo pipefail
-          sudo dpkg --add-architecture ${{ matrix.machine.ubuntu_arch }}
+          wget -O - https://dl.winehq.org/wine-builds/winehq.key | sudo gpg --dearmor -o /etc/apt/keyrings/winehq-archive.key -
+          sudo wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/resolute/winehq-resolute.sources
           sudo apt-get update
-          sudo apt-get -y install wine:${{ matrix.machine.ubuntu_arch }}
+          sudo apt-get -y install winehq-staging
           export WINEPREFIX="$RUNNER_TEMP/.wine"
           echo "WINEPREFIX=$WINEPREFIX" >>"$GITHUB_ENV"
           wineboot
       - name: Download built tests
         uses: actions/download-artifact@v4
         with:
-          name: tests-${{ env.target }}
+          name: tests-${{ matrix.machine.rust_arch }}-pc-windows-msvc
           path: saved-jobs
       - name: Run tests
         run: ci/run-saved-jobs
