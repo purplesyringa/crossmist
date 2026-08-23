@@ -41,7 +41,11 @@
 //! let child = my_process.spawn_tokio().await?;
 //! ```
 
-use crate::{Deserializer, Object, Serializer, StaticFnPtr, imp, subprocess};
+use crate::{
+    Object, StaticFnPtr, imp,
+    serde::{Deserializer, Serializer},
+    subprocess,
+};
 use std::fmt;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};

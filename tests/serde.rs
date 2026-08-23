@@ -1,4 +1,7 @@
-use crossmist::{Deserializer, FnOnceObject, Object, Serializer, func};
+use crossmist::{
+    FnOnceObject, Object, func,
+    serde::{Deserializer, Serializer},
+};
 use std::fmt::Debug;
 
 mod testing;

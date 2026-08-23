@@ -1,6 +1,7 @@
 use crate::{
-    Deserializer, Object, Serializer,
+    Object,
     owning_ref::{OwningRef, WithOwningRef},
+    serde::{Deserializer, Serializer},
 };
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};

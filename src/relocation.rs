@@ -1,4 +1,7 @@
-use crate::{Deserializer, Object, Serializer};
+use crate::{
+    Object,
+    serde::{Deserializer, Serializer},
+};
 
 // This needs to be a singleton to prevent different codegen units from using different copies of
 // the function. See also: https://github.com/alecmocatta/relative/pull/2

@@ -1,5 +1,8 @@
 use crate::{
-    Deserializer, Object, Serializer, owning_ref::WithOwningRef, relocation::RelocatablePtr,
+    Object,
+    owning_ref::WithOwningRef,
+    relocation::RelocatablePtr,
+    serde::{Deserializer, Serializer},
 };
 
 // XXX: Rust doesn't guarantee the order of data and vtable pointers, so this can break. This should

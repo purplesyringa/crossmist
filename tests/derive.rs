@@ -1,4 +1,7 @@
-use crossmist::{Deserializer, Object, Serializer};
+use crossmist::{
+    Object,
+    serde::{Deserializer, Serializer},
+};
 use std::fmt::Debug;
 
 fn test_idempotency<T: Object + Clone + PartialEq + Debug>(x: T) {

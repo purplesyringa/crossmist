@@ -80,12 +80,12 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
     quote! {
         unsafe impl #impl_generics ::crossmist::Object for #ident #type_generics #where_clause {
-            fn serialize_self(self, s: &mut ::crossmist::Serializer) {
+            fn serialize_self(self, s: &mut ::crossmist::serde::Serializer) {
                 match self {
                     #(#serialize_variants)*
                 }
             }
-            unsafe fn deserialize_self(d: &mut ::crossmist::Deserializer) -> Self {
+            unsafe fn deserialize_self(d: &mut ::crossmist::serde::Deserializer) -> Self {
                 match d.deserialize::<#discriminant_type>() {
                     #(#deserialize_variants)*
                     _ => panic!("Unexpected enum variant"),

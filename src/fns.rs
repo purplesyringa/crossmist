@@ -368,7 +368,6 @@ impl<Args: Tuple, T: Object + std::ops::Fn<Args>> FnObject<Args> for T {
 }
 
 #[allow(missing_debug_implementations)]
-#[doc(hidden)]
 #[derive(Object)]
 #[crossmist(bound = "ByValue: Object, ByRef: Object, ByRefMut: Object")]
 pub struct Closure<Func, ByValue, ByRef, ByRefMut> {

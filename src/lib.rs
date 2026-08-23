@@ -498,8 +498,10 @@ pub use crossmist_derive::Object;
 pub mod imp;
 pub use imp::init;
 
-mod serde;
-pub use serde::*;
+mod object;
+pub use object::Object;
+
+pub mod serde;
 
 mod owning_ref;
 

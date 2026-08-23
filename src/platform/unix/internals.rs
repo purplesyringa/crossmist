@@ -1,4 +1,7 @@
-use crate::{Deserializer, Object, Serializer};
+use crate::{
+    Object,
+    serde::{Deserializer, Serializer},
+};
 use rustix::{
     cmsg_space,
     net::{
