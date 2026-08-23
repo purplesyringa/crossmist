@@ -125,26 +125,32 @@ pub fn entrypoint(meta: TokenStream, input: TokenStream) -> TokenStream {
             // Putting these function in a module named `#ident` would be clearer, but results in
             // scoping issues: `use super::*` imports from the parent module and not the scope, so
             // `#[entrypoint]`s defined inside a block wouldn't compile.
+            #[allow(unused_mut)]
             pub fn spawn #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::Child<#return_type>> {
                 unsafe { ::crossmist::blocking::#spawn }
             }
+            #[allow(unused_mut)]
             pub fn run #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                 self.spawn(#(#arg_names,)*)?.join()
             }
 
             ::crossmist::if_tokio! {
+                #[allow(unused_mut)]
                 pub async fn spawn_tokio #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::tokio::Child<#return_type>> {
                     unsafe { ::crossmist::tokio::#spawn.await }
                 }
+                #[allow(unused_mut)]
                 pub async fn run_tokio #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                     self.spawn_tokio(#(#arg_names,)*).await?.join().await
                 }
             }
 
             ::crossmist::if_smol! {
+                #[allow(unused_mut)]
                 pub async fn spawn_smol #generic_params(&self, #fn_args) -> ::std::io::Result<::crossmist::smol::Child<#return_type>> {
                     unsafe { ::crossmist::smol::#spawn.await }
                 }
+                #[allow(unused_mut)]
                 pub async fn run_smol #generic_params(&self, #fn_args) -> ::std::io::Result<#return_type> {
                     self.spawn_smol(#(#arg_names,)*).await?.join().await
                 }
