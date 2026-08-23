@@ -132,7 +132,7 @@ impl<T> StaticRef<T> {
     /// [`StaticRef<T>`] implements [`Deref`], so this function should seldom be used: instead of
     /// `static_ref.get().<...>` just do `static_ref.<...>`. It is only useful to get a reference
     /// with a `'static` lifetime.
-    pub fn get<'a>(self) -> &'a T {
+    pub const fn get<'a>(self) -> &'a T {
         unsafe { &*self.ptr.0 }
     }
 }

@@ -1,4 +1,5 @@
 use crate::{Object, relocation::RelocatablePtr};
+use core::fmt;
 use std::{marker::PhantomData, ops::Deref};
 
 #[cfg(feature = "nightly")]
@@ -72,12 +73,20 @@ use polyfill::FnPtr;
 /// let safe_read = unsafe { StaticFnPtr::<fn(&i32) -> i32>::new_unchecked(safe_read) };
 /// assert_eq!(safe_read(&123), 123);
 /// ```
-#[derive(Clone, Copy, Debug, Object)]
+#[derive(Object)]
 #[crossmist(bound = "")]
 pub struct StaticFnPtr<F> {
     ptr: RelocatablePtr<()>,
     phantom: PhantomData<F>,
 }
+
+// Implement Clone/Copy even for F: !Clone/Copy
+impl<F> Clone for StaticFnPtr<F> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<F> Copy for StaticFnPtr<F> {}
 
 impl<F> StaticFnPtr<F> {
     /// Create a [`StaticFnPtr`] from a function pointer.
@@ -105,8 +114,14 @@ impl<F> StaticFnPtr<F> {
     /// Extract a function pointer from a [`StaticFnPtr`].
     ///
     /// This method usually shouldn't be used, since the [`StaticFnPtr`] can be called directly.
-    pub fn get(self) -> F {
+    pub const fn get(self) -> F {
         unsafe { std::mem::transmute_copy::<*const (), F>(&self.ptr.0) }
+    }
+}
+
+impl<F: fmt::Debug> fmt::Debug for StaticFnPtr<F> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}", self.get())
     }
 }
 
