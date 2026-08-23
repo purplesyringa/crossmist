@@ -16,6 +16,9 @@ impl<T> Clone for RelocatablePtr<T> {
 }
 impl<T> Copy for RelocatablePtr<T> {}
 
+unsafe impl<T: Sync> Send for RelocatablePtr<T> {}
+unsafe impl<T: Sync> Sync for RelocatablePtr<T> {}
+
 unsafe impl<T> Object for RelocatablePtr<T> {
     fn serialize_self(self, s: &mut Serializer) {
         // Don't bother exposing provenance -- it won't work in another process anyway.
