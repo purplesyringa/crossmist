@@ -191,6 +191,17 @@ unsafe impl<T: Object, const N: usize> Object for [T; N] {
     }
 }
 
+unsafe impl<T: Object> Object for Vec<T> {
+    fn serialize_self(self, s: &mut Serializer) {
+        s.serialize(self.len());
+        self.with_owning_ref(|slice| s.serialize_slice(slice));
+    }
+    unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+        let len: usize = unsafe { d.deserialize() };
+        (0..len).map(|_| unsafe { d.deserialize() }).collect()
+    }
+}
+
 macro_rules! impl_sequence {
     ($ty:ident<$($params:ident),*> $(where $($bounds:tt)*)?) => {
         unsafe impl<$($params),*> Object for $ty<$($params),*>
@@ -235,7 +246,6 @@ macro_rules! impl_map {
     }
 }
 
-impl_sequence!(Vec<T>);
 impl_sequence!(BinaryHeap<T> where T: Ord);
 impl_sequence!(BTreeSet<T> where T: Eq + Ord);
 impl_sequence!(LinkedList<T>);
