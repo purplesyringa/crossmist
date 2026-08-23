@@ -14,7 +14,6 @@ autotests = false
 [dependencies]
 async-io = { version = "2", optional = true }
 crossmist-derive = { version = "=1.0.2", path = "crossmist-derive" }
-paste = "1.0"
 typeid = "1.0.3"
 
 [target.'cfg(unix)'.dependencies]

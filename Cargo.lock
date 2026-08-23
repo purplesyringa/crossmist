@@ -313,7 +313,6 @@ dependencies = [
  "libc",
  "libtest-mimic",
  "macro_rules_attribute",
- "paste",
  "rustix",
  "smol",
  "smol-macros",

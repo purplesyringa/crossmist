@@ -2,7 +2,6 @@ use crate::{
     Deserializer, Object, Serializer,
     owning_ref::{OwningRef, WithOwningRef},
 };
-use paste::paste;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};
 #[cfg(unix)]
@@ -123,14 +122,6 @@ unsafe impl Object for std::ffi::OsString {
     }
 }
 
-macro_rules! serialize_rev {
-    ($s:tt,) => {};
-    ($s:tt, $head:expr, $($tail:tt)*) => {
-        serialize_rev!($s, $($tail)*);
-        $s.serialize($head);
-    };
-}
-
 #[cfg(all(doc, feature = "nightly"))]
 #[doc(cfg(true), fake_variadic)]
 /// This trait is implemented for tuples up to 20 items long.
@@ -146,23 +137,22 @@ macro_rules! impl_tuple {
 
     ($head:tt $($tail:tt)+) => {
         impl_tuple!($($tail)*);
-
-        paste! {
-            unsafe impl<$([<T $tail>]: Object),*> Object for ($([<T $tail>],)*) {
-                fn serialize_self(self, s: &mut Serializer) {
-                    serialize_rev!(s, $(self.$tail,)*);
-                }
-                unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-                    $( let [<x $tail>] = unsafe { d.deserialize() }; )*
-                    ($([<x $tail>],)*)
-                }
+        #[allow(nonstandard_style)]
+        unsafe impl<$($tail: Object),*> Object for ($($tail,)*) {
+            fn serialize_self(self, s: &mut Serializer) {
+                let ($($tail,)*) = self;
+                $( s.serialize($tail); )*
+            }
+            unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
+                $( let $tail = unsafe { d.deserialize() }; )*
+                ($($tail,)*)
             }
         }
     }
 }
 
 #[cfg(not(all(doc, feature = "nightly")))]
-impl_tuple!(x 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
+impl_tuple!(x T19 T18 T17 T16 T15 T14 T13 T12 T11 T10 T9 T8 T7 T6 T5 T4 T3 T2 T1 T0);
 
 unsafe impl<T: Object> Object for Option<T> {
     fn serialize_self(self, s: &mut Serializer) {
