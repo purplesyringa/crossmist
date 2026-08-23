@@ -251,10 +251,7 @@ pub trait FnOnceObject<Args: Tuple>: Object + std::ops::FnOnce<Args> {
     fn call_object_box(self: Box<Self>, args: Args) -> Self::Output;
 }
 #[cfg(not(feature = "nightly"))]
-impl<Args: Tuple, T: FnOnceObject<Args> + ?Sized> FnOnceObject<Args> for Box<T>
-where
-    Box<T>: Object,
-{
+impl<Args: Tuple, T: FnOnceObject<Args> + ?Sized> FnOnceObject<Args> for Box<T> {
     type Output = T::Output;
     fn call_object_once(self, args: Args) -> Self::Output {
         self.call_object_box(args)
