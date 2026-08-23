@@ -1,73 +1,141 @@
-//! Utilities for passing function callbacks between processes.
-//!
-//! It is common to use callbacks to specialize function behavior. Closures play an
-//! especially big role in this. They are, however, of complex opaque types that cannot be
-//! inspected. Therefore, passing closures is not just complicated because they would have to be of
-//! type `dyn Object + Fn() -> ()`, which Rust does not support at the moment, but downright
-//! impossible in case of captures.
-//!
-//! To fix the following code:
-//!
-//! ```compile_fail
-//! use crossmist::Object;
-//!
-//! fn main() {
-//!     crossmist::init();
-//!     let x = 7;
-//!     println!("{}", go.run(5, Box::new(|y| x + y)).unwrap());
-//! }
-//!
-//! #[crossmist::entrypoint]
-//! fn go(x: i32, f: Box<dyn Object + Fn(i32) -> i32>) -> i32 {
-//!     f(x)
-//! }
-//! ```
-//!
-//! ...we have to use a macro, and also a different invocation syntax:
-//!
-//! ```standalone_crate
-//! use crossmist::{FnObject, func};
-//!
-//! fn main() {
-//!     crossmist::init();
-//!     let x = 7;
-//!     println!("{}", go.run(5, func! { move(ref x) |y| x + y }).unwrap());
-//! }
-//!
-//! #[crossmist::entrypoint]
-//! fn go(x: i32, f: Box<dyn FnObject<(i32,), Output = i32>>) -> i32 {
-//!     f.call_object((x,))
-//! }
-//! ```
-//!
-//! The macro syntax is somewhat similar to that of closures. `call_object` is similar to
-//! [`std::ops::Fn::call`]. If you're using nightly Rust, you can directly do `f(x)` if you opt in
-//! by enabling the `nightly` feature.
-//!
-//! Another complication is when the callback should capture a non-copyable value (e.g. [`Box`]) and
-//! then be called multiple times. This cannot be detected automatically, so slightly different
-//! syntax is used:
-//!
-//! ```standalone_crate
-//! use crossmist::{FnObject, func};
-//!
-//! fn main() {
-//!     crossmist::init();
-//!     let x = Box::new(7);
-//!     println!("{}", go.run(5, func! { move(ref x) |y| **x + y }).unwrap());
-//! }
-//!
-//! #[crossmist::entrypoint]
-//! fn go(x: i32, f: Box<dyn FnObject<(i32,), Output = i32>>) -> i32 {
-//!     f.call_object((x,))
-//! }
-//! ```
-//!
-//! Similarly, `ref mut x` can be used if the object is to be modified. Note that this still moves
-//! `x` into the func.
-//!
-//! Under the hood, the macro uses currying, replacing `|y| x + y` with `|x, y| x + y` with a
-//! pre-determined `x` variable, and makes `|x, y| x + y` a callable [`Object`] by using `#[func]`.
+/// Create a (possible capturing) serializable closure.
+///
+/// Callbacks are often used to specialize function behavior. Since Rust closures have opaque types,
+/// implementing [`Object`] for built-in closures is impossible, so crossmist offers its own closure
+/// constructors.
+///
+/// [`Object`]-compatible closures are written similarly to normal closures, but wrapped in `func!`:
+///
+/// ```ignore
+/// crossmist::func! { |args...| body... }
+/// ```
+///
+/// They are invoked using the [`FnOnceObject`], [`FnMutObject`], and [`FnObject`] traits, which
+/// should be interpreted as [`FnOnce`] + [`Object`] and so on:
+///
+/// ```rust
+/// use crossmist::FnOnceObject;
+/// let closure = crossmist::func! { |a, b| a + b };
+/// assert_eq!(closure.call_object_once((1, 2)), 3);
+/// ```
+///
+/// On nightly Rust, if the `nightly` feature is enabled, closures can be called directly instead.
+///
+/// These traits are also useful for type erasure to pass callbacks over channels:
+///
+/// ```standalone_crate
+/// use crossmist::FnOnceObject;
+///
+/// fn main() {
+///     crossmist::init();
+///     println!("{}", go.run(1, 2, crossmist::func! { |a, b| a + b }).unwrap());
+/// }
+///
+/// #[crossmist::entrypoint]
+/// fn go(x: i32, y: i32, f: Box<dyn FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
+///     f.call_object_once((x, y))
+/// }
+/// ```
+///
+/// # Captures
+///
+/// Just like normal Rust closures, crossmist closures can capture variables by value, reference, or
+/// mutable reference. Unlike Rust, the captured variables need to be listed explicily, along with
+/// their capture modes:
+///
+/// ```rust
+/// let s = String::from("abc");
+/// let by_ref = crossmist::func! { move(ref s) || s.len() };
+///
+/// let s = String::from("abc");
+/// let by_ref_mut = crossmist::func! { move(ref mut s) || s.push('x') };
+///
+/// let s = String::from("abc");
+/// let by_value = crossmist::func! { move(s) || s.into_bytes() };
+/// ```
+///
+/// Multiple variables can be listed in the `move(...)` list separated by commas.
+///
+/// - A closure that captures some variables by value can only be called once.
+/// - A closure that captures some variables by mutable references cannot be invoked in parallel.
+/// - A closure that only captures variables by immutable reference imposes no limitations.
+///
+/// Reference captures work slightly differently from normal Rust. In Rust, such closures only store
+/// references to captured variables, but in crossmist, the captured variables are moved into the
+/// closure, so that they can then be sent over a channel together with the function itself. As
+/// such, writing `func! { move(ref s) ... }` causes `s` to remain unavailable after the closure is
+/// dropped.
+///
+/// # Example
+///
+/// Here is an example combining explicit capture lists with type erasure and invocation:
+///
+/// ```standalone_crate
+/// use crossmist::func;
+///
+/// fn main() {
+///     crossmist::init();
+///     let s = String::from("abc");
+///     println!("{}", go.run(crossmist::func! { move(ref s) |x| s.len() + x }).unwrap());
+/// }
+///
+/// #[crossmist::entrypoint]
+/// fn go(f: Box<dyn FnObject<(usize,), Output = usize>>) -> usize {
+///     f.call_object((123,))
+/// }
+/// ```
+///
+/// Captuing more complex objects (type annotations are provided for completeness and are
+/// unnecessary):
+///
+/// ```standalone_crate
+/// # use crossmist::FnOnceObject;
+/// # fn main() {
+/// # crossmist::init();
+/// let a = "Hello, ".to_string();
+/// // a is accessible by value when the closure is executed
+/// let prepend_hello: Box<dyn FnOnceObject<(&str,), Output = String>> =
+///     crossmist::func! { move(a) |b| a + b };
+/// assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
+/// // Can only be called once. The line below fails to compile when uncommented:
+/// // assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
+/// # }
+/// ```
+///
+/// ```standalone_crate
+/// # use crossmist::FnMutObject;
+/// # fn main() {
+/// # crossmist::init();
+/// let cache = vec![0, 1];
+/// // cache is accessible by a mutable reference when the closure is executed
+/// let mut fibonacci: Box<dyn FnMutObject<(usize,), Output = u32>> = crossmist::func! {
+///     move(ref mut cache) |n| {
+///         while cache.len() <= n {
+///             cache.push(cache[cache.len() - 2..].iter().sum());
+///         }
+///         cache[n]
+///     }
+/// };
+/// assert_eq!(fibonacci.call_object_mut((3,)), 2);
+/// // Can be called multiple types, but requires unique ownership
+/// assert_eq!(fibonacci.call_object_mut((6,)), 8);
+/// # }
+/// ```
+///
+/// ```standalone_crate
+/// # use crossmist::FnObject;
+/// # fn main() {
+/// # crossmist::init();
+/// let s = "Hello, world!".to_string();
+/// // s is accessible by an immutable reference when the closure is executed
+/// let count_occurrences: Box<dyn FnObject<(char,), Output = usize>> =
+///     crossmist::func! { move(ref s) |c| s.matches(c).count() };
+/// assert_eq!(count_occurrences.call_object(('o',)), 2);
+/// // Can be called multiple times without a mutable reference
+/// assert_eq!(count_occurrences.call_object(('e',)), 1);
+/// # }
+/// ```
+pub use crossmist_derive::func;
 
 use crate::Object;
 use std::marker::PhantomData;
@@ -194,12 +262,12 @@ pub trait FnOnceObject<Args: Tuple>: Object {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnOnceObject, func};
+    /// use crossmist::FnOnceObject;
     ///
     /// let s = "Hello, world!".to_string();
-    /// let mut increment = func! { move(s) || s };
+    /// let get_string = crossmist::func! { move(s) || s };
     ///
-    /// assert_eq!(increment.call_object_once(()), "Hello, world!");
+    /// assert_eq!(get_string.call_object_once(()), "Hello, world!");
     /// ```
     fn call_object_once(self, args: Args) -> Self::Output;
     /// Invoke a boxed function with the given argument tuple.
@@ -227,12 +295,12 @@ pub trait FnOnceObject<Args: Tuple>: Object + std::ops::FnOnce<Args> {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnOnceObject, func};
+    /// use crossmist::FnOnceObject;
     ///
     /// let s = "Hello, world!".to_string();
-    /// let mut increment = func! { move(s) || s };
+    /// let get_string = crossmist::func! { move(s) || s };
     ///
-    /// assert_eq!(increment.call_object_once(()), "Hello, world!");
+    /// assert_eq!(get_string.call_object_once(()), "Hello, world!");
     /// ```
     fn call_object_once(self, args: Args) -> Self::Output;
     /// Invoke a boxed function with the given argument tuple.
@@ -280,10 +348,10 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> + std::ops::FnMut<Args> {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnMutObject, func};
+    /// use crossmist::FnMutObject;
     ///
     /// let counter = 0;
-    /// let mut increment = func! {
+    /// let mut increment = crossmist::func! {
     ///     move(ref mut counter) || { *counter += 1; *counter }
     /// };
     ///
@@ -304,10 +372,10 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     /// # Example
     ///
     /// ```rust
-    /// use crossmist::{FnMutObject, func};
+    /// use crossmist::FnMutObject;
     ///
     /// let counter = 0;
-    /// let mut increment = func! {
+    /// let mut increment = crossmist::func! {
     ///     move(ref mut counter) || { *counter += 1; *counter }
     /// };
     ///
@@ -353,9 +421,7 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     ///
     /// ```rust
     /// use crossmist::FnObject;
-    ///
     /// let add = crossmist::func! { |a, b| a + b };
-    ///
     /// assert_eq!(add.call_object((5, 7)), 12);
     /// ```
     fn call_object(&self, args: Args) -> Self::Output;
@@ -368,6 +434,7 @@ impl<Args: Tuple, T: Object + std::ops::Fn<Args>> FnObject<Args> for T {
 }
 
 #[allow(missing_debug_implementations)]
+#[doc(hidden)]
 #[derive(Object)]
 #[crossmist(bound = "ByValue: Object, ByRef: Object, ByRefMut: Object")]
 pub struct Closure<Func, ByValue, ByRef, ByRefMut> {

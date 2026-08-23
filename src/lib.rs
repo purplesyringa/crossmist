@@ -371,96 +371,6 @@ extern crate self as crossmist;
 /// ```
 pub use crossmist_derive::entrypoint;
 
-/// A short-cut for turning a (possible capturing) closure into an object function.
-///
-/// Syntax is similar to that of closure, except that types of all arguments and the type of the
-/// return value are not inferred. Additionally, all moved values have to be listed manually,
-/// indicating how they are captured.
-///
-/// Simplest example:
-///
-/// ```standalone_crate
-/// # use crossmist::{FnObject, FnOnceObject, func};
-/// fn main() {
-///     crossmist::init();
-///     let func = func! { |a, b| a + b };
-///     // run/spawn do not work directly, but you may still call/pass the function
-///     assert_eq!(func.call_object((5, 7)), 12);
-///     assert_eq!(gate.run(func).unwrap(), 12);
-/// }
-///
-/// #[crossmist::entrypoint]
-/// fn gate(f: Box<dyn FnOnceObject<(i32, i32), Output = i32>>) -> i32 {
-///     f.call_object_once((5, 7))
-/// }
-/// ```
-///
-/// With captures:
-///
-/// ```standalone_crate
-/// # use crossmist::{FnObject, FnOnceObject, func};
-/// fn main() {
-///     crossmist::init();
-///     let a = 5;
-///     let func = func! { move(a) |b| a + b };
-///     assert_eq!(func.call_object_once((7,)), 12);
-/// }
-/// ```
-///
-/// `f.call_object_once((arg,))` can be replaced with `f(arg)` if the `nightly` feature is enabled.
-///
-/// Captuing more complex objects (type annotations are provided for completeness and are
-/// unnecessary):
-///
-/// ```standalone_crate
-/// # use crossmist::{FnOnceObject, func};
-/// # fn main() {
-/// # crossmist::init();
-/// let a = "Hello, ".to_string();
-/// // a is accessible by value when the func is executed
-/// let prepend_hello: Box<dyn FnOnceObject<(&str,), Output = String>> =
-///     func! { move(a) |b| a + b };
-/// assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
-/// // Can only be called once. The line below fails to compile when uncommented:
-/// // assert_eq!(prepend_hello.call_object_once(("world!",)), "Hello, world!".to_string());
-/// # }
-/// ```
-///
-/// ```standalone_crate
-/// # use crossmist::{FnMutObject, func};
-/// # fn main() {
-/// # crossmist::init();
-/// let cache = vec![0, 1];
-/// // cache is accessible by a mutable reference when the func is executed
-/// let mut fibonacci: Box<dyn FnMutObject<(usize,), Output = u32>> = func! {
-///     move(ref mut cache) |n| {
-///         while cache.len() <= n {
-///             cache.push(cache[cache.len() - 2..].iter().sum());
-///         }
-///         cache[n]
-///     }
-/// };
-/// assert_eq!(fibonacci.call_object_mut((3,)), 2);
-/// // Can be called multiple types, but has to be mutable
-/// assert_eq!(fibonacci.call_object_mut((6,)), 8);
-/// # }
-/// ```
-///
-/// ```standalone_crate
-/// # use crossmist::{FnObject, func};
-/// # fn main() {
-/// # crossmist::init();
-/// let s = "Hello, world!".to_string();
-/// // s is accessible by an immutable reference when the func is executed
-/// let count_occurrences: Box<dyn FnObject<(char,), Output = usize>> =
-///     func! { move(ref s) |c| s.matches(c).count() };
-/// assert_eq!(count_occurrences.call_object(('o',)), 2);
-/// // Can be called multiple times and be immutable
-/// assert_eq!(count_occurrences.call_object(('e',)), 1);
-/// # }
-/// ```
-pub use crossmist_derive::func;
-
 /// Enable a `struct` or an `enum` to be sent across processes.
 ///
 /// [`Object`] can be implemented if all fields of the `struct`/`enum` implement [`Object`]. For
@@ -542,8 +452,8 @@ pub(crate) mod relocation;
 mod builtins;
 mod unsized_builtins;
 
-pub mod fns;
-pub use fns::*;
+mod closures;
+pub use closures::*;
 
 mod static_ref;
 pub use static_ref::StaticRef;
