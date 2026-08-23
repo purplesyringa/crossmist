@@ -546,5 +546,5 @@ pub use fns::*;
 mod static_ref;
 pub use static_ref::StaticRef;
 
-mod static_fn;
-pub use static_fn::StaticFn;
+mod static_fn_ptr;
+pub use static_fn_ptr::StaticFnPtr;

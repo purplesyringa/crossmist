@@ -9,10 +9,10 @@ use polyfill::FnPtr;
 /// An `fn(...) -> ...` implementing [`Object`].
 ///
 /// This type enables you to pass existing `fn` and `unsafe fn` pointers between processes soundly
-/// without wrapping them in [`crossmist::func`]. [`StaticFn`] dereferences into `fn(...) -> ...`,
+/// without wrapping them in [`crossmist::func`]. [`StaticFnPtr`] dereferences to `fn(...) -> ...`,
 /// so it can be called directly.
 ///
-/// Creating [`StaticFn`] from a function pointer is `unsafe` because functions might not be
+/// Creating [`StaticFnPtr`] from a function pointer is `unsafe` because functions might not be
 /// available in the child process if they are created in runtime by JIT compilation or by loading
 /// from dynamic libraries.
 ///
@@ -26,35 +26,35 @@ use polyfill::FnPtr;
 /// # Example
 ///
 /// ```standalone_crate
-/// # use crossmist::StaticFn;
+/// # use crossmist::StaticFnPtr;
 /// fn add(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
 ///
 /// fn main() {
 ///     crossmist::init();
-///     entry.run(unsafe { StaticFn::new_unchecked(add) }).unwrap();
+///     entry.run(unsafe { StaticFnPtr::new_unchecked(add) }).unwrap();
 /// }
 ///
 /// #[crossmist::entrypoint]
-/// fn entry(add: StaticFn<fn(i32, i32) -> i32>) {
+/// fn entry(add: StaticFnPtr<fn(i32, i32) -> i32>) {
 ///     assert_eq!(add(5, 7), 12);
 /// }
 /// ```
 ///
 /// ```
-/// # use crossmist::StaticFn;
-/// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new_unchecked(|a, b| a + b) };
+/// # use crossmist::StaticFnPtr;
+/// let add = unsafe { StaticFnPtr::<fn(i32, i32) -> i32>::new_unchecked(|a, b| a + b) };
 /// assert_eq!(add(5, 7), 12);
 /// ```
 ///
 /// ```rust
-/// # use crossmist::StaticFn;
+/// # use crossmist::StaticFnPtr;
 /// unsafe fn dangerous_read(p: *const i32) -> i32 {
 ///     p.read()
 /// }
 /// let dangerous_read = unsafe {
-///     StaticFn::<unsafe fn(*const i32) -> i32>::new_unchecked(dangerous_read)
+///     StaticFnPtr::<unsafe fn(*const i32) -> i32>::new_unchecked(dangerous_read)
 /// };
 /// unsafe {
 ///     assert_eq!(dangerous_read(&123), 123);
@@ -65,22 +65,22 @@ use polyfill::FnPtr;
 ///
 #[cfg_attr(feature = "nightly", doc = " ```")]
 #[cfg_attr(not(feature = "nightly"), doc = " ```ignore")]
-/// # use crossmist::StaticFn;
+/// # use crossmist::StaticFnPtr;
 /// fn safe_read(p: &i32) -> i32 {
 ///     *p
 /// }
-/// let safe_read = unsafe { StaticFn::<fn(&i32) -> i32>::new_unchecked(safe_read) };
+/// let safe_read = unsafe { StaticFnPtr::<fn(&i32) -> i32>::new_unchecked(safe_read) };
 /// assert_eq!(safe_read(&123), 123);
 /// ```
 #[derive(Clone, Copy, Debug, Object)]
 #[crossmist(bound = "")]
-pub struct StaticFn<F> {
+pub struct StaticFnPtr<F> {
     ptr: RelocatablePtr<()>,
     phantom: PhantomData<F>,
 }
 
-impl<F: FnPtr> StaticFn<F> {
-    /// Create a [`StaticFn`] from a function pointer.
+impl<F: FnPtr> StaticFnPtr<F> {
+    /// Create a [`StaticFnPtr`] from a function pointer.
     ///
     /// # Safety
     ///
@@ -93,9 +93,9 @@ impl<F: FnPtr> StaticFn<F> {
         }
     }
 
-    /// Extract a function pointer from a [`StaticFn`].
+    /// Extract a function pointer from a [`StaticFnPtr`].
     ///
-    /// This method usually shouldn't be used, since the [`StaticFn`] can be called directly.
+    /// This method usually shouldn't be used, since the [`StaticFnPtr`] can be called directly.
     pub fn get(self) -> F {
         unsafe { std::mem::transmute_copy::<*const (), F>(&self.ptr.0) }
     }
@@ -107,7 +107,7 @@ impl<F: FnPtr> StaticFn<F> {
     );
 }
 
-impl<F: FnPtr> Deref for StaticFn<F> {
+impl<F: FnPtr> Deref for StaticFnPtr<F> {
     type Target = F;
     fn deref(&self) -> &F {
         unsafe { &*(&raw const self.ptr.0).cast::<F>() }

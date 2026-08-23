@@ -41,7 +41,7 @@
 //! let child = my_process.spawn_tokio().await?;
 //! ```
 
-use crate::{Deserializer, Object, Serializer, StaticFn, imp, subprocess};
+use crate::{Deserializer, Object, Serializer, StaticFnPtr, imp, subprocess};
 use std::fmt;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
@@ -592,7 +592,7 @@ pub(crate) async unsafe fn spawn<
                 .expect("Failed to send subprocess output");
         };
 
-        let entrypoint = StaticFn::new_unchecked(entrypoint as fn(_, _));
+        let entrypoint = StaticFnPtr::new_unchecked(entrypoint as fn(_, _));
 
         let (local, child) = crate::duplex()?;
         let mut local: Duplex<Stream, _, Ret> = local.try_into()?;
@@ -655,7 +655,7 @@ pub(crate) fn handle_entry(
     let mut deserializer = deserializer.0;
     core::mem::forget(rx);
 
-    let entry: StaticFn<fn(_, _)> = unsafe { deserializer.deserialize() };
+    let entry: StaticFnPtr<fn(_, _)> = unsafe { deserializer.deserialize() };
     entry(deserializer, channel);
     std::process::exit(0);
 }
