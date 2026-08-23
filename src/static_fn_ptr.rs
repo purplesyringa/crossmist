@@ -79,14 +79,23 @@ pub struct StaticFnPtr<F> {
     phantom: PhantomData<F>,
 }
 
-impl<F: FnPtr> StaticFnPtr<F> {
+impl<F> StaticFnPtr<F> {
     /// Create a [`StaticFnPtr`] from a function pointer.
     ///
     /// # Safety
     ///
     /// This is safe to call if the function pointer is obtained from an `fn` item or a closure
     /// without captures.
-    pub unsafe fn new_unchecked(f: F) -> Self {
+    pub unsafe fn new_unchecked(f: F) -> Self
+    where
+        F: FnPtr,
+    {
+        const {
+            assert!(
+                size_of::<F>() == size_of::<*const ()>(),
+                "FnPtr must have the same size as a pointer"
+            );
+        }
         Self {
             ptr: RelocatablePtr(core::ptr::with_exposed_provenance(f.addr())),
             phantom: PhantomData,
@@ -99,15 +108,9 @@ impl<F: FnPtr> StaticFnPtr<F> {
     pub fn get(self) -> F {
         unsafe { std::mem::transmute_copy::<*const (), F>(&self.ptr.0) }
     }
-
-    const _F_IS_POINTER_SIZED: () = assert!(
-        size_of::<*const ()>() == size_of::<F>(),
-        "An instance of FnPtr has a size not equal to the size of *const (). This should have \
-         been impossible."
-    );
 }
 
-impl<F: FnPtr> Deref for StaticFnPtr<F> {
+impl<F> Deref for StaticFnPtr<F> {
     type Target = F;
     fn deref(&self) -> &F {
         unsafe { &*(&raw const self.ptr.0).cast::<F>() }
