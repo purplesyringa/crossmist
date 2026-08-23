@@ -95,7 +95,7 @@ impl<F> StaticFnPtr<F> {
     ///
     /// This is safe to call if the function pointer is obtained from an `fn` item or a closure
     /// without captures.
-    pub unsafe fn new_unchecked(f: F) -> Self
+    pub const unsafe fn new_unchecked(f: F) -> Self
     where
         F: FnPtr,
     {
@@ -106,7 +106,8 @@ impl<F> StaticFnPtr<F> {
             );
         }
         Self {
-            ptr: RelocatablePtr(core::ptr::with_exposed_provenance(f.addr())),
+            // Can't call trait methods here to keep `new_unchecked` const-compatible
+            ptr: RelocatablePtr(unsafe { core::mem::transmute_copy::<F, *const ()>(&f) }),
             phantom: PhantomData,
         }
     }
@@ -137,26 +138,15 @@ mod polyfill {
     use paste::paste;
 
     #[cfg(not(feature = "nightly"))]
-    pub trait FnPtr: Copy {
-        fn addr(self) -> usize;
-    }
+    pub trait FnPtr: Copy {}
 
     #[cfg(not(feature = "nightly"))]
     macro_rules! impl_fn_pointer {
         () => {};
         ($head:tt $($tail:tt)*) => {
             paste! {
-                impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {
-                    fn addr(self) -> usize {
-                        self as usize
-                    }
-                }
-
-                impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
-                    fn addr(self) -> usize {
-                        self as usize
-                    }
-                }
+                impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {}
+                impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {}
             }
 
             impl_fn_pointer!($($tail)*);
