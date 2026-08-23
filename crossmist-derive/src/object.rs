@@ -26,7 +26,9 @@ pub fn derive_object(input: TokenStream) -> TokenStream {
                 (variant.fields, quote! { Self::#variant_ident })
             })
             .collect(),
-        Data::Union(_) => unimplemented!(),
+        Data::Union(_) => {
+            return quote! { compile_error!("this trait cannot be derived for unions"); }.into();
+        }
     };
 
     let discriminant_type = if variants.len() <= 1 {
