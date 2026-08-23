@@ -1,27 +1,10 @@
 use crate::{Object, relocation::RelocatablePtr};
-use paste::paste;
 use std::{marker::PhantomData, ops::Deref};
 
-/// Metaprogramming on `fn(...) -> ...` types.
-///
-/// This trait is not part of the stable API provided by crossmist.
 #[cfg(feature = "nightly")]
-pub trait FnPtr: std::ops::FnPtr {}
-#[cfg(feature = "nightly")]
-impl<T: std::ops::FnPtr> FnPtr for T {}
-
+use core::ops::FnPtr;
 #[cfg(not(feature = "nightly"))]
-mod private {
-    pub trait Sealed {}
-}
-/// Metaprogramming on `fn(...) -> ...` types.
-///
-/// This trait is not part of the stable API provided by crossmist.
-#[cfg(not(feature = "nightly"))]
-pub trait FnPtr: Copy + private::Sealed {
-    /// Convert the function pointer to a type-erased pointer.
-    fn addr(self) -> usize;
-}
+use polyfill::FnPtr;
 
 /// An `fn(...) -> ...` implementing [`Object`].
 ///
@@ -33,9 +16,12 @@ pub trait FnPtr: Copy + private::Sealed {
 /// available in the child process if they are created in runtime by JIT compilation or by loading
 /// from dynamic libraries.
 ///
-/// All function pointers are supported on nightly. Only function pointers with up to 20 arguments
-/// with no [HRTBs](https://doc.rust-lang.org/nomicon/hrtb.html) are supported without the `nightly`
-/// feature flag.
+/// # Supported types
+///
+/// All function pointers are supported on nightly via the unstable [`FnPtr`](core::ops::FnPtr)
+/// trait. Only function pointers with up to 20 arguments with no
+/// [HRTBs](https://doc.rust-lang.org/nomicon/hrtb.html) are supported without the `nightly` feature
+/// flag.
 ///
 /// # Example
 ///
@@ -124,30 +110,36 @@ impl<F: FnPtr> Deref for StaticFn<F> {
     }
 }
 
-macro_rules! impl_fn_pointer {
-    () => {};
-    ($head:tt $($tail:tt)*) => {
-        paste! {
-            #[cfg(not(feature = "nightly"))]
-            impl<Output, $([<T $tail>]),*> private::Sealed for fn($([<T $tail>]),*) -> Output {}
-            #[cfg(not(feature = "nightly"))]
-            impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {
-                fn addr(self) -> usize {
-                    self as usize
+#[cfg(not(feature = "nightly"))]
+mod polyfill {
+    use paste::paste;
+
+    #[cfg(not(feature = "nightly"))]
+    pub trait FnPtr: Copy {
+        fn addr(self) -> usize;
+    }
+
+    #[cfg(not(feature = "nightly"))]
+    macro_rules! impl_fn_pointer {
+        () => {};
+        ($head:tt $($tail:tt)*) => {
+            paste! {
+                impl<Output, $([<T $tail>]),*> FnPtr for fn($([<T $tail>]),*) -> Output {
+                    fn addr(self) -> usize {
+                        self as usize
+                    }
+                }
+
+                impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
+                    fn addr(self) -> usize {
+                        self as usize
+                    }
                 }
             }
 
-            #[cfg(not(feature = "nightly"))]
-            impl<Output, $([<T $tail>]),*> private::Sealed for unsafe fn($([<T $tail>]),*) -> Output {}
-            #[cfg(not(feature = "nightly"))]
-            impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
-                fn addr(self) -> usize {
-                    self as usize
-                }
-            }
-        }
-
-        impl_fn_pointer!($($tail)*);
-    };
+            impl_fn_pointer!($($tail)*);
+        };
+    }
+    #[cfg(not(feature = "nightly"))]
+    impl_fn_pointer!(x 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
 }
-impl_fn_pointer!(x 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0);
