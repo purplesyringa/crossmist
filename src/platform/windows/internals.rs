@@ -166,7 +166,7 @@ pub(crate) fn serialize_with_handles<T: Object>(value: T) -> Result<Vec<u8>> {
         .get()
         .expect("broker has not been initialized");
 
-    let mut s = Serializer::new();
+    let mut s = Serializer::private_new();
     s.serialize(value);
 
     let copy_handle = |handle: RawHandle| -> Result<usize> {
@@ -202,10 +202,10 @@ pub(crate) fn serialize_with_handles<T: Object>(value: T) -> Result<Vec<u8>> {
         })
         .collect::<Result<Vec<usize>>>()?;
 
-    let mut s1 = Serializer::new();
+    let mut s1 = Serializer::private_new();
     s1.serialize(remote_handles);
     s1.serialize(remote_sockets);
-    s1.write(&s.data);
+    s1.data.extend_from_slice(&s.data);
     Ok(s1.data)
 }
 
@@ -214,7 +214,7 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
         .get()
         .expect("broker has not been initialized");
 
-    let mut d = Deserializer::from(Serializer {
+    let mut d = Deserializer::private_new(Serializer {
         data: serialized,
         handles: Vec::new(),
         sockets: Vec::new(),
@@ -252,7 +252,7 @@ pub(crate) unsafe fn deserialize_with_handles<T: Object>(serialized: Vec<u8>) ->
         })
         .collect::<Result<Vec<_>>>()?;
 
-    let data = d.get_rest().to_vec();
+    let data = d.data[d.pos..].to_vec();
     Ok(unsafe {
         Deserializer::from(Serializer {
             data,

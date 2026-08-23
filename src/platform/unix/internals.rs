@@ -43,7 +43,7 @@ pub(crate) struct SingleObjectSender<'a> {
 
 impl<'a> SingleObjectSender<'a> {
     pub(crate) fn new<T: Object>(socket_fd: BorrowedFd<'a>, value: T, blocking: bool) -> Self {
-        let mut s = Serializer::new();
+        let mut s = Serializer::private_new();
         s.serialize(value);
         Self {
             socket_fd,
@@ -175,7 +175,7 @@ impl<'a, T: Object> SingleObjectReceiver<'a, T> {
             self.terminated = true;
 
             self.buffer.truncate(self.data_pos);
-            let mut d = Deserializer::from(Serializer {
+            let mut d = Deserializer::private_new(Serializer {
                 data: std::mem::take(&mut self.buffer),
                 fds: std::mem::take(&mut self.fds),
             });

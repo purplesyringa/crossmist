@@ -14,21 +14,24 @@ use std::time::{Duration, SystemTime};
 macro_rules! impl_pod {
     ($([$($generics:tt)*])? for $t:ty) => {
         unsafe impl$(<$($generics)*>)? Object for $t {
+            #[allow(unreachable_code)]
             fn serialize_self(self, s: &mut Serializer) {
-                s.write(unsafe {
-                    std::slice::from_raw_parts((&raw const self).cast(), size_of::<Self>())
-                });
+                [self].with_owning_ref(|r| Self::serialize_slice(r, s))
             }
             fn serialize_slice(elements: OwningRef<'_, [Self]>, s: &mut Serializer) {
-                s.write(unsafe {
+                s.data.extend_from_slice(unsafe {
                     std::slice::from_raw_parts(elements.as_ptr().cast(), size_of_val(&*elements))
                 });
             }
-            #[allow(unreachable_code)]
+            #[allow(unreachable_code, unused_variables)]
             unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
-                unsafe {
-                    d.read(size_of::<Self>()).as_ptr().cast::<Self>().read_unaligned()
-                }
+                // weird computation to avoid overflow
+                debug_assert!(size_of::<Self>() <= d.data.len() - d.pos, "out of bounds");
+                let value = unsafe {
+                    d.data.as_ptr().byte_add(d.pos).cast::<Self>().read_unaligned()
+                };
+                d.pos += size_of::<Self>();
+                value
             }
         }
     };

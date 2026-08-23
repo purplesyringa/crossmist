@@ -642,7 +642,7 @@ pub(crate) fn handle_entry(
         unsafe fn deserialize_self(deserializer: &mut Deserializer) -> Self {
             Self(core::mem::replace(
                 deserializer,
-                Deserializer::from(Serializer::new()),
+                Deserializer::private_new(Serializer::private_new()),
             ))
         }
     }

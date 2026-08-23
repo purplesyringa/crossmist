@@ -15,9 +15,9 @@ use crate::{
 ///
 /// # Custom implementations
 ///
-/// If you have a type for which `#[derive(Object)]` does not produce the desired semantics, e.g. if
-/// you have additional state stored elsewhere that should be dumped in the serialization stream,
-/// implement this trait based on the following template:
+/// If `#[derive(Object)]` doesn't produce the desired semantics for your type, e.g. if you have
+/// external state that should be dumped in the serialization stream, you can implement the trait
+/// manually:
 ///
 /// ```rust
 /// use crossmist::{Object, serde::{Deserializer, Serializer}};
@@ -40,6 +40,8 @@ use crate::{
 ///     }
 /// }
 /// ```
+///
+/// See the [`serde`](crate::serde) module for more details about this process.
 ///
 /// Objects referencing file descriptors (on Unix) or handles/sockets (on Windows) can be serialized
 /// by converting to [`OwnedFd`](std::os::unix::io::OwnedFd) or
@@ -67,14 +69,13 @@ use crate::{
 /// }
 /// ```
 ///
-///
 /// # Safety
 ///
 /// An implementation of this trait is safe if the order of types used during serialization and
 /// deserialization matches. See the documentation of [`Deserializer::deserialize`] for details.
 #[allow(private_bounds)]
 pub unsafe trait Object: BaseObject {
-    /// Serialize a single object.
+    /// Serialize a given object.
     fn serialize_self(self, s: &mut Serializer);
     /// Serialize an array of objects into a serializer.
     ///
@@ -88,7 +89,7 @@ pub unsafe trait Object: BaseObject {
             s.serialize(element);
         }
     }
-    /// Deserialize a single object.
+    /// Deserialize an object.
     ///
     /// # Safety
     ///

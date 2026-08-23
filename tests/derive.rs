@@ -5,17 +5,17 @@ use crossmist::{
 use std::fmt::Debug;
 
 fn test_idempotency<T: Object + Clone + PartialEq + Debug>(x: T) {
-    let mut s = Serializer::new();
+    let mut s = Serializer::private_new();
     s.serialize(x.clone());
-    let mut d = Deserializer::from(s);
+    let mut d = Deserializer::private_new(s);
     assert_eq!(unsafe { d.deserialize::<T>() }, x);
 }
 
 fn test_empty<T: Object>(x: T) {
-    let mut s = Serializer::new();
+    let mut s = Serializer::private_new();
     s.serialize(x);
     s.serialize(12345i32);
-    let mut d = Deserializer::from(s);
+    let mut d = Deserializer::private_new(s);
     assert!(unsafe { d.deserialize::<i32>() } == 12345);
 }
 

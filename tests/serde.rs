@@ -8,9 +8,9 @@ mod testing;
 testing::setup!();
 
 fn serde<T: Object>(x: T) -> T {
-    let mut s = Serializer::new();
+    let mut s = Serializer::private_new();
     s.serialize(x);
-    let mut d = Deserializer::from(s);
+    let mut d = Deserializer::private_new(s);
     unsafe { d.deserialize() }
 }
 
