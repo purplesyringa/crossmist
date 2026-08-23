@@ -656,6 +656,6 @@ pub(crate) fn handle_entry(
     core::mem::forget(rx);
 
     let entry: StaticFn<fn(_, _)> = unsafe { deserializer.deserialize() };
-    (entry.get_fn())(deserializer, channel);
+    entry(deserializer, channel);
     std::process::exit(0);
 }

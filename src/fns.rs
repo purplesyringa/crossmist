@@ -71,7 +71,7 @@
 
 use crate::{Object, relocation::RelocatablePtr};
 use paste::paste;
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Deref};
 
 macro_rules! impl_fn {
     (
@@ -448,63 +448,63 @@ pub trait FnPtr: Copy + fn_ptr_private::Sealed {
 
 /// A wrapper for `fn(...) -> ...` implementing `Object`.
 ///
-/// This type enables you to pass `fn` and `unsafe fn` pointers between processes soundly without
-/// requiring [`func`] or [`crossmist::entrypoint`].
+/// This type enables you to pass existing `fn` and `unsafe fn` pointers between processes soundly
+/// without wrapping them in [`crossmist::func`]. [`StaticFn`] dereferences into `fn(...) -> ...`,
+/// so it can be called directly.
 ///
-/// Creating the wrapper from a function pointer is `unsafe` because functions might not be
-/// available in the child process if they were created in runtime by JIT compilation or alike.
+/// Creating [`StaticFn`] from a function pointer is `unsafe` because functions might not be
+/// available in the child process if they are created in runtime by JIT compilation or by loading
+/// from dynamic libraries.
 ///
 /// All function pointers are supported on nightly. Only function pointers with up to 20 arguments
-/// with no references of generic lifetimes are supported without the `nightly` feature flag.
+/// with no [HRTBs](https://doc.rust-lang.org/nomicon/hrtb.html) are supported without the `nightly`
+/// feature flag.
 ///
 /// # Example
 ///
-/// These examples require the `nightly` feature to be enabled. [`FnObject::call_object`] can be
-/// used instead of direct calls on stable.
-///
-#[cfg_attr(feature = "nightly", doc = " ```")]
-#[cfg_attr(not(feature = "nightly"), doc = " ```ignore")]
-/// # use crossmist::fns::{FnObject, StaticFn};
+/// ```standalone_crate
+/// # use crossmist::fns::StaticFn;
 /// fn add(a: i32, b: i32) -> i32 {
 ///     a + b
 /// }
-/// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new(add) };
-/// let add: Box<dyn FnObject<(i32, i32), Output = i32>> = Box::new(add);
-/// assert_eq!(add(5, 7), 12);
+///
+/// fn main() {
+///     crossmist::init();
+///     entry.run(unsafe { StaticFn::new(add) }).unwrap();
+/// }
+///
+/// #[crossmist::entrypoint]
+/// fn entry(add: StaticFn<fn(i32, i32) -> i32>) {
+///     assert_eq!(add(5, 7), 12);
+/// }
 /// ```
 ///
-#[cfg_attr(feature = "nightly", doc = " ```")]
-#[cfg_attr(not(feature = "nightly"), doc = " ```ignore")]
-/// # use crossmist::fns::{FnObject, StaticFn};
+/// ```
+/// # use crossmist::fns::StaticFn;
 /// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new(|a, b| a + b) };
-/// let add: Box<dyn FnObject<(i32, i32), Output = i32>> = Box::new(add);
 /// assert_eq!(add(5, 7), 12);
 /// ```
-///
-/// This example works on stable without changes.
 ///
 /// ```rust
-/// # use crossmist::fns::{FnObject, StaticFn};
+/// # use crossmist::fns::StaticFn;
 /// unsafe fn dangerous_read(p: *const i32) -> i32 {
 ///     p.read()
 /// }
 /// let dangerous_read = unsafe { StaticFn::<unsafe fn(*const i32) -> i32>::new(dangerous_read) };
-/// let dangerous_read = dangerous_read.get_fn();
 /// unsafe {
 ///     assert_eq!(dangerous_read(&123), 123);
 /// }
 /// ```
 ///
-/// This example requires `nightly` because of references.
+/// The next example requires `nightly` because of references:
 ///
 #[cfg_attr(feature = "nightly", doc = " ```")]
 #[cfg_attr(not(feature = "nightly"), doc = " ```ignore")]
-/// # use crossmist::fns::{FnObject, StaticFn};
+/// # use crossmist::fns::StaticFn;
 /// fn safe_read(p: &i32) -> i32 {
 ///     *p
 /// }
 /// let safe_read = unsafe { StaticFn::<fn(&i32) -> i32>::new(safe_read) };
-/// let safe_read: Box<dyn FnObject<(&i32,), Output = i32>> = Box::new(safe_read);
 /// assert_eq!(safe_read(&123), 123);
 /// ```
 #[derive(Clone, Copy, Debug, Object)]
@@ -540,6 +540,13 @@ impl<F: FnPtr> StaticFn<F> {
     );
 }
 
+impl<F: FnPtr> Deref for StaticFn<F> {
+    type Target = F;
+    fn deref(&self) -> &F {
+        unsafe { &*(&raw const self.ptr.0).cast::<F>() }
+    }
+}
+
 macro_rules! impl_fn_pointer {
     () => {};
     ($head:tt $($tail:tt)*) => {
@@ -559,28 +566,6 @@ macro_rules! impl_fn_pointer {
             impl<Output, $([<T $tail>]),*> FnPtr for unsafe fn($([<T $tail>]),*) -> Output {
                 fn addr(self) -> usize {
                     self as usize
-                }
-            }
-
-            impl_fn! {
-                impl[T: FnPtr, Output, $([<T $tail>]),*] FnOnce<($([<T $tail>],)*), Output = Output> for StaticFn<T> where[T: FnOnce($([<T $tail>]),*) -> Output] =
-                |self, args| {
-                    let ($([<a $tail>],)*) = args;
-                    self.get_fn()($([<a $tail>]),*)
-                }
-            }
-            impl_fn! {
-                impl[T: FnPtr, Output, $([<T $tail>]),*] FnMut<($([<T $tail>],)*)> for StaticFn<T> where[T: FnMut($([<T $tail>]),*) -> Output] =
-                |self, args| {
-                    let ($([<a $tail>],)*) = args;
-                    self.get_fn()($([<a $tail>]),*)
-                }
-            }
-            impl_fn! {
-                impl[T: FnPtr, Output, $([<T $tail>]),*] Fn<($([<T $tail>],)*)> for StaticFn<T> where[T: Fn($([<T $tail>]),*) -> Output] =
-                |self, args| {
-                    let ($([<a $tail>],)*) = args;
-                    self.get_fn()($([<a $tail>]),*)
                 }
             }
         }
