@@ -33,7 +33,7 @@ use polyfill::FnPtr;
 ///
 /// fn main() {
 ///     crossmist::init();
-///     entry.run(unsafe { StaticFn::new(add) }).unwrap();
+///     entry.run(unsafe { StaticFn::new_unchecked(add) }).unwrap();
 /// }
 ///
 /// #[crossmist::entrypoint]
@@ -44,7 +44,7 @@ use polyfill::FnPtr;
 ///
 /// ```
 /// # use crossmist::StaticFn;
-/// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new(|a, b| a + b) };
+/// let add = unsafe { StaticFn::<fn(i32, i32) -> i32>::new_unchecked(|a, b| a + b) };
 /// assert_eq!(add(5, 7), 12);
 /// ```
 ///
@@ -53,7 +53,9 @@ use polyfill::FnPtr;
 /// unsafe fn dangerous_read(p: *const i32) -> i32 {
 ///     p.read()
 /// }
-/// let dangerous_read = unsafe { StaticFn::<unsafe fn(*const i32) -> i32>::new(dangerous_read) };
+/// let dangerous_read = unsafe {
+///     StaticFn::<unsafe fn(*const i32) -> i32>::new_unchecked(dangerous_read)
+/// };
 /// unsafe {
 ///     assert_eq!(dangerous_read(&123), 123);
 /// }
@@ -67,7 +69,7 @@ use polyfill::FnPtr;
 /// fn safe_read(p: &i32) -> i32 {
 ///     *p
 /// }
-/// let safe_read = unsafe { StaticFn::<fn(&i32) -> i32>::new(safe_read) };
+/// let safe_read = unsafe { StaticFn::<fn(&i32) -> i32>::new_unchecked(safe_read) };
 /// assert_eq!(safe_read(&123), 123);
 /// ```
 #[derive(Clone, Copy, Debug, Object)]
@@ -84,7 +86,7 @@ impl<F: FnPtr> StaticFn<F> {
     ///
     /// This is safe to call if the function pointer is obtained from an `fn` item or a closure
     /// without captures.
-    pub unsafe fn new(f: F) -> Self {
+    pub unsafe fn new_unchecked(f: F) -> Self {
         Self {
             ptr: RelocatablePtr(core::ptr::with_exposed_provenance(f.addr())),
             phantom: PhantomData,
@@ -92,7 +94,9 @@ impl<F: FnPtr> StaticFn<F> {
     }
 
     /// Extract a function pointer from a [`StaticFn`].
-    pub fn get_fn(self) -> F {
+    ///
+    /// This method usually shouldn't be used, since the [`StaticFn`] can be called directly.
+    pub fn get(self) -> F {
         unsafe { std::mem::transmute_copy::<*const (), F>(&self.ptr.0) }
     }
 

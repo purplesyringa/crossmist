@@ -592,7 +592,7 @@ pub(crate) async unsafe fn spawn<
                 .expect("Failed to send subprocess output");
         };
 
-        let entrypoint = StaticFn::new(entrypoint as fn(_, _));
+        let entrypoint = StaticFn::new_unchecked(entrypoint as fn(_, _));
 
         let (local, child) = crate::duplex()?;
         let mut local: Duplex<Stream, _, Ret> = local.try_into()?;
