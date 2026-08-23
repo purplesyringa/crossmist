@@ -92,16 +92,11 @@ jobs:
             rust_arch: x86_64
           - os: ubuntu-26.04
             rust_arch: i686
-          # Wine packaged by new Ubuntu is broken on arm64 due to [1], Wine packaged by old Ubuntu
-          # is broken due to [2], and upstream doesn't publish binaries for arm64, leaving us to
-          # disable it entirely for now.
-          # [1] https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1100695
-          # [2] https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1140177
-          # - os: ubuntu-26.04-arm
-          #   rust_arch: aarch64
+          - os: ubuntu-26.04-arm
+            rust_arch: aarch64
           # Wine doesn't support arm64ec out of the box yet, see
           # https://bugs.winehq.org/show_bug.cgi?id=58092
-          # - os: ubuntu-22.04-arm
+          # - os: ubuntu-26.04-arm
           #   rust_arch: arm64ec
     env:
       WINEDEBUG: fixme+all,err+all  # :ferrisClueless:
