@@ -60,6 +60,16 @@
 /// - A closure that captures some variables by mutable references cannot be invoked in parallel.
 /// - A closure that only captures variables by immutable reference imposes no limitations.
 ///
+/// Trying to capture a variable without listing it will result in a compile-time error:
+///
+/// ```compile_fail
+/// let s = String::from("abc");
+/// // non-primitive cast: `{closure@example.rs:4:33: 4:35}` as `fn(_, _, _, _) -> _`
+/// // note: closures can only be coerced to `fn` types if they do not capture any variables
+/// let broken = crossmist::func! { || s.len() };
+/// //                                 ^ `s` captured here
+/// ```
+///
 /// Reference captures work slightly differently from normal Rust. In Rust, such closures only store
 /// references to captured variables, but in crossmist, the captured variables are moved into the
 /// closure, so that they can then be sent over a channel together with the function itself. As
