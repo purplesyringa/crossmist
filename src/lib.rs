@@ -375,9 +375,6 @@ pub use crossmist_derive::entrypoint;
 pub mod imp;
 pub use imp::init;
 
-mod object;
-pub use object::Object;
-
 pub mod serde;
 
 mod owning_ref;
@@ -414,16 +411,5 @@ pub mod tokio;
 pub use asynchronous::KillHandle;
 pub use blocking::{Child, Duplex, Receiver, Sender, channel, duplex};
 
-pub(crate) mod relocation;
-
-mod builtins;
-mod unsized_builtins;
-
-mod closures;
-pub use closures::*;
-
-mod static_ref;
-pub use static_ref::StaticRef;
-
-mod static_fn_ptr;
-pub use static_fn_ptr::StaticFnPtr;
+mod objects;
+pub use objects::*;

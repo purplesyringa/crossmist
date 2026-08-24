@@ -1,4 +1,5 @@
-use crate::{Object, relocation::RelocatablePtr};
+use super::relocation::RelocatablePtr;
+use crate::Object;
 use core::fmt;
 use std::{marker::PhantomData, ops::Deref};
 

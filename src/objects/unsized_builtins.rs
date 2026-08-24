@@ -1,7 +1,7 @@
+use super::relocation::RelocatablePtr;
 use crate::{
     Object,
     owning_ref::WithOwningRef,
-    relocation::RelocatablePtr,
     serde::{Deserializer, Serializer},
 };
 
