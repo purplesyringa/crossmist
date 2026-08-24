@@ -14,7 +14,6 @@ use std::time::{Duration, SystemTime};
 macro_rules! impl_pod {
     ($([$($generics:tt)*])? for $t:ty) => {
         unsafe impl$(<$($generics)*>)? Object for $t {
-            #[allow(unreachable_code)]
             fn serialize_self(self, s: &mut Serializer) {
                 [self].with_owning_ref(|r| Self::serialize_slice(r, s))
             }
@@ -23,7 +22,7 @@ macro_rules! impl_pod {
                     std::slice::from_raw_parts(elements.as_ptr().cast(), size_of_val(&*elements))
                 });
             }
-            #[allow(unreachable_code, unused_variables)]
+            #[allow(unused_variables)]
             unsafe fn deserialize_self(d: &mut Deserializer) -> Self {
                 // weird computation to avoid overflow
                 debug_assert!(size_of::<Self>() <= d.data.len() - d.pos, "out of bounds");
@@ -41,8 +40,6 @@ impl_pod!(for ());
 impl_pod!(for bool);
 impl_pod!(for char);
 impl_pod!([T] for std::marker::PhantomData<T>);
-#[cfg(feature = "nightly")]
-impl_pod!(for !);
 impl_pod!(for std::convert::Infallible);
 impl_pod!(for i8);
 impl_pod!(for i16);
@@ -70,6 +67,15 @@ impl_pod!(for std::num::NonZeroU32);
 impl_pod!(for std::num::NonZeroU64);
 impl_pod!(for std::num::NonZeroU128);
 impl_pod!(for std::num::NonZeroUsize);
+
+#[cfg(feature = "nightly")]
+unsafe impl Object for ! {
+    fn serialize_self(self, _s: &mut Serializer) {}
+    fn serialize_slice(_elements: OwningRef<'_, [Self]>, _s: &mut Serializer) {}
+    unsafe fn deserialize_self(_d: &mut Deserializer) -> Self {
+        unsafe { core::hint::unreachable_unchecked() }
+    }
+}
 
 unsafe impl Object for Duration {
     fn serialize_self(self, s: &mut Serializer) {
