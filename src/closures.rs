@@ -139,84 +139,6 @@ pub use crossmist_derive::func;
 use crate::Object;
 use std::marker::PhantomData;
 
-macro_rules! impl_fn {
-    (
-        impl[$($generic_bounds:tt)*] FnOnce<$args_ty:ty, Output = $output:ty> for $target:ty $(where[$($where:tt)*])? =
-        $(#[$attr:meta])*
-        |$self:tt, $args:tt| {
-            $($body:tt)*
-        }
-    ) => {
-        #[cfg(feature = "nightly")]
-        impl<$($generic_bounds)*> std::ops::FnOnce<$args_ty> for $target $(where $($where)*)? {
-            type Output = $output;
-            $(#[$attr])*
-            #[allow(unused_mut)]
-            extern "rust-call" fn call_once(mut $self, $args: $args_ty) -> Self::Output {
-                $($body)*
-            }
-        }
-        #[cfg(not(feature = "nightly"))]
-        impl<$($generic_bounds)*> FnOnceObject<$args_ty> for $target $(where $($where)*)? {
-            type Output = $output;
-            $(#[$attr])*
-            #[allow(unused_mut)]
-            fn call_object_once(mut $self, $args: $args_ty) -> Self::Output {
-                $($body)*
-            }
-            fn call_object_box(self: Box<Self>, args: $args_ty) -> Self::Output {
-                (*self).call_object_once(args)
-            }
-        }
-    };
-
-    (
-        impl[$($generic_bounds:tt)*] FnMut<$args_ty:ty> for $target:ty $(where[$($where:tt)*])? =
-        $(#[$attr:meta])*
-        |$self:tt, $args:tt| {
-            $($body:tt)*
-        }
-    ) => {
-        #[cfg(feature = "nightly")]
-        impl<$($generic_bounds)*> std::ops::FnMut<$args_ty> for $target $(where $($where)*)? {
-            $(#[$attr])*
-            extern "rust-call" fn call_mut(&mut $self, $args: $args_ty) -> Self::Output {
-                $($body)*
-            }
-        }
-        #[cfg(not(feature = "nightly"))]
-        impl<$($generic_bounds)*> FnMutObject<$args_ty> for $target $(where $($where)*)? {
-            $(#[$attr])*
-            fn call_object_mut(&mut $self, $args: $args_ty) -> Self::Output {
-                $($body)*
-            }
-        }
-    };
-
-    (
-        impl[$($generic_bounds:tt)*] Fn<$args_ty:ty> for $target:ty  $(where[$($where:tt)*])?=
-        $(#[$attr:meta])*
-        |$self:tt, $args:tt| {
-            $($body:tt)*
-        }
-    ) => {
-        #[cfg(feature = "nightly")]
-        impl<$($generic_bounds)*> std::ops::Fn<$args_ty> for $target $(where $($where)*)? {
-            $(#[$attr])*
-            extern "rust-call" fn call(&$self, $args: $args_ty) -> Self::Output {
-                $($body)*
-            }
-        }
-        #[cfg(not(feature = "nightly"))]
-        impl<$($generic_bounds)*> FnObject<$args_ty> for $target $(where $($where)*)? {
-            $(#[$attr])*
-            fn call_object(&$self, $args: $args_ty) -> Self::Output {
-                $($body)*
-            }
-        }
-    };
-}
-
 /// A tuple.
 ///
 /// Do not rely on the exact definition of this trait, as it may change depending on the enabled
@@ -468,23 +390,68 @@ impl<Func, ByValue, ByRef, ByRefMut> Closure<Func, ByValue, ByRef, ByRefMut> {
     }
 }
 
-impl_fn! {
-    impl[ByValue: Object, ByRef: Object, ByRefMut: Object, Args: Tuple, Output, Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, Args) -> Output] FnOnce<Args, Output = Output> for Closure<Func, ByValue, ByRef, ByRefMut> =
-    |self, args| {
+#[cfg(feature = "nightly")]
+impl<ByValue, ByRef, ByRefMut, Args: Tuple, Output, Func> std::ops::FnOnce<Args>
+    for Closure<Func, ByValue, ByRef, ByRefMut>
+where
+    Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, Args) -> Output,
+{
+    type Output = Output;
+    extern "rust-call" fn call_once(mut self, args: Args) -> Output {
         (self.conjure())(self.by_value, &self.by_ref, &mut self.by_ref_mut, args)
     }
 }
+#[cfg(not(feature = "nightly"))]
+impl<ByValue: Object, ByRef: Object, ByRefMut: Object, Args: Tuple, Output, Func> FnOnceObject<Args>
+    for Closure<Func, ByValue, ByRef, ByRefMut>
+where
+    Func: for<'a> Fn(ByValue, &'a ByRef, &'a mut ByRefMut, Args) -> Output,
+{
+    type Output = Output;
+    fn call_object_once(mut self, args: Args) -> Output {
+        (self.conjure())(self.by_value, &self.by_ref, &mut self.by_ref_mut, args)
+    }
+    fn call_object_box(self: Box<Self>, args: Args) -> Output {
+        (*self).call_object_once(args)
+    }
+}
 
-impl_fn! {
-    impl[ByRef: Object, ByRefMut: Object, Args: Tuple, Output, Func: for<'a> Fn((), &'a ByRef, &'a mut ByRefMut, Args) -> Output] FnMut<Args> for Closure<Func, (), ByRef, ByRefMut> =
-    |self, args| {
+#[cfg(feature = "nightly")]
+impl<ByRef, ByRefMut, Args: Tuple, Output, Func> std::ops::FnMut<Args>
+    for Closure<Func, (), ByRef, ByRefMut>
+where
+    Func: for<'a> Fn((), &'a ByRef, &'a mut ByRefMut, Args) -> Output,
+{
+    extern "rust-call" fn call_mut(&mut self, args: Args) -> Output {
+        (self.conjure())((), &self.by_ref, &mut self.by_ref_mut, args)
+    }
+}
+#[cfg(not(feature = "nightly"))]
+impl<ByRef: Object, ByRefMut: Object, Args: Tuple, Output, Func> FnMutObject<Args>
+    for Closure<Func, (), ByRef, ByRefMut>
+where
+    Func: for<'a> Fn((), &'a ByRef, &'a mut ByRefMut, Args) -> Output,
+{
+    fn call_object_mut(&mut self, args: Args) -> Output {
         (self.conjure())((), &self.by_ref, &mut self.by_ref_mut, args)
     }
 }
 
-impl_fn! {
-    impl[ByRef: Object, Args: Tuple, Output, Func: for<'a> Fn((), &'a ByRef, &'a mut (), Args) -> Output] Fn<Args> for Closure<Func, (), ByRef, ()> =
-    |self, args| {
+#[cfg(feature = "nightly")]
+impl<ByRef: Object, Args: Tuple, Output, Func> std::ops::Fn<Args> for Closure<Func, (), ByRef, ()>
+where
+    Func: for<'a> Fn((), &'a ByRef, &'a mut (), Args) -> Output,
+{
+    extern "rust-call" fn call(&self, args: Args) -> Output {
+        (self.conjure())((), &self.by_ref, &mut (), args)
+    }
+}
+#[cfg(not(feature = "nightly"))]
+impl<ByRef: Object, Args: Tuple, Output, Func> FnObject<Args> for Closure<Func, (), ByRef, ()>
+where
+    Func: for<'a> Fn((), &'a ByRef, &'a mut (), Args) -> Output,
+{
+    fn call_object(&self, args: Args) -> Output {
         (self.conjure())((), &self.by_ref, &mut (), args)
     }
 }
