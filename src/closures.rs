@@ -144,6 +144,7 @@ use std::marker::PhantomData;
 /// Do not rely on the exact definition of this trait, as it may change depending on the enabled
 /// features.
 #[cfg(feature = "nightly")]
+#[doc(cfg(true))]
 pub trait Tuple: std::marker::Tuple {}
 #[cfg(feature = "nightly")]
 impl<T: std::marker::Tuple> Tuple for T {}
@@ -170,10 +171,15 @@ macro_rules! decl_tuple {
 #[cfg(not(feature = "nightly"))]
 decl_tuple!(x T20 T19 T18 T17 T16 T15 T14 T13 T12 T11 T10 T9 T8 T7 T6 T5 T4 T3 T2 T1 T0);
 
-/// A callable object that can be called at least once.
+/// A callable object that can be invoked at least once.
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+///
+/// On stable Rust, the `call_object_once` method should be used to invoke the object. On nightly
+/// Rust, it can be invoked directly.
+///
+/// See [`func`] for documentation on callable objects.
 #[cfg(not(feature = "nightly"))]
 pub trait FnOnceObject<Args: Tuple>: Object {
     /// Function return type.
@@ -205,11 +211,17 @@ pub trait FnOnceObject<Args: Tuple>: Object {
     /// `Box<dyn FnOnceObject<Args>>`.
     fn call_object_box(self: Box<Self>, args: Args) -> Self::Output;
 }
-/// A callable object that can be called at least once.
+/// A callable object that can be invoked at least once.
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+///
+/// On stable Rust, the `call_object_once` method should be used to invoke the object. On nightly
+/// Rust, it can be invoked directly.
+///
+/// See [`func`] for documentation on callable objects.
 #[cfg(feature = "nightly")]
+#[doc(cfg(true))]
 pub trait FnOnceObject<Args: Tuple>: Object + std::ops::FnOnce<Args> {
     /// Invoke the function with the given argument tuple.
     ///
@@ -258,11 +270,17 @@ impl<Args: Tuple, T: Object + std::ops::FnOnce<Args>> FnOnceObject<Args> for T {
     }
 }
 
-/// A callable object that can be called multiple times and might mutate state.
+/// A callable object that can be invoked multiple times and might mutate state.
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+///
+/// On stable Rust, the `call_object_mut` method should be used to invoke the object. On nightly
+/// Rust, it can be invoked directly.
+///
+/// See [`func`] for documentation on callable objects.
 #[cfg(feature = "nightly")]
+#[doc(cfg(true))]
 pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> + std::ops::FnMut<Args> {
     /// Invoke the function with the given argument tuple.
     ///
@@ -282,10 +300,15 @@ pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> + std::ops::FnMut<Args> {
     /// ```
     fn call_object_mut(&mut self, args: Args) -> Self::Output;
 }
-/// A callable object that can be called multiple times and might mutate state.
+/// A callable object that can be invoked multiple times and might mutate state.
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+///
+/// On stable Rust, the `call_object_mut` method should be used to invoke the object. On nightly
+/// Rust, it can be invoked directly.
+///
+/// See [`func`] for documentation on callable objects.
 #[cfg(not(feature = "nightly"))]
 pub trait FnMutObject<Args: Tuple>: FnOnceObject<Args> {
     /// Invoke the function with the given argument tuple.
@@ -313,11 +336,17 @@ impl<Args: Tuple, T: Object + std::ops::FnMut<Args>> FnMutObject<Args> for T {
     }
 }
 
-/// A callable object that can be called multiple times without mutating state.
+/// A callable object that can be invoked multiple times without mutating state.
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+///
+/// On stable Rust, the `call_object` method should be used to invoke the object. On nightly Rust,
+/// it can be invoked directly.
+///
+/// See [`func`] for documentation on callable objects.
 #[cfg(feature = "nightly")]
+#[doc(cfg(true))]
 pub trait FnObject<Args: Tuple>: FnMutObject<Args> + std::ops::Fn<Args> {
     /// Invoke the function with the given argument tuple.
     ///
@@ -330,10 +359,15 @@ pub trait FnObject<Args: Tuple>: FnMutObject<Args> + std::ops::Fn<Args> {
     /// ```
     fn call_object(&self, args: Args) -> Self::Output;
 }
-/// A callable object that can be called multiple times without mutating state.
+/// A callable object that can be invoked multiple times without mutating state.
 ///
 /// Do not implement this trait manually: the library gives no guarantees whether that is possible,
 /// portable, or stable.
+///
+/// On stable Rust, the `call_object` method should be used to invoke the object. On nightly Rust,
+/// it can be invoked directly.
+///
+/// See [`func`] for documentation on callable objects.
 #[cfg(not(feature = "nightly"))]
 pub trait FnObject<Args: Tuple>: FnMutObject<Args> {
     /// Invoke the function with the given argument tuple.
