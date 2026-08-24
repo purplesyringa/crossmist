@@ -132,7 +132,6 @@
         doc_cfg,
         fn_static,
         fn_traits,
-        never_type,
         tuple_trait,
         unboxed_closures,
     )

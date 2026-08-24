@@ -40,7 +40,6 @@ impl_pod!(for ());
 impl_pod!(for bool);
 impl_pod!(for char);
 impl_pod!([T] for std::marker::PhantomData<T>);
-impl_pod!(for std::convert::Infallible);
 impl_pod!(for i8);
 impl_pod!(for i16);
 impl_pod!(for i32);
@@ -68,7 +67,6 @@ impl_pod!(for std::num::NonZeroU64);
 impl_pod!(for std::num::NonZeroU128);
 impl_pod!(for std::num::NonZeroUsize);
 
-#[cfg(feature = "nightly")]
 unsafe impl Object for ! {
     fn serialize_self(self, _s: &mut Serializer) {}
     fn serialize_slice(_elements: OwningRef<'_, [Self]>, _s: &mut Serializer) {}
