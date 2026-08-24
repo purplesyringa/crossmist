@@ -104,12 +104,6 @@ pub fn func(input: TokenStream) -> TokenStream {
     };
     closure.inputs = new_inputs.inputs;
 
-    let input_underscores = closure
-        .inputs
-        .iter()
-        .map(|_| quote! { _ })
-        .collect::<Vec<_>>();
-
     quote! {
         {
             // The closure must be part of the same expression that links the bound identifiers to
@@ -121,7 +115,7 @@ pub fn func(input: TokenStream) -> TokenStream {
                 (#(#captured_by_ref_mut,)*),
             );
             // assert that the closure doesn't borrow
-            let _ = closure.conjure() as fn(#(#input_underscores,)*) -> _;
+            let _ = closure.conjure() as fn(_, _, _, _) -> _;
             closure
         }
     }
